@@ -4,3 +4,6 @@
 [submodule "dune-grid"]
 	path = dune-grid
 	url = http://users.dune-project.org/repositories/projects/dune-grid.git
+[submodule "dune-geometry"]
+	path = dune-geometry
+	url = http://users.dune-project.org/repositories/projects/dune-geometry.git
