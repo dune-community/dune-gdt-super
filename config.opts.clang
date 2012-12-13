@@ -1,0 +1,3 @@
+CONFIGURE_FLAGS="CXXFLAGS='-std=c++0x -O0 -g -ggdb -DDEBUG' \
+--enable-fieldvector-size-is-method \
+--disable-documentation"
