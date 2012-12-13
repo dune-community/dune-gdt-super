@@ -13,3 +13,6 @@
 [submodule "dune-stuff"]
 	path = dune-stuff
 	url = http://users.dune-project.org/repositories/projects/dune-stuff.git
+[submodule "dune-grid-multiscale"]
+	path = dune-grid-multiscale
+	url = http://users.dune-project.org/repositories/projects/dune-grid-multiscale.git
