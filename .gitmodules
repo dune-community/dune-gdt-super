@@ -7,3 +7,6 @@
 [submodule "dune-geometry"]
 	path = dune-geometry
 	url = http://users.dune-project.org/repositories/projects/dune-geometry.git
+[submodule "dune-fem"]
+	path = dune-fem
+	url = http://users.dune-project.org/repositories/projects/dune-fem.git
