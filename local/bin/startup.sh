@@ -32,16 +32,6 @@ else
   exit 1
 fi
 
-echo -ne "downloading dune modules (this may take a while)... "
-LOG_FILE=$LOG_DIR/download_dune_modules.log
-./local/bin/download_dune_modules.sh &> $LOG_FILE
-if [ $? == 0 ] ; then
-  echo "done"
-else
-  echo "failed (see $LOG_FILE for details)" >&2
-  exit 1
-fi
-
 echo -ne "downloading external libraries (this may take a while)... "
 LOG_FILE=$LOG_DIR/download_external_libraries.log
 ./local/bin/download_external_libraries.sh &> $LOG_FILE
