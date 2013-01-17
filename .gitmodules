@@ -19,3 +19,6 @@
 [submodule "dune-detailed-discretizations"]
 	path = dune-detailed-discretizations
 	url = http://users.dune-project.org/repositories/projects/dune-detailed-discretizations.git
+[submodule "local/bin"]
+	path = local/bin
+	url = http://users.dune-project.org/repositories/projects/dune-demos-bin.git
