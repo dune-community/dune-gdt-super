@@ -22,3 +22,6 @@
 [submodule "local/bin"]
 	path = local/bin
 	url = http://users.dune-project.org/repositories/projects/dune-demos-bin.git
+[submodule "dune-localfunctions"]
+	path = dune-localfunctions
+	url = http://users.dune-project.org/repositories/projects/dune-localfunctions.git
