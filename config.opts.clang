@@ -1,3 +1,9 @@
-CONFIGURE_FLAGS="CXXFLAGS='-std=c++0x -O0 -g -ggdb -DDEBUG' \
---enable-fieldvector-size-is-method \
---disable-documentation"
+CONFIGURE_FLAGS=" \
+  CC=clang \
+  CXX=clang++ \
+  F77=gfortran \
+  CXXFLAGS='-fno-strict-aliasing -DDEBUG -g3 -ggdb -std=c++0x -Wextra -Wall' \
+  --enable-fieldvector-size-is-method \
+  --disable-documentation \
+  INKSCAPE=no \
+"
