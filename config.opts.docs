@@ -1,3 +1,5 @@
-CONFIGURE_FLAGS="CXXFLAGS='-std=c++0x -O0' \
---enable-fieldvector-size-is-method \
---enable-documentation"
+CONFIGURE_FLAGS=" \
+  CXXFLAGS='-std=c++0x -O0' \
+  --enable-fieldvector-size-is-method \
+  --enable-documentation \
+"
