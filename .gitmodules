@@ -25,3 +25,6 @@
 [submodule "dune-localfunctions"]
 	path = dune-localfunctions
 	url = http://users.dune-project.org/repositories/projects/dune-localfunctions.git
+[submodule "dune-fem-localfunctions"]
+	path = dune-fem-localfunctions
+	url = http://users.dune-project.org/repositories/projects/dune-fem-localfunctions.git
