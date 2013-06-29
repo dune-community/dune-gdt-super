@@ -1,12 +1,12 @@
 [submodule "dune-common"]
 	path = dune-common
-	url = http://users.dune-project.org/repositories/projects/dune-common.git
+	url = http://git.dune-project.org/repositories/dune-common
 [submodule "dune-grid"]
 	path = dune-grid
-	url = http://users.dune-project.org/repositories/projects/dune-grid.git
+	url = http://git.dune-project.org/repositories/dune-grid
 [submodule "dune-geometry"]
 	path = dune-geometry
-	url = http://users.dune-project.org/repositories/projects/dune-geometry.git
+	url = http://git.dune-project.org/repositories/dune-geometry
 [submodule "dune-fem"]
 	path = dune-fem
 	url = http://users.dune-project.org/repositories/projects/dune-fem-unofficial.git
@@ -21,7 +21,7 @@
 	url = http://users.dune-project.org/repositories/projects/dune-demos-bin.git
 [submodule "dune-localfunctions"]
 	path = dune-localfunctions
-	url = http://users.dune-project.org/repositories/projects/dune-localfunctions.git
+	url = http://git.dune-project.org/repositories/dune-localfunctions
 [submodule "dune-fem-localfunctions"]
 	path = dune-fem-localfunctions
 	url = http://users.dune-project.org/repositories/projects/dune-fem-localfunctions.git
