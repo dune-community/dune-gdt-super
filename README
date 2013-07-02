@@ -14,7 +14,7 @@ To get started, clone this repository and initialize the submodules, i.e.:
 
     git clone http://users.dune-project.org/repositories/projects/dune-gdt-demos.git
     cd dune-gdt-demos
-    git submodue update --init
+    git submodule update --init
 
 You can now check if one of the config.opts.?? files is named after a compiler
 that is available on your system. If not, copy an existing file and edit it
