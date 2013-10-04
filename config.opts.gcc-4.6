@@ -7,8 +7,7 @@ CONFIGURE_FLAGS=" \
   CC=gcc-4.6 \
   CXX=g++-4.6 \
   F77=gfortran-4.6 \
-  CXXFLAGS='-fno-strict-aliasing -std=c++0x -O3 -g3 -ggdb -DDEBUG -Wextra -Wall' \
-  --enable-fieldvector-size-is-method \
-  --disable-documentation \
+  CXXFLAGS='-DNDEBUG -DDNDEBUG -O3 -g3 -ggdb -std=c++0x -fPIC' \
   INKSCAPE=no \
-"
+  --disable-documentation \
+  "

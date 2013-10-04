@@ -4,7 +4,6 @@
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 CONFIGURE_FLAGS=" \
-  CXXFLAGS='-std=c++0x -O0' \
-  --enable-fieldvector-size-is-method \
+  CXXFLAGS='-std=c++0x' \
   --enable-documentation \
-"
+  "
