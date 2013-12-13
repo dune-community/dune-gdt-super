@@ -38,3 +38,6 @@
 	path = dune-gdt
 	url = http://users.dune-project.org/repositories/projects/dune-gdt.git
         ignore = untracked
+[submodule "dune-istl"]
+	path = dune-istl
+	url = http://git.dune-project.org/repositories/dune-istl
