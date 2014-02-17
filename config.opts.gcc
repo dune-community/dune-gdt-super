@@ -9,5 +9,6 @@ CONFIGURE_FLAGS=" \
   F77=gfortran \
   CXXFLAGS='-DNDEBUG -DDNDEBUG -O3 -g3 -ggdb -std=c++0x -fPIC' \
   INKSCAPE=no \
+  --enable-experimental-grid-extensions \
   --disable-documentation \
 "

@@ -10,4 +10,5 @@ CONFIGURE_FLAGS=" \
   CXXFLAGS='-DNDEBUG -DDNDEBUG -O3 -g3 -ggdb -std=c++0x -fPIC' \
   INKSCAPE=no \
   --disable-documentation \
+  --enable-experimental-grid-extensions \
   "
