@@ -41,3 +41,6 @@
 [submodule "dune-istl"]
 	path = dune-istl
 	url = http://git.dune-project.org/repositories/dune-istl
+[submodule "dune-typetree"]
+	path = dune-typetree
+	url = http://git.dune-project.org/repositories/dune-typetree
