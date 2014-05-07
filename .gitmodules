@@ -30,10 +30,6 @@
 	path = dune-localfunctions
 	url = http://git.dune-project.org/repositories/dune-localfunctions
         ignore = dirty
-[submodule "dune-fem-localfunctions"]
-	path = dune-fem-localfunctions
-	url = http://users.dune-project.org/repositories/projects/dune-fem-localfunctions.git
-        ignore = untracked
 [submodule "dune-gdt"]
 	path = dune-gdt
 	url = http://users.dune-project.org/repositories/projects/dune-gdt.git
