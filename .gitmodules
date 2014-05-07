@@ -18,10 +18,6 @@
 	path = dune-stuff
 	url = http://users.dune-project.org/repositories/projects/dune-stuff.git
         ignore = untracked
-[submodule "dune-grid-multiscale"]
-	path = dune-grid-multiscale
-	url = http://users.dune-project.org/repositories/projects/dune-grid-multiscale.git
-        ignore = untracked
 [submodule "local/bin"]
 	path = local/bin
 	url = http://users.dune-project.org/repositories/projects/dune-demos-bin.git
