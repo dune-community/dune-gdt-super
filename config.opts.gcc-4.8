@@ -1,0 +1,14 @@
+# This file is part of the dune-gdt-demos project:
+#   http://users.dune-project.org/projects/dune-gdt-demos
+# Copyright holders: Felix Albrecht
+# License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
+
+CONFIGURE_FLAGS=" \
+  CC=gcc-4.8 \
+  CXX=g++-4.8 \
+  F77=gfortran-4.8 \
+  CXXFLAGS='-DNDEBUG -DDNDEBUG -Og -g3 -ggdb -std=c++0x -fPIC' \
+  INKSCAPE=no \
+  --enable-experimental-grid-extensions \
+  --disable-documentation \
+"
