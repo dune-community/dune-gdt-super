@@ -4,10 +4,10 @@
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 CONFIGURE_FLAGS=" \
-  CC=gcc \
-  CXX=g++ \
-  F77=gfortran \
-  CXXFLAGS='-DNDEBUG -DDNDEBUG -O3 -g3 -ggdb -std=c++0x -fPIC' \
+  CC=gcc-4.6 \
+  CXX=g++-4.6 \
+  F77=gfortran-4.6 \
+  CXXFLAGS='-DNDEBUG -DDNDEBUG -Os -std=c++0x -fPIC -w' \
   INKSCAPE=no \
   --enable-experimental-grid-extensions \
   --disable-documentation \
