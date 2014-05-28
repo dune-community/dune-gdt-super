@@ -8,3 +8,5 @@ CONFIGURE_FLAGS=" \
   --enable-experimental-grid-extensions \
   --enable-documentation \
   "
+CMAKE_FLAGS=" -Wno-dev"
+BUILDDIR=build-docs

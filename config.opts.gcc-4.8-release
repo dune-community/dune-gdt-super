@@ -7,10 +7,10 @@ CONFIGURE_FLAGS=" \
   CC=gcc-4.8 \
   CXX=g++-4.8 \
   F77=gfortran-4.8 \
-  CXXFLAGS='-Og -g3 -ggdb -std=c++0x -fPIC' \
+  CXXFLAGS='-DNDEBUG -DDNDEBUG -Os -std=c++0x -fPIC -w' \
   INKSCAPE=no \
   --enable-experimental-grid-extensions \
   --disable-documentation \
 "
-CMAKE_FLAGS=" -Wno-dev -DCMAKE_BUILD_TYPE=DEBUG"
-BUILDDIR=build-gcc-4.8
+CMAKE_FLAGS=" -Wno-dev -DCMAKE_BUILD_TYPE=RELEASE"
+BUILDDIR=build-gcc-4.8-release
