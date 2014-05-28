@@ -7,7 +7,7 @@ CONFIGURE_FLAGS=" \
   CC=clang \
   CXX=clang++ \
   F77=gfortran \
-  CXXFLAGS='-DNDEBUG -DDNDEBUG -O0 -g3 -ggdb -std=c++0x -fPIC -ftemplate-backtrace-limit=0' \
+  CXXFLAGS='-O0 -g3 -ggdb -std=c++0x -fPIC -ftemplate-backtrace-limit=0' \
   INKSCAPE=no \
   --disable-documentation \
   --enable-experimental-grid-extensions \
