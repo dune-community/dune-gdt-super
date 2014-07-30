@@ -11,5 +11,5 @@ file = config.opts.icc
 cc = icc
 
 [clang_3.4]
-file = config.opts.clang-3.4
-cc = clang-3.4
+file = config.opts.clang
+cc = clang
