@@ -1,0 +1,15 @@
+# This file is part of the dune-gdt-demos project:
+#   http://users.dune-project.org/projects/dune-gdt-demos
+# Copyright holders: Felix Albrecht
+# License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
+
+CONFIGURE_FLAGS=" \
+  CC=clang-3.4 \
+  CXX=clang++-3.4 \
+  F77=gfortran \
+  CXXFLAGS='-DNDEBUG -DDNDEBUG -O3 -g3 -ggdb -std=c++0x -fPIC -ftemplate-backtrace-limit=0' \
+  INKSCAPE=no \
+  --disable-documentation \
+  --enable-experimental-grid-extensions \
+  --with-boost-libdir=/usr/lib/x86_64-linux-gnu/ \
+  "
