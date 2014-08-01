@@ -7,7 +7,7 @@ CONFIGURE_FLAGS=" \
   CC=icc \
   CXX=icpc \
   F77=ifort \
-  CXXFLAGS='-DNDEBUG -DDNDEBUG -O3 -g3 -ggdb -std=c++0x -fPIC -ftemplate-backtrace-limit=0' \
+  CXXFLAGS='-DNDEBUG -DDNDEBUG -O0 -g3 -ggdb -std=c++0x -fPIC -ftemplate-backtrace-limit=0' \
   INKSCAPE=no \
   --disable-documentation \
   --enable-experimental-grid-extensions \

@@ -1,15 +1,15 @@
 [gcc_4.8] 
-file = config.opts.gcc-4.8 
+file = opts/config.opts.gcc-4.8 
 cc = /usr/lib/gcc-snapshot/bin/gcc
 
 [gcc_4.8_NO-MPI]
-file = config.opts.gcc-4.8_no-mpi
+file = opts/config.opts.gcc-4.8_no-mpi
 cc = /usr/lib/gcc-snapshot/bin/gcc
 
 [icc_14]
-file = config.opts.icc
+file = opts/config.opts.icc
 cc = icc
 
 [clang_3.4]
-file = config.opts.clang
+file = opts/config.opts.clang
 cc = clang
