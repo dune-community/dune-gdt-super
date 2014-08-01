@@ -7,9 +7,8 @@ CONFIGURE_FLAGS=" \
   CC=clang \
   CXX=clang++ \
   F77=gfortran \
-  CXXFLAGS='-DNDEBUG -DDNDEBUG -O0 -g3 -ggdb -std=c++0x -fPIC -ftemplate-backtrace-limit=0' \
+  CXXFLAGS='-DDUNE_STUFF_FUNCTIONS_TO_LIB -DDEBUG -g -std=c++0x -Wextra -Wall -fPIC' \
   INKSCAPE=no \
   --disable-documentation \
   --enable-experimental-grid-extensions \
-  --with-boost-libdir=/usr/lib/x86_64-linux-gnu/ \
   "
