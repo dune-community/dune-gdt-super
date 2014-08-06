@@ -12,3 +12,5 @@ CONFIGURE_FLAGS=" \
   --disable-documentation \
   --enable-experimental-grid-extensions \
   "
+
+CMAKE_FLAGS="-Wno-dev -DBOOST_ROOT=../local -DBoost_NO_SYSTEM_PATHS=TRUE"
