@@ -4,11 +4,14 @@
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 CONFIGURE_FLAGS=" \
-  CC=gcc-4.8 \
-  CXX=g++-4.8 \
-  F77=gfortran-4.8 \
-  CXXFLAGS='-Og -g3 -ggdb -std=c++0x -fPIC' \
+  CC=icc \
+  CXX=icpc \
+  F77=ifort \
+  CXXFLAGS='-DDUNE_STUFF_FUNCTIONS_TO_LIB -DDEBUG -g -std=c++0x -Wextra -Wall -fPIC' \
   INKSCAPE=no \
-  --enable-experimental-grid-extensions \
   --disable-documentation \
-"
+  --enable-experimental-grid-extensions \
+  "
+
+
+CMAKE_FLAGS="-Wno-dev -DBOOST_ROOT=../local -DBoost_NO_SYSTEM_PATHS=TRUE"
