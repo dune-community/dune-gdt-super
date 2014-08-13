@@ -1,6 +1,6 @@
 # This file is part of the dune-gdt-demos project:
 #   http://users.dune-project.org/projects/dune-gdt-demos
-# Copyright holders: Felix Albrecht
+# Copyright holders: Felix Schindler
 # License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
 
 dune-gdt-demos is a git supermodule which serves as a demonstration module
