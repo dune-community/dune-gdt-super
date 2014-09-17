@@ -2,7 +2,7 @@ CONFIGURE_FLAGS="
   CC=/usr/lib/gcc-snapshot/bin/gcc \
   CXX=/usr/lib/gcc-snapshot/bin/g++ \
   F77=/usr/lib/gcc-snapshot/bin/gfortran \
-  CXXFLAGS='-DDUNE_STUFF_FUNCTIONS_TO_LIB -DDEBUG -g3 -ggdb -std=c++0x -Wextra -Wall -fPIC' \
+  CXXFLAGS='-DDUNE_STUFF_TEST_MAIN_ENABLE_INFO_LOGGING=0 -DDEBUG -g3 -ggdb -std=c++0x -Wextra -Wall -fPIC' \
   --disable-parallel \
   --disable-documentation \
   --enable-experimental-grid-extensions \

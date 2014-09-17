@@ -7,7 +7,7 @@ CONFIGURE_FLAGS=" \
   CC=icc \
   CXX=icpc \
   F77=ifort \
-  CXXFLAGS='-DDUNE_STUFF_FUNCTIONS_TO_LIB -DDEBUG -g -std=c++0x -Wextra -Wall -fPIC' \
+  CXXFLAGS='-DDUNE_STUFF_TEST_MAIN_ENABLE_INFO_LOGGING=0 -DDEBUG -g -std=c++0x -Wextra -Wall -fPIC' \
   INKSCAPE=no \
   --disable-documentation \
   --enable-experimental-grid-extensions \
