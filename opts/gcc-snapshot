@@ -1,0 +1,10 @@
+CONFIGURE_FLAGS="
+  CC=/usr/lib/gcc-snapshot/bin/gcc \
+  CXX=/usr/lib/gcc-snapshot/bin/g++ \
+  F77=/usr/lib/gcc-snapshot/bin/gfortran \
+    CXXFLAGS='-DDEBUG -g3 -ggdb -std=c++14 -Wextra -Wall' \
+  --enable-parallel \
+  --disable-documentation \
+  INKSCAPE=no \
+"
+CMAKE_FLAGS="-DBOOST_ROOT=../local -DBoost_NO_SYSTEM_PATHS=TRUE "

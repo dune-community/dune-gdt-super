@@ -13,3 +13,7 @@ cc = icc
 [clang_3.4]
 file = opts/config.opts.clang
 cc = clang
+
+[gcc_snapshot] 
+file = opts/gcc-snapshot 
+cc = /usr/lib/gcc-snapshot/bin/gcc
