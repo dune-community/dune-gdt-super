@@ -17,3 +17,8 @@ cc = clang
 [gcc_snapshot] 
 file = opts/gcc-snapshot 
 cc = /usr/lib/gcc-snapshot/bin/gcc
+
+[variants]
+# name = semicolon seperated list of directory names to delete prior to buildbot config
+no_fem = dune-fem
+no_pdelab = dune-typetree;dune-pdelab
