@@ -44,5 +44,5 @@
 	path = dune-typetree
 	url = http://git.dune-project.org/repositories/dune-typetree
 [submodule "configs"]
-	path = configs
+	path = config.opts
 	url = http://users.dune-project.org/repositories/projects/dune-config-opts.git
