@@ -16,7 +16,7 @@
         ignore = dirty
 [submodule "dune-stuff"]
 	path = dune-stuff
-	url = http://users.dune-project.org/repositories/projects/dune-stuff.git
+	url = https://github.com/wwu-numerik/dune-stuff
         ignore = untracked
 [submodule "dune-grid-multiscale"]
 	path = dune-grid-multiscale
