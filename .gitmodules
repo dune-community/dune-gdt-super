@@ -49,3 +49,9 @@
 [submodule "scripts"]
 	path = scripts
 	url = https://github.com/wwu-numerik/scripts.git
+[submodule "dune-testtools"]
+	path = dune-testtools
+	url = http://conan2.iwr.uni-heidelberg.de/git/quality/dune-testtools.git
+[submodule "dune-python"]
+	path = dune-python
+	url = http://conan2.iwr.uni-heidelberg.de/git/quality/dune-python.git
