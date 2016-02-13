@@ -1,14 +1,14 @@
 [submodule "dune-common"]
 	path = dune-common
-	url = http://git.dune-project.org/repositories/dune-common
+	url = http://gitlab.dune-project.org/core/dune-common.git
         ignore = dirty
 [submodule "dune-grid"]
 	path = dune-grid
-	url = http://git.dune-project.org/repositories/dune-grid
+	url = http://gitlab.dune-project.org/core/dune-grid.git
         ignore = dirty
 [submodule "dune-geometry"]
 	path = dune-geometry
-	url = http://git.dune-project.org/repositories/dune-geometry
+	url = http://gitlab.dune-project.org/core/dune-geometry.git
         ignore = dirty
 [submodule "dune-fem"]
 	path = dune-fem
@@ -16,7 +16,7 @@
         ignore = dirty
 [submodule "dune-stuff"]
 	path = dune-stuff
-	url = https://github.com/wwu-numerik/dune-stuff
+	url = https://github.com/wwu-numerik/dune-stuff.git
         ignore = untracked
 [submodule "dune-grid-multiscale"]
 	path = dune-grid-multiscale
@@ -28,21 +28,21 @@
         ignore = untracked
 [submodule "dune-localfunctions"]
 	path = dune-localfunctions
-	url = http://git.dune-project.org/repositories/dune-localfunctions
+	url = http://gitlab.dune-project.org/core/dune-localfunctions.git
         ignore = dirty
 [submodule "dune-gdt"]
 	path = dune-gdt
-	url = http://users.dune-project.org/repositories/projects/dune-gdt.git
+	url = https://github.com/dune-community/dune-gdt.git
         ignore = untracked
 [submodule "dune-istl"]
 	path = dune-istl
-	url = http://git.dune-project.org/repositories/dune-istl
+	url = http://gitlab.dune-project.org/core/dune-istl.git
 [submodule "dune-pdelab"]
 	path = dune-pdelab
 	url = https://users.dune-project.org/repositories/projects/dune-pdelab-unofficial.git
 [submodule "dune-typetree"]
 	path = dune-typetree
-	url = http://git.dune-project.org/repositories/dune-typetree
+	url = http://gitlab.dune-project.org/pdelab/dune-typetree.git
 [submodule "configs"]
 	path = config.opts
 	url = http://users.dune-project.org/repositories/projects/dune-config-opts.git
