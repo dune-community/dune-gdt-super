@@ -4,7 +4,7 @@
         ignore = dirty
 [submodule "dune-grid"]
 	path = dune-grid
-	url = http://gitlab.dune-project.org/core/dune-grid.git
+	url = http://gitlab.dune-project.org/felix.schindler/dune-grid.git
         ignore = dirty
 [submodule "dune-geometry"]
 	path = dune-geometry
