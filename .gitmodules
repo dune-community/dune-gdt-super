@@ -17,11 +17,9 @@
 [submodule "dune-stuff"]
 	path = dune-stuff
 	url = https://github.com/wwu-numerik/dune-stuff.git
-        ignore = untracked
 [submodule "dune-grid-multiscale"]
 	path = dune-grid-multiscale
 	url = http://users.dune-project.org/repositories/projects/dune-grid-multiscale.git
-        ignore = untracked
 [submodule "local/bin"]
 	path = local/bin
 	url = http://users.dune-project.org/repositories/projects/dune-demos-bin.git
@@ -33,7 +31,6 @@
 [submodule "dune-gdt"]
 	path = dune-gdt
 	url = https://github.com/dune-community/dune-gdt.git
-        ignore = untracked
 [submodule "dune-istl"]
 	path = dune-istl
 	url = http://gitlab.dune-project.org/core/dune-istl.git
