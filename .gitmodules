@@ -42,7 +42,7 @@
 	url = http://gitlab.dune-project.org/pdelab/dune-typetree.git
 [submodule "configs"]
 	path = config.opts
-	url = http://users.dune-project.org/repositories/projects/dune-config-opts.git
+	url = https://github.com/wwu-numerik/dune-config-opts.git
 [submodule "scripts"]
 	path = scripts
 	url = https://github.com/wwu-numerik/scripts.git
