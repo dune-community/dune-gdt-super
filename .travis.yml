@@ -1,0 +1,20 @@
+# This file is part of the dune-gdt project:
+#   https://github.com/dune-community/dune-gdt-super
+# The copyright lies with the authors of this file (see below).
+# License: BSD 2-Clause License (http://opensource.org/licenses/BSD-2-Clause)
+# Authors:
+#   Rene Milk       (2016)
+
+sudo: false
+dist: trusty
+language: generic
+
+script:
+  - cd ${TRAVIS_BUILD_DIR}
+  - git submodule update --init --recursive
+  - git submodule status
+    
+notifications:
+  email:
+    on_success: change
+    on_failure: change
