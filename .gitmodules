@@ -22,7 +22,7 @@
 	url = http://users.dune-project.org/repositories/projects/dune-grid-multiscale.git
 [submodule "local/bin"]
 	path = local/bin
-	url = http://users.dune-project.org/repositories/projects/dune-demos-bin.git
+	url = https://github.com/dune-community/local-bin.git
         ignore = untracked
 [submodule "dune-localfunctions"]
 	path = dune-localfunctions
