@@ -52,6 +52,3 @@
 [submodule "dune-testtools"]
 	path = dune-testtools
 	url = https://gitlab.dune-project.org/quality/dune-testtools.git
-[submodule "dune-alugrid"]
-	path = dune-alugrid
-	url = https://gitlab.dune-project.org/extensions/dune-alugrid.git
