@@ -19,6 +19,10 @@ script:
   - git submodule status
   - python -c "from ConfigParser import SafeConfigParser as sf ; f = sf() ; f.readfp(open('external-libraries.cfg', 'rt'))"
     
+git:
+  # we do that manually in script section to be able to use our own git binary
+  submodules: false
+
 notifications:
   email:
     on_success: change
