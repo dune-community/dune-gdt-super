@@ -5,9 +5,13 @@
 # Authors:
 #   Rene Milk       (2016)
 
-sudo: false
+sudo: required
 dist: trusty
 language: generic
+
+install:
+  # workaround for gnutls bug is using git built against curl-openssl
+  - sudo -E add-apt-repository -y ppa:pymor/travis && sudo -E aptitude update && sudo -E aptitude install git -yq
 
 script:
   - cd ${TRAVIS_BUILD_DIR}
