@@ -1,6 +1,6 @@
 [submodule "dune-common"]
 	path = dune-common
-	url = http://gitlab.dune-project.org/core/dune-common.git
+	url = http://gitlab.dune-project.org/rene.milk/dune-common.git
         ignore = dirty
 [submodule "dune-grid"]
 	path = dune-grid
@@ -52,3 +52,6 @@
 [submodule "dune-testtools"]
 	path = dune-testtools
 	url = https://gitlab.dune-project.org/quality/dune-testtools.git
+[submodule "dune-xt-common"]
+	path = dune-xt-common
+	url = https://github.com/dune-community/dune-xt-common.git
