@@ -55,3 +55,9 @@
 [submodule "dune-xt-common"]
 	path = dune-xt-common
 	url = https://github.com/dune-community/dune-xt-common.git
+[submodule "dune-xt-la"]
+	path = dune-xt-la
+	url = https://github.com/dune-community/dune-xt-la.git
+[submodule "dune-xt-grid"]
+	path = dune-xt-grid
+	url = https://github.com/dune-community/dune-xt-grid.git
