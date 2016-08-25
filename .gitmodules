@@ -14,9 +14,6 @@
 	path = dune-fem
 	url = http://users.dune-project.org/repositories/projects/dune-fem-unofficial.git
         ignore = dirty
-[submodule "dune-grid-multiscale"]
-	path = dune-grid-multiscale
-	url = http://users.dune-project.org/repositories/projects/dune-grid-multiscale.git
 [submodule "local/bin"]
 	path = local/bin
 	url = https://github.com/dune-community/local-bin.git
