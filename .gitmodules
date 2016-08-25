@@ -14,9 +14,6 @@
 	path = dune-fem
 	url = http://users.dune-project.org/repositories/projects/dune-fem-unofficial.git
         ignore = dirty
-[submodule "dune-stuff"]
-	path = dune-stuff
-	url = https://github.com/wwu-numerik/dune-stuff.git
 [submodule "dune-grid-multiscale"]
 	path = dune-grid-multiscale
 	url = http://users.dune-project.org/repositories/projects/dune-grid-multiscale.git
