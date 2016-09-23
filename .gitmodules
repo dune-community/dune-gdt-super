@@ -12,7 +12,7 @@
         ignore = dirty
 [submodule "dune-fem"]
 	path = dune-fem
-	url = http://users.dune-project.org/repositories/projects/dune-fem-unofficial.git
+	url = https://gitlab.dune-project.org/rene.milk/dune-fem.git
         ignore = dirty
 [submodule "local/bin"]
 	path = local/bin
@@ -30,7 +30,7 @@
 	url = http://gitlab.dune-project.org/core/dune-istl.git
 [submodule "dune-pdelab"]
 	path = dune-pdelab
-	url = https://users.dune-project.org/repositories/projects/dune-pdelab-unofficial.git
+	url = https://gitlab.dune-project.org/rene.milk/dune-pdelab.git
 [submodule "dune-typetree"]
 	path = dune-typetree
 	url = http://gitlab.dune-project.org/pdelab/dune-typetree.git
