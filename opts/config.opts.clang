@@ -7,7 +7,7 @@ CONFIGURE_FLAGS=" \
   CC=clang \
   CXX=clang++ \
   F77=gfortran \
-  CXXFLAGS='-DTHIS_IS_A_BUILDBOT_BUILD=1 -DDEBUG -g -std=c++0x -Wextra -Wall -fPIC' \
+  CXXFLAGS='-DDXT_DISABLE_LARGE_TESTS=1 -DDEBUG -g -std=c++0x -Wextra -Wall -fPIC' \
   INKSCAPE=no \
   --disable-documentation \
   --enable-experimental-grid-extensions \

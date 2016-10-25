@@ -2,7 +2,7 @@ CONFIGURE_FLAGS=" \
   CC=/usr/bin/gcc \
   CXX=/usr/bin/g++ \
   F77=/usr/bin/gfortran \
-  CXXFLAGS='-iDTHIS_IS_A_BUILDBOT_BUILD=1 -DDEBUG -g3 -ggdb -std=c++0x -Wextra -Wall -fPIC' \
+  CXXFLAGS='-iDDXT_DISABLE_LARGE_TESTS=1 -DDEBUG -g3 -ggdb -std=c++0x -Wextra -Wall -fPIC' \
   INKSCAPE=no \
   --enable-experimental-grid-extensions \
   --disable-parallel \
