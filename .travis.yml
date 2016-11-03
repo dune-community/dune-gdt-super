@@ -9,6 +9,8 @@ sudo: required
 dist: trusty
 language: generic
 
+services: docker
+
 before_install:
   # workaround for gnutls bug is using git built against curl-openssl
   - sudo -E rm /etc/apt/sources.list.d/*git*.list
@@ -19,7 +21,11 @@ script:
   - git submodule update --init --recursive
   - git submodule status
   - python -c "from ConfigParser import SafeConfigParser as sf ; f = sf() ; f.readfp(open('external-libraries.cfg', 'rt'))"
-    
+
+deploy:
+  provider: script
+  script: ./.travis/docker/update_image.py
+
 git:
   # we do that manually in script section to be able to use our own git binary
   submodules: false
