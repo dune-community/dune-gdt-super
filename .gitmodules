@@ -12,7 +12,7 @@
         ignore = dirty
 [submodule "dune-fem"]
 	path = dune-fem
-	url = https://gitlab.dune-project.org/felix.schindler/dune-fem.git
+	url = https://gitlab.dune-project.org/dune-fem/dune-fem.git
         ignore = dirty
 [submodule "local/bin"]
 	path = local/bin
