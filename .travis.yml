@@ -20,7 +20,10 @@ script:
   - git submodule update --init --recursive
   - git submodule status
   - python -c "from ConfigParser import SafeConfigParser as sf ; f = sf() ; f.readfp(open('external-libraries.cfg', 'rt'))"
-  - [[ "${TRAVIS_PULL_REQUEST}" != "false" ]] || ./.travis/docker/update_image.py ${COMPILER} ${TRAVIS_BRANCH}
+  - |
+    if [[ "${TRAVIS_PULL_REQUEST}" != "false" ]] ; then
+        ./.travis/docker/update_image.py ${COMPILER} ${TRAVIS_BRANCH}
+    fi
 
 matrix:
   include:
