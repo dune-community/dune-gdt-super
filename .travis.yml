@@ -21,7 +21,7 @@ script:
   - git submodule status
   - python -c "from ConfigParser import SafeConfigParser as sf ; f = sf() ; f.readfp(open('external-libraries.cfg', 'rt'))"
   - |
-    if [[ "${TRAVIS_PULL_REQUEST}" != "false" ]] ; then
+    if [[ "${TRAVIS_PULL_REQUEST}" == "false" ]] ; then
         ./.travis/docker/update_image.py ${COMPILER} ${TRAVIS_BRANCH}
     fi
 
