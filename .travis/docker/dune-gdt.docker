@@ -17,9 +17,11 @@ ENV DBG "${DCTL_ARGS} --opts=config.opts/travis.ninja"
 ENV BLD ${DBG}
 
 
-# COMPILER Selection # should be an ARG passed by --build-arg
-ENV CC gcc-5
-ENV CXX g++-5
+# COMPILER Selection (ARGS cannot be uppercase)
+ARG cc
+ARG cxx
+ENV CC $cc
+ENV CXX $cxx
 
 WORKDIR ${SUPERDIR}
 

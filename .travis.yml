@@ -20,9 +20,12 @@ script:
   - git submodule update --init --recursive
   - git submodule status
   - python -c "from ConfigParser import SafeConfigParser as sf ; f = sf() ; f.readfp(open('external-libraries.cfg', 'rt'))"
+  - [[ "${TRAVIS_PULL_REQUEST}" != "false" ]] || ./.travis/docker/update_image.py ${COMPILER} ${TRAVIS_BRANCH}
 
-after_success:
-  - ./.travis/docker/update_image.py
+matrix:
+  include:
+    - env: COMPILER=gcc-5
+    - env: COMPILER=clang-3.8
 
 git:
   # we do that manually in script section to be able to use our own git binary
