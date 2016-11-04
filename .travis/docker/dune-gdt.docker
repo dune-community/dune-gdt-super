@@ -15,6 +15,7 @@ ENV CTEST_OUTPUT_ON_FAILURE 1
 ENV DCTL_ARGS "--builddir=${DUNE_BUILD_DIR} --use-cmake"
 ENV DBG "${DCTL_ARGS} --opts=config.opts/travis.ninja"
 ENV BLD ${DBG}
+ENV CLANG_FORMAT '/usr/bin/clang-format-3.8'
 
 
 # COMPILER Selection (ARGS cannot be uppercase)
