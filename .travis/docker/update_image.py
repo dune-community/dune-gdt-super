@@ -30,4 +30,5 @@ if __name__ == '__main__':
         for c in ccs:
             update(b, c)
 
-    subprocess.check_call(['docker', 'push', 'dunecommunity/dune-gdt-testing'])
+    subprocess.check_call(['docker', '--log-level="debug"', 'images'])
+    subprocess.check_call(['docker', '--log-level="debug"', 'push', 'dunecommunity/dune-gdt-testing'])
