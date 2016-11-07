@@ -45,9 +45,9 @@ RUN pip install -U requests virtualenv cpp-coveralls
 
 # TRAVIS before_install:
 ENV OPTS config.opts/travis.ninja
-RUN cd $HOME
-RUN test -d src || git clone https://github.com/dune-community/dune-gdt-super.git src
+
 RUN cd ${SUPERDIR}
+RUN git submodule foreach git reset --hard
 RUN git submodule update --init --recursive
 RUN git submodule status
 
