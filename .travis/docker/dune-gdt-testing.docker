@@ -33,13 +33,14 @@ RUN apt-get update
 #for add-apt-repo
 RUN apt-get install -y software-properties-common
 RUN add-apt-repository -y ppa:ubuntu-toolchain-r/test
+RUN add-apt-repository ppa:renemilk/llvm3.9
 RUN apt-get update
 RUN apt-get install -y --no-install-recommends build-essential git-core aptitude gfortran cmake cmake-data doxygen \
     texlive-base python-virtualenv python3-pytest python-pytest libboost1.58-all-dev python-pip libtbb-dev ccache \
     libsuitesparse-dev curl ninja-build python3-requests libeigen3-dev \
     libstdc++-6-dev libstdc++-5-dev python-setuptools python3-setuptools \
     clang-3.8 clang-format-3.8 lcov git gcc-6 g++-6 wget unzip \
-    python-pip python3-pip libscotchparmetis-dev libmetis-dev
+    python-pip python3-pip libscotchparmetis-dev libmetis-dev clang-3.9 clang-format-3.9
 RUN pip3 install -U requests virtualenv cpp-coveralls
 RUN pip install -U requests virtualenv cpp-coveralls
 

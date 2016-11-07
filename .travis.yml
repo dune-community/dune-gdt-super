@@ -29,7 +29,9 @@ script:
 matrix:
   include:
     - env: COMPILER=gcc-5
+    - env: COMPILER=gcc-6
     - env: COMPILER=clang-3.8
+    - env: COMPILER=clang-3.9
 
 git:
   # we do that manually in script section to be able to use our own git binary
