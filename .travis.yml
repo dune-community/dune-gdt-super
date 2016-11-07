@@ -22,6 +22,7 @@ script:
   - python -c "from ConfigParser import SafeConfigParser as sf ; f = sf() ; f.readfp(open('external-libraries.cfg', 'rt'))"
   - |
     if [[ "${TRAVIS_PULL_REQUEST}" == "false" ]] ; then
+        docker login --email=$DOCKER_HUB_EMAIL --username=$DOCKER_HUB_USERNAME --password=$DOCKER_HUB_PASSWORD
         ./.travis/docker/update_image.py ${COMPILER} ${TRAVIS_BRANCH}
     fi
 
@@ -38,3 +39,8 @@ notifications:
   email:
     on_success: change
     on_failure: change
+env:
+  global:
+  - secure: D+TUGXnFvCoJHyBOBw8/fb42EW/Ylld/5SCmUyCD3AfAT820eT8OLkkMj8kWZa3RTJNirO0Wn84sjSuJBBNzyiilWj0poeMAS1xiS0en9BUtDcgK9bLk8FwexLxtzJdbktCqN6gpyjJEV6tLXFfUve9Jk6xM+ff8Wz054dAB0a0=
+  - secure: aDokv+1BmCObKsaCaVCaagCSG13eKjy5npVXzKMEJ3K+GX6agehbpey+wf9hBSEz4ClaHIazbkjl+b2l0HDh0sMFkfL4GNkhwJ/DynKXrWrXMc4X2m0FY9I1hS4vQ6rZIXnh50vaK7tiR+brN84sAw+A2ybE4amWZ9ptmgaDnJM=
+  - secure: R6L+/R0NLy/vWy6iAXx0U1Os3xTg/oqh5ZoTE2d3Chm2ln67svx6gFYNdcA0l2cyhLnbxVvfY6/MkzZd805HF3sJ2iepIwL41b3uKStpRzIeYpxdmbLccyHmxLlyvwUyyxtcHfF+apAD7W1PlqSKz+gyLpgzsNoRfovYSPCkJGw=
