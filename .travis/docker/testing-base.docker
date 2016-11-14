@@ -18,6 +18,9 @@ ENV CLANG_FORMAT '/usr/bin/clang-format-3.8'
 ENV OPT "-O2"
 
 # TRAVIS addons:
+RUN echo "deb mirror://mirrors.ubuntu.com/mirrors.txt xenial main restricted universe multiverse" > /etc/apt/sources.list && \
+    echo "deb mirror://mirrors.ubuntu.com/mirrors.txt xenial-updates main restricted universe multiverse" >> /etc/apt/sources.list && \
+    echo "deb mirror://mirrors.ubuntu.com/mirrors.txt xenial-security main restricted universe multiverse" >> /etc/apt/sources.list
 RUN apt-get update
 #for add-apt-repo
 RUN apt-get install -y software-properties-common
@@ -28,7 +31,7 @@ RUN apt-get install -y --no-install-recommends build-essential git-core aptitude
     texlive-base python-virtualenv python3-pytest python-pytest libboost1.58-all-dev python-pip libtbb-dev ccache \
     libsuitesparse-dev curl ninja-build python3-requests libeigen3-dev \
     libstdc++-6-dev libstdc++-5-dev python-setuptools python3-setuptools \
-    clang-3.8 clang-format-3.8 lcov git gcc-6 g++-6 wget unzip \
+    clang-3.8 clang-format-3.8 lcov git gcc-6 g++-6 wget unzip vim bash-completion \
     libmetis-dev python3-pip libfftw3-mpi-dev libfftw3-bin libfftw3-dev libopenmpi-dev openmpi-bin \
     python-pip python3-pip libmetis-dev clang-3.9 clang-format-3.9
 RUN pip3 install -U requests virtualenv cpp-coveralls
