@@ -13,6 +13,7 @@ def update(branch, cc):
 
     os.chdir(gdt_super_dir)
 
+    subprocess.check_call(['docker', 'pull', 'dunecommunity/testing-base:master'])
     cxx = cc_mapping[cc]
     subprocess.check_call(['docker', 'build', '-f', '.travis/docker/dune-gdt-testing.docker',
                         '-t', 'dunecommunity/dune-gdt-testing:{}_{}'.format(cc, branch), '--build-arg', 'cc={}'.format(cc),
