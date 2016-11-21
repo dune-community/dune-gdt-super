@@ -2,14 +2,12 @@
 
 set -e
 
-THISDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-BASEDIR=${TRAVIS_BUILD_DIR:-${THISDIR}/..}
 ID=${TRAVIS_TAG:-${TRAVIS_BRANCH}}
 MODULE=${1}
 BUILDDIR=${2}
 
-set -u 
-pushd ${BASEDIR}
+set -u
+pushd /tmp
 
 git clone git@github.com:dune-community/dune-community.github.io.git site
 
