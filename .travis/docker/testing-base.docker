@@ -41,3 +41,5 @@ RUN apt-get install -y --no-install-recommends build-essential git-core aptitude
     cmake-curses-gui gdb
 RUN pip3 install -U requests virtualenv cpp-coveralls
 RUN pip install -U requests virtualenv cpp-coveralls
+# this skips ssh trust question on first connect
+RUN mkdir -p ~/.ssh/ && ssh-keyscan -H github.com >> ~/.ssh/known_hosts
