@@ -8,14 +8,16 @@ import sys
 cc_mapping = {'gcc-5': 'g++-5', 'gcc-6': 'g++-6', 'clang-3.8': 'clang++-3.8', 'clang-3.9': 'clang++-3.9'}
 
 def update(branch, cc):
-    gdt_super_dir = os.path.join(os.path.dirname(__file__), '..', '..',)
-    dockerfile = os.path.join(os.path.dirname(__file__), 'dune-gdt-testing.docker')
+    thisdir = os.path.dirname(os.path.abspath(__file__))
+    print('*'*5 + thisdir)
+    gdt_super_dir = os.path.join(thisdir, '..', '..',)
+    dockerfile = os.path.join(thisdir, 'dune-gdt-testing.docker')
 
     os.chdir(gdt_super_dir)
 
     subprocess.check_call(['docker', 'pull', 'dunecommunity/testing-base:master'])
     cxx = cc_mapping[cc]
-    subprocess.check_call(['docker', 'build', '-f', '.travis/docker/dune-gdt-testing.docker',
+    subprocess.check_call(['docker', 'build', '-f', dockerfile,
                         '-t', 'dunecommunity/dune-gdt-testing:{}_{}'.format(cc, branch), '--build-arg', 'cc={}'.format(cc),
                         '--build-arg', 'cxx={}'.format(cxx), '.'])
 
