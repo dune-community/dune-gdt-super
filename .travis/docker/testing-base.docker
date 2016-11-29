@@ -1,4 +1,4 @@
-FROM ubuntu:16.04
+FROM ubuntu:16.10
 MAINTAINER rene.milk@wwu.de
 
 ENV HOME /root
@@ -15,7 +15,7 @@ ENV DCTL_ARGS "--builddir=${DUNE_BUILD_DIR} --use-cmake"
 ENV DBG "${DCTL_ARGS} --opts=config.opts/travis.ninja"
 ENV BLD ${DBG}
 ENV CLANG_FORMAT '/usr/bin/clang-format-3.8'
-ENV OPT "-O2"
+ENV OPT "-O0"
 
 # TRAVIS addons:
 RUN echo "deb mirror://mirrors.ubuntu.com/mirrors.txt xenial main restricted universe multiverse" > /etc/apt/sources.list && \
@@ -28,11 +28,9 @@ RUN apt-get update
 RUN cat /etc/apt/sources.list
 #for add-apt-repo
 RUN apt-get install -y software-properties-common
-RUN add-apt-repository -y ppa:ubuntu-toolchain-r/test
-RUN add-apt-repository ppa:renemilk/llvm3.9
 RUN apt-get update
 RUN apt-get install -y --no-install-recommends build-essential git-core aptitude gfortran cmake cmake-data doxygen \
-    texlive-base python-virtualenv python3-pytest python-pytest libboost1.58-all-dev python-pip libtbb-dev ccache \
+    texlive-base python-virtualenv python3-pytest python-pytest libboost-all-dev python-pip libtbb-dev ccache \
     libsuitesparse-dev curl ninja-build python3-requests libeigen3-dev \
     libstdc++-6-dev libstdc++-5-dev python-setuptools python3-setuptools libsuperlu-dev \
     clang-3.8 clang-format-3.8 lcov git gcc-6 g++-6 wget unzip vim bash-completion \
