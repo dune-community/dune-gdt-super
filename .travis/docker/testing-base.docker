@@ -17,13 +17,13 @@ ENV BLD ${DBG}
 ENV CLANG_FORMAT '/usr/bin/clang-format-3.8'
 ENV OPT "-O0"
 
-# TRAVIS addons:
-RUN echo "deb mirror://mirrors.ubuntu.com/mirrors.txt xenial main restricted universe multiverse" > /etc/apt/sources.list && \
-    echo "deb mirror://mirrors.ubuntu.com/mirrors.txt xenial-updates main restricted universe multiverse" >> /etc/apt/sources.list && \
-    echo "deb mirror://mirrors.ubuntu.com/mirrors.txt xenial-security main restricted universe multiverse" >> /etc/apt/sources.list && \
-    echo "deb-src mirror://mirrors.ubuntu.com/mirrors.txt xenial main restricted universe multiverse" >> /etc/apt/sources.list && \
-    echo "deb-src mirror://mirrors.ubuntu.com/mirrors.txt xenial-updates main restricted universe multiverse" >> /etc/apt/sources.list && \
-    echo "deb-src mirror://mirrors.ubuntu.com/mirrors.txt xenial-security main restricted universe multiverse" >> /etc/apt/sources.list
+# mirror selection apparently fails for yakkety :(
+#RUN echo "deb mirror://mirrors.ubuntu.com/mirrors.txt yakkety main restricted universe multiverse" > /etc/apt/sources.list && \
+#    echo "deb mirror://mirrors.ubuntu.com/mirrors.txt yakkety-updates main restricted universe multiverse" >> /etc/apt/sources.list && \
+#    echo "deb mirror://mirrors.ubuntu.com/mirrors.txt yakkety-security main restricted universe multiverse" >> /etc/apt/sources.list && \
+#    echo "deb-src mirror://mirrors.ubuntu.com/mirrors.txt yakkety main restricted universe multiverse" >> /etc/apt/sources.list && \
+#    echo "deb-src mirror://mirrors.ubuntu.com/mirrors.txt yakkety-updates main restricted universe multiverse" >> /etc/apt/sources.list && \
+#    echo "deb-src mirror://mirrors.ubuntu.com/mirrors.txt yakkety-security main restricted universe multiverse" >> /etc/apt/sources.list
 RUN apt-get update
 RUN cat /etc/apt/sources.list
 #for add-apt-repo
