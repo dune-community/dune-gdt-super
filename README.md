@@ -59,5 +59,5 @@ In order to build everything, do the following:
   tests, e.g.,
   
   ```
-  build-gcc-debug/dune-gdt-common/dune/gdt/common/test/
+  build-gcc-debug/dune-gdt/dune/gdt/test/
   ```
