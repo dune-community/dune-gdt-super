@@ -10,6 +10,7 @@ def update(branch):
     gdt_super_dir = os.path.join(thisdir, '..', '..',)
     os.chdir(gdt_super_dir)
 
+    branch = branch.replace('/', '_')
     subprocess.check_call(['docker', 'build', '-f', '.travis/docker/testing-base/Dockerfile',
                         '-t', 'dunecommunity/testing-base:{}'.format(branch), '.'])
     subprocess.check_call(['docker', 'push', 'dunecommunity/testing-base'])
