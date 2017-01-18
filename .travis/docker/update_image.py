@@ -15,6 +15,7 @@ def update(branch, cc):
     os.chdir(gdt_super_dir)
 
     cxx = cc_mapping[cc]
+    branch = branch.replace('/', '_')
     subprocess.check_call(['docker', 'build', '-f', dockerfile,
                         '-t', 'dunecommunity/dune-gdt-testing:{}_{}'.format(cc, branch), '--build-arg', 'cc={}'.format(cc),
                         '--build-arg', 'cxx={}'.format(cxx), '.'])
