@@ -58,3 +58,6 @@
 [submodule "dune-xt-functions"]
 	path = dune-xt-functions
 	url = https://github.com/dune-community/dune-xt-functions.git
+[submodule "dune-pybindxi"]
+	path = dune-pybindxi
+	url = https://github.com/dune-community/dune-pybindxi.git
