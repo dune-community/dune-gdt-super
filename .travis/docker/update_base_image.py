@@ -6,10 +6,12 @@ import sys
 
 
 def update(branch):
-    gdt_super_dir = os.path.join(os.path.dirname(__file__), '..', '..',)
+    thisdir = os.path.dirname(os.path.abspath(__file__))
+    gdt_super_dir = os.path.join(thisdir, '..', '..',)
     os.chdir(gdt_super_dir)
 
-    subprocess.check_call(['docker', 'build', '-f', '.travis/docker/testing-base.docker',
+    branch = branch.replace('/', '_')
+    subprocess.check_call(['docker', 'build', '-f', '.travis/docker/testing-base/Dockerfile',
                         '-t', 'dunecommunity/testing-base:{}'.format(branch), '.'])
     subprocess.check_call(['docker', 'push', 'dunecommunity/testing-base'])
 
