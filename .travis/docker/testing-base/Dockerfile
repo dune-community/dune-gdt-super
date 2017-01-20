@@ -11,7 +11,7 @@ ENV PKG_CONFIG_PATH ${SUPERDIR}/local/lib64/pkgconfig:${SUPERDIR}/local/lib/pkgc
 ENV DUNE_BUILD_DIR ${HOME}/dune_build/
 ENV INSTALL_DIR ${HOME}/dune
 ENV CTEST_OUTPUT_ON_FAILURE 1
-ENV DCTL_ARGS "--builddir=${DUNE_BUILD_DIR} --use-cmake"
+ENV DCTL_ARGS "--builddir=${DUNE_BUILD_DIR} "
 ENV DBG "${DCTL_ARGS} --opts=config.opts/travis.ninja"
 ENV BLD ${DBG}
 ENV CLANG_FORMAT '/usr/bin/clang-format-3.8'
