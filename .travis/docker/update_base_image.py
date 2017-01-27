@@ -12,7 +12,7 @@ def update(branch):
 
     branch = branch.replace('/', '_')
     subprocess.check_call(['docker', 'build', '-f', '.travis/docker/testing-base/Dockerfile',
-                        '-t', 'dunecommunity/testing-base:{}'.format(branch), '.'])
+                        '-t', 'dunecommunity/testing-base:{}'.format(branch), '.travis/docker/testing-base'])
     subprocess.check_call(['docker', 'push', 'dunecommunity/testing-base'])
 
 if __name__ == '__main__':

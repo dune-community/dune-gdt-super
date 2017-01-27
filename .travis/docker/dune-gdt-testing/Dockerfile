@@ -3,20 +3,17 @@ FROM dunecommunity/testing-base:master
 # COMPILER Selection (ARGS cannot be uppercase)
 ARG cc
 ARG cxx
+ARG branch
 ENV CC=$cc \
     CXX=$cxx \
-    MY_MODULE=dune-gdt \
-    PATH=/usr/lib/ccache:${PATH} \
-    OPTS=config.opts/travis.ninja \
-    SRC_DCTRL=${SUPERDIR}/dune-common/bin/dunecontrol
+    MY_MODULE=dune-gdt
 
 WORKDIR ${SUPERDIR}
-ADD . ${SUPERDIR}
-
-RUN cd ${SUPERDIR} && \
+RUN ${DUNE_VENV_ACTIVATE} && \
+    git clone --branch=${branch} https://github.com/dune-community/dune-gdt-super.git ${SUPERDIR} && \
+    cd ${SUPERDIR} && \
     git submodule foreach git reset --hard && \
     git submodule update --init --recursive && \
-    git submodule status && \
     ./local/bin/download_external_libraries.py && \
     ./local/bin/build_external_libraries.py && \
     rm -rf ${MY_MODULE} && \

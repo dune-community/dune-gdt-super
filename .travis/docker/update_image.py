@@ -18,7 +18,7 @@ def update(branch, cc):
     branch = branch.replace('/', '_')
     subprocess.check_call(['docker', 'build', '-f', dockerfile,
                         '-t', 'dunecommunity/dune-gdt-testing:{}_{}'.format(cc, branch), '--build-arg', 'cc={}'.format(cc),
-                        '--build-arg', 'cxx={}'.format(cxx), '.'])
+                        '--build-arg', 'cxx={}'.format(cxx), '--build-arg', 'branch={}'.format(branch), '.'])
 
 if __name__ == '__main__':
     if len(sys.argv) > 2:
