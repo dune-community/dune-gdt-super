@@ -51,6 +51,6 @@ RUN apt-get update && \
 
 RUN virtualenv --python=python3 ${DUNE_VENV} && \
     ${DUNE_VENV_ACTIVATE} && \
-    pip install pyparsing==2.0.6 pytest
+    pip install pytest
 ADD entrypoint.bash /usr/local/bin/
 ENTRYPOINT ["/usr/local/bin/entrypoint.bash"]
