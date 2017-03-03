@@ -64,3 +64,6 @@
 [submodule "dune-uggrid"]
 	path = dune-uggrid
 	url = https://gitlab.dune-project.org/staging/dune-uggrid.git
+[submodule "dune-functions"]
+	path = dune-functions
+	url = https://gitlab.dune-project.org/staging/dune-functions.git
