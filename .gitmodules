@@ -67,3 +67,6 @@
 [submodule "dune-functions"]
 	path = dune-functions
 	url = https://gitlab.dune-project.org/staging/dune-functions.git
+[submodule "dune-pybindxi"]
+	path = dune-pybindxi
+	url = https://github.com/dune-community/dune-pybindxi.git
