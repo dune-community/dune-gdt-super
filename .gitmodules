@@ -60,7 +60,7 @@
 	url = https://github.com/dune-community/dune-xt-functions.git
 [submodule "dune-alugrid"]
 	path = dune-alugrid
-	url = https://gitlab.dune-project.org/extensions/dune-alugrid
+	url = https://gitlab.dune-project.org/extensions/dune-alugrid.git
 [submodule "dune-uggrid"]
 	path = dune-uggrid
 	url = https://gitlab.dune-project.org/staging/dune-uggrid.git
