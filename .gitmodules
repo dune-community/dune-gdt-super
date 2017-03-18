@@ -30,7 +30,7 @@
 	url = http://gitlab.dune-project.org/core/dune-istl.git
 [submodule "dune-pdelab"]
 	path = dune-pdelab
-	url = https://gitlab.dune-project.org/pdelab/dune-pdelab.git
+	url = https://gitlab.dune-project.org/rene.milk/dune-pdelab.git
 [submodule "dune-typetree"]
 	path = dune-typetree
 	url = http://gitlab.dune-project.org/pdelab/dune-typetree.git
