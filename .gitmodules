@@ -33,7 +33,7 @@
 	url = https://gitlab.dune-project.org/rene.milk/dune-pdelab.git
 [submodule "dune-typetree"]
 	path = dune-typetree
-	url = http://gitlab.dune-project.org/pdelab/dune-typetree.git
+	url = http://gitlab.dune-project.org/staging/dune-typetree.git
 [submodule "configs"]
 	path = config.opts
 	url = https://github.com/dune-community/config.opts.git
