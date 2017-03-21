@@ -73,3 +73,6 @@
 [submodule "dune-grid-glue"]
 	path = dune-grid-glue
 	url = https://gitlab.dune-project.org/extensions/dune-grid-glue.git
+[submodule "dune-spgrid"]
+	path = dune-spgrid
+	url = http://gitlab.dune-project.org/rene.milk/dune-spgrid.git
