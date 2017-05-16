@@ -22,7 +22,7 @@ script:
   - python -c "from ConfigParser import SafeConfigParser as sf ; f = sf() ; f.readfp(open('external-libraries.cfg', 'rt'))"
   - |
     if [[ "${TRAVIS_PULL_REQUEST}" == "false" ]] ; then
-        docker login --email=$DOCKER_HUB_EMAIL --username=$DOCKER_HUB_USERNAME --password=$DOCKER_HUB_PASSWORD
+        docker login --username=$DOCKER_HUB_USERNAME --password=$DOCKER_HUB_PASSWORD
         ./.travis/docker/update_image.py ${COMPILER} ${TRAVIS_BRANCH}
     fi
 
