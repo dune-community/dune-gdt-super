@@ -5,7 +5,7 @@ import subprocess
 import sys
 
 
-cc_mapping = {'gcc-5': 'g++-5', 'gcc-6': 'g++-6', 'clang-3.8': 'clang++-3.8', 'clang-3.9': 'clang++-3.9'}
+cc_mapping = {'gcc': 'g++', 'clang': 'clang++'}
 thisdir = os.path.dirname(os.path.abspath(__file__))
 
 def update(branch, cc):
