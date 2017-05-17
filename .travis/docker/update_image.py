@@ -16,9 +16,11 @@ def update(branch, cc):
 
     cxx = cc_mapping[cc]
     branch = branch.replace('/', '_')
+    repo = 'dunecommunity/dune-gdt-testing_{}'.format(cc)
     subprocess.check_call(['docker', 'build', '-f', dockerfile,
-                        '-t', 'dunecommunity/dune-gdt-testing:{}_{}'.format(cc, branch), '--build-arg', 'cc={}'.format(cc),
+                        '-t', '{}:{}'.format(repo, branch), '--build-arg', 'cc={}'.format(cc),
                         '--build-arg', 'cxx={}'.format(cxx), '--build-arg', 'branch={}'.format(branch), '.'])
+    subprocess.check_call(['docker', '--log-level="debug"', 'push', repo])
 
 if __name__ == '__main__':
     if len(sys.argv) > 2:
@@ -28,10 +30,8 @@ if __name__ == '__main__':
         ccs = list(cc_mapping.keys())
         branches = ['master']
 
-    subprocess.check_call(['docker', 'pull', 'dunecommunity/testing-base:master'])
+    subprocess.check_call(['docker', 'pull', 'dunecommunity/testing-base:latest'])
     for b in branches:
         for c in ccs:
             update(b, c)
-
     subprocess.check_call(['docker', '--log-level="debug"', 'images'])
-    subprocess.check_call(['docker', '--log-level="debug"', 'push', 'dunecommunity/dune-gdt-testing'])
