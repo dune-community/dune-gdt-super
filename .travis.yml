@@ -22,16 +22,14 @@ script:
   - python -c "from ConfigParser import SafeConfigParser as sf ; f = sf() ; f.readfp(open('external-libraries.cfg', 'rt'))"
   - |
     if [[ "${TRAVIS_PULL_REQUEST}" == "false" ]] ; then
-        docker login --email=$DOCKER_HUB_EMAIL --username=$DOCKER_HUB_USERNAME --password=$DOCKER_HUB_PASSWORD
+        docker login --username=$DOCKER_HUB_USERNAME --password=$DOCKER_HUB_PASSWORD
         ./.travis/docker/update_image.py ${COMPILER} ${TRAVIS_BRANCH}
     fi
 
 matrix:
   include:
-    - env: COMPILER=gcc-5
-    - env: COMPILER=gcc-6
-    - env: COMPILER=clang-3.8
-    - env: COMPILER=clang-3.9
+    - env: COMPILER=gcc
+    - env: COMPILER=clang
 
 git:
   # we do that manually in script section to be able to use our own git binary

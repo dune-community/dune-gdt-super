@@ -1,4 +1,4 @@
-FROM dunecommunity/testing-base:master
+FROM dunecommunity/testing-base:latest
 
 # COMPILER Selection (ARGS cannot be uppercase)
 ARG cc

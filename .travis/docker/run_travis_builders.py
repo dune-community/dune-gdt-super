@@ -48,7 +48,7 @@ def _run_config(tag, clone_dir, commit):
                 logging.error('Failed config: {}'.format(tag))
                 logging.error(err)
 
-docker_tags = ['gcc-5', 'clang-3.9']
+docker_tags = ['gcc', 'clang']
 slug = 'dune-community/dune-gdt'
 commit = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode().strip()
 level = logging.DEBUG if '-v' in sys.argv else logging.info
