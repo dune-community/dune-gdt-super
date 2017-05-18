@@ -19,7 +19,8 @@ def update(branch, cc):
     repo = 'dunecommunity/dune-gdt-testing_{}'.format(cc)
     subprocess.check_call(['docker', 'build', '--no-cache=true', '-f', dockerfile,
                         '-t', '{}:{}'.format(repo, branch), '--build-arg', 'cc={}'.format(cc),
-                        '--build-arg', 'cxx={}'.format(cxx), '--build-arg', 'branch={}'.format(branch), '.'])
+                        '--build-arg', 'cxx={}'.format(cxx), '--build-arg', 'branch={}'.format(branch),
+                        os.path.dirname(dockerfile)])
     subprocess.check_call(['docker', '--log-level="debug"', 'push', repo])
 
 if __name__ == '__main__':
