@@ -17,7 +17,7 @@ def update(branch, cc):
     cxx = cc_mapping[cc]
     branch = branch.replace('/', '_')
     repo = 'dunecommunity/dune-gdt-testing_{}'.format(cc)
-    subprocess.check_call(['docker', 'build', '-f', dockerfile,
+    subprocess.check_call(['docker', 'build', '--no-cache=true', '-f', dockerfile,
                         '-t', '{}:{}'.format(repo, branch), '--build-arg', 'cc={}'.format(cc),
                         '--build-arg', 'cxx={}'.format(cxx), '--build-arg', 'branch={}'.format(branch), '.'])
     subprocess.check_call(['docker', '--log-level="debug"', 'push', repo])
