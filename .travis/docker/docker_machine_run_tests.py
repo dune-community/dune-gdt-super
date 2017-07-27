@@ -31,12 +31,16 @@ def update_base(cc):
     os.chdir(gdt_super_dir)
 
     cxx = cc_mapping[cc]
-    subprocess.check_call(['docker', 'build', '-f', dockerfile,
+    try:
+        subprocess.check_call(['docker', 'build', '-f', dockerfile,
                             '-t', 'dunecommunitylocal/gdt-testing_base_{}'.format(cc), '--build-arg',
                            'cc={}'.format(cc),
                             '--build-arg', 'cxx={}'.format(cxx),
                             gdt_super_dir])
-
+    except subprocess.CalledProcessError as e:
+        logging.error('failed: {} image build {}'.format(cc, tests))
+        return True
+    return False
 
 def run(tests, cc):
     repo = 'dunecommunitylocal/local-gdt-testing_{}_{}'.format(cc, tests)
@@ -57,10 +61,14 @@ if __name__ == '__main__':
         tests = range(13)
 
     subprocess.check_call(['docker', 'pull', 'dunecommunity/testing-base:latest'])
+    stop = False
     for c in ccs:
         update_base(c)
         for b in tests:
-            update(b, c)
+            stop = stop or update(b, c)
+    if stop:
+        logging.error('not running tests because at least on image build failed')
+        sys.exit(1)
     for c in ccs:
         for b in tests:
             run(b, c)
