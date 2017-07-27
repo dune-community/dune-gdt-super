@@ -3,14 +3,15 @@ FROM dunecommunity/testing-base:latest
 # COMPILER Selection (ARGS cannot be uppercase)
 ARG cc
 ARG cxx
-ARG branch
+ARG commit
 ENV CC=$cc \
     CXX=$cxx \
     MY_MODULE=dune-gdt
 
 WORKDIR ${SUPERDIR}
 RUN ${DUNE_VENV_ACTIVATE} && \
-    git clone --branch=${branch} https://github.com/dune-community/dune-gdt-super.git ${SUPERDIR} && \
+    git clone https://github.com/dune-community/dune-gdt-super.git ${SUPERDIR} && \
+    git checkout ${commit} && \
     cd ${SUPERDIR} && \
     git submodule foreach git reset --hard && \
     git submodule update --init --recursive && \
