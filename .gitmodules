@@ -1,18 +1,18 @@
 [submodule "dune-common"]
 	path = dune-common
-	url = http://gitlab.dune-project.org/felix.schindler/dune-common.git
+	url = https://github.com/dune-community/dune-common.git
         ignore = dirty
 [submodule "dune-grid"]
 	path = dune-grid
-	url = https://gitlab.dune-project.org/felix.schindler/dune-grid.git
+	url = https://github.com/dune-community/dune-grid.git
         ignore = dirty
 [submodule "dune-geometry"]
 	path = dune-geometry
-	url = http://gitlab.dune-project.org/rene.milk/dune-geometry.git
+	url = https://github.com/dune-community/dune-geometry.git
         ignore = dirty
 [submodule "dune-fem"]
 	path = dune-fem
-	url = https://gitlab.dune-project.org/dune-fem/dune-fem.git
+	url = https://github.com/dune-mirrors/dune-fem.git
         ignore = dirty
 [submodule "local/bin"]
 	path = local/bin
@@ -20,20 +20,20 @@
         ignore = untracked
 [submodule "dune-localfunctions"]
 	path = dune-localfunctions
-	url = http://gitlab.dune-project.org/core/dune-localfunctions.git
+	url = https://github.com/dune-mirrors/dune-localfunctions.git
         ignore = dirty
 [submodule "dune-gdt"]
 	path = dune-gdt
 	url = https://github.com/dune-community/dune-gdt.git
 [submodule "dune-istl"]
 	path = dune-istl
-	url = http://gitlab.dune-project.org/core/dune-istl.git
+	url = https://github.com/dune-mirrors/dune-istl.git
 [submodule "dune-pdelab"]
 	path = dune-pdelab
-	url = https://gitlab.dune-project.org/pdelab/dune-pdelab.git
+	url = https://github.com/dune-mirrors/dune-pdelab.git
 [submodule "dune-typetree"]
 	path = dune-typetree
-	url = http://gitlab.dune-project.org/staging/dune-typetree.git
+	url = https://github.com/dune-mirrors/dune-typetree.git
 [submodule "configs"]
 	path = config.opts
 	url = https://github.com/dune-community/config.opts.git
@@ -42,10 +42,10 @@
 	url = https://github.com/wwu-numerik/scripts.git
 [submodule "dune-python"]
 	path = dune-python
-	url = https://gitlab.dune-project.org/quality/dune-python.git
+	url = https://github.com/dune-mirrors/dune-python.git
 [submodule "dune-testtools"]
 	path = dune-testtools
-	url = https://gitlab.dune-project.org/quality/dune-testtools.git
+	url = https://github.com/dune-mirrors/dune-testtools.git
 [submodule "dune-xt-common"]
 	path = dune-xt-common
 	url = https://github.com/dune-community/dune-xt-common.git
@@ -60,16 +60,16 @@
 	url = https://github.com/dune-community/dune-xt-functions.git
 [submodule "dune-alugrid"]
 	path = dune-alugrid
-	url = https://gitlab.dune-project.org/extensions/dune-alugrid.git
+	url = https://github.com/dune-mirrors/dune-alugrid.git
 [submodule "dune-uggrid"]
 	path = dune-uggrid
-	url = https://gitlab.dune-project.org/staging/dune-uggrid.git
+	url = https://github.com/dune-mirrors/dune-uggrid.git
 [submodule "dune-functions"]
 	path = dune-functions
-	url = https://gitlab.dune-project.org/staging/dune-functions.git
+	url = https://github.com/dune-mirrors/dune-functions.git
 [submodule "dune-pybindxi"]
 	path = dune-pybindxi
 	url = https://github.com/dune-community/dune-pybindxi.git
 [submodule "dune-grid-glue"]
 	path = dune-grid-glue
-	url = https://gitlab.dune-project.org/extensions/dune-grid-glue.git
+	url = https://github.com/dune-mirrors/dune-grid-glue.git
