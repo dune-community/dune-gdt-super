@@ -22,7 +22,7 @@ def update(commit, cc):
                         '-t', '{}:{}'.format(repo, commit), '--build-arg', 'cc={}'.format(cc),
                         '--build-arg', 'cxx={}'.format(cxx), '--build-arg', 'commit={}'.format(commit),
                         '.'])
-    subprocess.check_call(['docker', '--log-level="debug"', 'push', repo])
+    subprocess.check_call(['docker', 'push', repo])
 
 
 if __name__ == '__main__':
@@ -37,4 +37,4 @@ if __name__ == '__main__':
     for b in commits:
         for c in ccs:
             update(b, c)
-    subprocess.check_call(['docker', '--log-level="debug"', 'images'])
+    subprocess.check_call(['docker', 'images'])
