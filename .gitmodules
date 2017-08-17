@@ -20,7 +20,7 @@
         ignore = untracked
 [submodule "dune-localfunctions"]
 	path = dune-localfunctions
-	url = https://github.com/dune-mirrors/dune-localfunctions.git
+	url = https://github.com/dune-community/dune-localfunctions.git
         ignore = dirty
 [submodule "dune-gdt"]
 	path = dune-gdt
