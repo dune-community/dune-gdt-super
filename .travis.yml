@@ -16,7 +16,7 @@ before_install:
   - sudo -E add-apt-repository -y ppa:pymor/travis && sudo -E aptitude update && sudo -E aptitude install git -y
 
 install:
-  - sudo -E aptitude install python3-six python3-pip
+  - sudo -E aptitude install -y python3-six python3-pip
   - sudo pip3 install docker
 
 script:
