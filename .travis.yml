@@ -15,6 +15,10 @@ before_install:
   - sudo -E rm /etc/apt/sources.list.d/*git*.list
   - sudo -E add-apt-repository -y ppa:pymor/travis && sudo -E aptitude update && sudo -E aptitude install git -y
 
+install:
+  - sudo -E aptitude install python3-six python3-pip
+  - sudo pip3 install docker
+
 script:
   - cd ${TRAVIS_BUILD_DIR}
   - git submodule update --init --recursive

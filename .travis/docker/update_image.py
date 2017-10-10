@@ -3,7 +3,6 @@
 import os
 import subprocess
 import sys
-import pprint
 import six
 import re
 try:
