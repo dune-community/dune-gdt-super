@@ -27,7 +27,7 @@ script:
   - |
     if [[ "${TRAVIS_PULL_REQUEST}" == "false" ]] ; then
         docker login --username=$DOCKER_HUB_USERNAME --password=$DOCKER_HUB_PASSWORD
-        ./.travis/docker/update_image.py ${COMPILER} ${TRAVIS_BRANCH}
+        ./scripts/bash/travis_wait_new.bash 42 ./.travis/docker/update_image.py ${COMPILER} ${TRAVIS_BRANCH}
     fi
 
 matrix:
