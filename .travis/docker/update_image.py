@@ -55,7 +55,11 @@ def update(commit, cc):
                         tag=tag, buildargs=buildargs, nocache=False)
     #img.tag(repo, refname)
     client.images.push(repo)
-    client.images.remove(img.id)
+
+    try:
+        client.images.remove(img.id, force=True)
+    except docker.errors.APIError as err:
+        logging.error('Could not delete {} - {} : {}'.format(img.name, img.id, str(err)))
 
 
 if __name__ == '__main__':
