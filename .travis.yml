@@ -23,7 +23,7 @@ script:
   - cd ${TRAVIS_BUILD_DIR}
   - git submodule update --init --recursive
   - git submodule status
-  - python -c "from ConfigParser import SafeConfigParser as sf ; f = sf() ; f.readfp(open('external-libraries.cfg', 'rt'))"
+  - python -c "from ConfigParser import SafeConfigParser as sf ; f = sf() ; f.readfp(open('environments/debian-minimal/external-libraries.cfg', 'rt'))"
   - |
     if [[ "${TRAVIS_PULL_REQUEST}" == "false" ]] ; then
         docker login --username=$DOCKER_HUB_USERNAME --password=$DOCKER_HUB_PASSWORD
