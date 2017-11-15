@@ -15,7 +15,7 @@
 	url = https://github.com/dune-mirrors/dune-fem.git
         ignore = dirty
 [submodule "local/bin"]
-	path = local/bin
+	path = bin
 	url = https://github.com/dune-community/local-bin.git
         ignore = untracked
 [submodule "dune-localfunctions"]
