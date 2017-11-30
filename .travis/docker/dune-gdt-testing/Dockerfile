@@ -15,8 +15,8 @@ RUN ${DUNE_VENV_ACTIVATE} && \
     cd ${SUPERDIR} && \
     git submodule foreach git reset --hard && \
     git submodule update --init --recursive && \
-    ./local/bin/download_external_libraries.py && \
-    ./local/bin/build_external_libraries.py && \
+    ./bin/download_external_libraries.py && \
+    ./bin/build_external_libraries.py && \
     rm -rf ${MY_MODULE} && \
     mkdir ${MY_MODULE} && \
     ${SRC_DCTRL} ${BLD} all
