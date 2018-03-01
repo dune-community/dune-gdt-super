@@ -1,4 +1,5 @@
-export BASEDIR=${PWD}/..
+DIR="$(cd "$(dirname ${BASH_SOURCE[0]})" ;  pwd -P )"
+export BASEDIR=$(cd ${DIR}/../.. && pwd)
 export INSTALL_PREFIX=${PWD}/local
 export PATH=${INSTALL_PREFIX}/bin:$PATH
 export LD_LIBRARY_PATH=${INSTALL_PREFIX}/lib64:${INSTALL_PREFIX}/lib:$LD_LIBRARY_PATH
