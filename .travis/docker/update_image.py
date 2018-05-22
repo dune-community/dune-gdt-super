@@ -25,7 +25,7 @@ def _build(client, **kwargs):
     for chunk in json_stream(resp):
         if 'error' in chunk:
             msg = chunk['error'] + '\n' + ''.join(output)
-            raise docker.errors.BuildError(msg)
+            raise docker.errors.BuildError(msg, chunk)
         if 'stream' in chunk:
             output.append(chunk['stream'])
             match = re.search(
@@ -37,7 +37,7 @@ def _build(client, **kwargs):
         last_event = chunk
     if image_id:
         return client.images.get(image_id)
-    raise docker.errors.BuildError(last_event or 'Unknown')
+    raise docker.errors.BuildError(last_event or 'Unknown', '')
 
 def update(commit, cc):
     gdt_super_dir = os.path.join(thisdir, '..', '..',)
