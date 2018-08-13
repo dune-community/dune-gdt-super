@@ -9,7 +9,8 @@ ENV CC=$cc \
     MY_MODULE=dune-gdt
 
 WORKDIR ${SUPERDIR}
-RUN git clone https://github.com/dune-community/dune-gdt-super.git ${SUPERDIR} && \
+RUN apt update && apt install -y lcov && \
+    git clone https://github.com/dune-community/dune-gdt-super.git ${SUPERDIR} && \
     git checkout ${commit} && \
     cd ${SUPERDIR} && \
     git submodule foreach git reset --hard && \
