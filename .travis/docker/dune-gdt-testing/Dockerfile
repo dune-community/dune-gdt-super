@@ -9,8 +9,7 @@ ENV CC=$cc \
     MY_MODULE=dune-gdt
 
 WORKDIR ${SUPERDIR}
-RUN ${DUNE_VENV_ACTIVATE} && \
-    git clone https://github.com/dune-community/dune-gdt-super.git ${SUPERDIR} && \
+RUN git clone https://github.com/dune-community/dune-gdt-super.git ${SUPERDIR} && \
     git checkout ${commit} && \
     cd ${SUPERDIR} && \
     git submodule foreach git reset --hard && \
