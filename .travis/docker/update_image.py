@@ -70,7 +70,7 @@ if __name__ == '__main__':
         ccs = list(cc_mapping.keys())
         commits = ['master']
 
-    subprocess.check_call(['docker', 'pull', 'dunecommunity/testing-base:latest'])
+    subprocess.check_call(['docker', 'pull', 'dunecommunity/testing-base_debian:latest'])
     for b in commits:
         for c in ccs:
             update(b, c)
