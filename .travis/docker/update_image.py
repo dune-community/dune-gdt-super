@@ -15,6 +15,7 @@ from docker.utils.json_stream import json_stream
 cc_mapping = {'gcc': 'g++', 'clang': 'clang++'}
 thisdir = os.path.dirname(os.path.abspath(__file__))
 
+
 def _build(client, **kwargs):
     resp = client.api.build(**kwargs)
     if isinstance(resp, six.string_types):
@@ -39,6 +40,7 @@ def _build(client, **kwargs):
         return client.images.get(image_id)
     raise docker.errors.BuildError(last_event or 'Unknown', '')
 
+
 def update(commit, cc):
     gdt_super_dir = os.path.join(thisdir, '..', '..',)
     dockerfile = os.path.join(thisdir, 'dune-gdt-testing', 'Dockerfile')
@@ -56,11 +58,6 @@ def update(commit, cc):
     #img.tag(repo, refname)
     client.images.push(repo)
 
-    try:
-        client.images.remove(img.id, force=True)
-    except docker.errors.APIError as err:
-        logging.error('Could not delete {} - {} : {}'.format(img.name, img.id, str(err)))
-
 
 if __name__ == '__main__':
     if len(sys.argv) > 2:
@@ -74,4 +71,3 @@ if __name__ == '__main__':
     for b in commits:
         for c in ccs:
             update(b, c)
-    subprocess.check_call(['docker', 'images'])
