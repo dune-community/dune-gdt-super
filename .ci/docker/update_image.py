@@ -73,4 +73,8 @@ if __name__ == '__main__':
 
     subprocess.check_call(['docker', 'pull', 'dunecommunity/testing-base_debian:latest'])
     for c in ccs:
-        update(commit, refname, c)
+        try:
+            update(commit, refname, c)
+        except docker.errors.BuildError as be:
+            print(be.msg)
+            break
