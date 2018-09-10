@@ -8,11 +8,10 @@ ENV CC=$cc \
     CXX=$cxx \
     MY_MODULE=dune-gdt
 
-WORKDIR ${SUPERDIR}
-RUN apt update && apt install -y lcov && \
-    git clone https://github.com/dune-community/dune-gdt-super.git ${SUPERDIR} && \
-    git checkout ${commit} && \
+USER dune-ci
+RUN git clone https://github.com/dune-community/dune-gdt-super.git ${SUPERDIR} && \
     cd ${SUPERDIR} && \
+    git checkout ${commit} && \
     git submodule foreach git reset --hard && \
     git submodule update --init --recursive && \
     ./bin/download_external_libraries.py && \
