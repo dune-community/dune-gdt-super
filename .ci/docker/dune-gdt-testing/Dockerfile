@@ -9,6 +9,7 @@ ENV CC=$cc \
     MY_MODULE=dune-gdt
 
 USER dune-ci
+ENV HOME=/home/dune-ci
 RUN git clone https://github.com/dune-community/dune-gdt-super.git ${SUPERDIR} && \
     cd ${SUPERDIR} && \
     git checkout ${commit} && \
