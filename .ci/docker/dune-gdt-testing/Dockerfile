@@ -8,8 +8,6 @@ ENV CC=$cc \
     CXX=$cxx \
     MY_MODULE=dune-gdt
 
-USER dune-ci
-ENV HOME=/home/dune-ci
 RUN git clone https://github.com/dune-community/dune-gdt-super.git ${SUPERDIR} && \
     cd ${SUPERDIR} && \
     git checkout ${commit} && \
@@ -17,9 +15,8 @@ RUN git clone https://github.com/dune-community/dune-gdt-super.git ${SUPERDIR} &
     git submodule update --init --recursive && \
     ./bin/download_external_libraries.py && \
     ./bin/build_external_libraries.py && \
+    ${SRC_DCTRL} ${BLD} all && \
     rm -rf ${MY_MODULE} && \
-    mkdir ${MY_MODULE} && \
-    ${SRC_DCTRL} ${BLD} all
+    mkdir ${MY_MODULE}
 
-# THE END
-ENV DEBIAN_FRONTEND teletype
+VOLUME ${SUPERDIR}/${MY_MODULE}
