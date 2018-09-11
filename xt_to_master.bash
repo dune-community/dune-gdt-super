@@ -1,7 +1,7 @@
 #!/bin/bash
 
-for i in la functions common grid ; do 
-  pushd dune-xt-$i
+for i in $( ls -d dune-xt-* ) ; do
+  pushd $i
   git checkout master
   git pull --rebase
   popd
