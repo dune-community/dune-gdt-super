@@ -49,7 +49,7 @@ def update(commit, refname, cc):
     os.chdir(gdt_super_dir)
 
     cxx = cc_mapping[cc]
-    repo = 'dunecommunity/dune-gdt-testing_{}'.format(cc)
+    repo = 'dunecommunity/dune-gdt-testing_base_{}'.format(cc)
     buildargs = {'cc': cc, 'cxx': cxx, 'commit': commit}
     tag = '{}:{}'.format(repo, refname)
     img = _build(client, rm=True, fileobj=open(dockerfile, 'rb'),
