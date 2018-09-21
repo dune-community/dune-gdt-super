@@ -41,7 +41,7 @@ def _build(client, **kwargs):
     raise docker.errors.BuildError(last_event or 'Unknown', '')
 
 
-def update(commit, cc):
+def update(commit, refname, cc):
     gdt_super_dir = os.path.join(thisdir, '..', '..',)
     dockerfile = os.path.join(thisdir, 'dune-gdt-testing', 'Dockerfile')
     client = docker.from_env(version='auto')
@@ -49,25 +49,32 @@ def update(commit, cc):
     os.chdir(gdt_super_dir)
 
     cxx = cc_mapping[cc]
-    commit = commit.replace('/', '_')
-    repo = 'dunecommunity/dune-gdt-testing_{}'.format(cc)
-    buildargs = {'cc': cc, 'cxx': cxx, 'commit': commit }
-    tag = '{}:{}'.format(repo, commit)
+    repo = 'dunecommunity/dune-gdt-testing_base_{}'.format(cc)
+    buildargs = {'cc': cc, 'cxx': cxx, 'commit': commit}
+    tag = '{}:{}'.format(repo, refname)
     img = _build(client, rm=True, fileobj=open(dockerfile, 'rb'),
                         tag=tag, buildargs=buildargs, nocache=False)
-    #img.tag(repo, refname)
-    client.images.push(repo)
+    img.tag(repo, refname)
+    img.tag(repo, commit)
+    client.images.push(repo, tag=refname)
+    client.images.push(repo, tag=commit)
 
 
 if __name__ == '__main__':
     if len(sys.argv) > 2:
         ccs = [sys.argv[1]]
-        commits = [sys.argv[2]]
     else:
         ccs = list(cc_mapping.keys())
-        commits = ['master']
+
+    head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], universal_newlines=True).strip()
+    commit = os.environ.get('CI_COMMIT_SHA', head)
+    refname = os.environ.get('CI_COMMIT_REF_NAME', 'master').replace('/', '_')
+
 
     subprocess.check_call(['docker', 'pull', 'dunecommunity/testing-base_debian:latest'])
-    for b in commits:
-        for c in ccs:
-            update(b, c)
+    for c in ccs:
+        try:
+            update(commit, refname, c)
+        except docker.errors.BuildError as be:
+            print(be.msg)
+            break
