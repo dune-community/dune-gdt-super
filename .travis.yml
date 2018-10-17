@@ -8,7 +8,6 @@
 sudo: required
 dist: trusty
 language: generic
-services: docker
 
 before_install:
   # workaround for gnutls bug is using git built against curl-openssl
@@ -17,23 +16,12 @@ before_install:
 
 install:
   - sudo -E aptitude install -y python3-six python3-pip
-  - sudo pip3 install docker
 
 script:
   - cd ${TRAVIS_BUILD_DIR}
   - git submodule update --init --recursive
   - git submodule status
   - ./bin/check_environments.py
-  - |
-    if [[ "${TRAVIS_PULL_REQUEST}" == "false" ]] ; then
-        docker login --username=$DOCKER_HUB_USERNAME --password=$DOCKER_HUB_PASSWORD
-        ./scripts/bash/travis_wait_new.bash 42 ./.ci/docker/update_image.py ${COMPILER} ${TRAVIS_BRANCH}
-    fi
-
-matrix:
-  include:
-    - env: COMPILER=gcc
-    - env: COMPILER=clang
 
 git:
   # we do that manually in script section to be able to use our own git binary
@@ -43,8 +31,3 @@ notifications:
   email:
     on_success: change
     on_failure: change
-env:
-  global:
-  - secure: D+TUGXnFvCoJHyBOBw8/fb42EW/Ylld/5SCmUyCD3AfAT820eT8OLkkMj8kWZa3RTJNirO0Wn84sjSuJBBNzyiilWj0poeMAS1xiS0en9BUtDcgK9bLk8FwexLxtzJdbktCqN6gpyjJEV6tLXFfUve9Jk6xM+ff8Wz054dAB0a0=
-  - secure: aDokv+1BmCObKsaCaVCaagCSG13eKjy5npVXzKMEJ3K+GX6agehbpey+wf9hBSEz4ClaHIazbkjl+b2l0HDh0sMFkfL4GNkhwJ/DynKXrWrXMc4X2m0FY9I1hS4vQ6rZIXnh50vaK7tiR+brN84sAw+A2ybE4amWZ9ptmgaDnJM=
-  - secure: R6L+/R0NLy/vWy6iAXx0U1Os3xTg/oqh5ZoTE2d3Chm2ln67svx6gFYNdcA0l2cyhLnbxVvfY6/MkzZd805HF3sJ2iepIwL41b3uKStpRzIeYpxdmbLccyHmxLlyvwUyyxtcHfF+apAD7W1PlqSKz+gyLpgzsNoRfovYSPCkJGw=

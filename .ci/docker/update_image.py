@@ -67,8 +67,8 @@ if __name__ == '__main__':
         ccs = list(cc_mapping.keys())
 
     head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], universal_newlines=True).strip()
-    commit = os.environ.get('CI_COMMIT_SHA', head)
-    refname = os.environ.get('CI_COMMIT_REF_NAME', 'master').replace('/', '_')
+    commit = os.environ.get('DRONE_COMMIT_SHA', head)
+    refname = os.environ.get('DRONE_COMMIT_BRANCH', 'master').replace('/', '_')
 
 
     subprocess.check_call(['docker', 'pull', 'dunecommunity/testing-base_debian:latest'])
