@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import six
+import logging
 import re
 try:
     import docker
@@ -70,10 +71,13 @@ if __name__ == '__main__':
     commit = os.environ.get('DRONE_COMMIT_SHA', head)
     refname = os.environ.get('DRONE_COMMIT_BRANCH', 'master').replace('/', '_')
 
-
+    logger = logging.getLogger('docker-update')
+    logger.error('updating images for {}({}) - {}'.format(refname, commit, ', '.join(ccs)))
     subprocess.check_call(['docker', 'pull', 'dunecommunity/testing-base_debian:latest'])
     for c in ccs:
         try:
+            logger = logging.getLogger('docker-update')
+            logger.error('updating images for {}'.format(c))
             update(commit, refname, c)
         except docker.errors.BuildError as be:
             print(be.msg)
