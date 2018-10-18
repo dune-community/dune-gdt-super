@@ -1,0 +1,24 @@
+pipeline:
+  check:
+    image: dunecommunity/gitlabci_dockerindocker-dockerindocker
+    commands:
+      - git submodule status
+      - ./bin/check_environments.py
+
+  docker:
+    image: dunecommunity/gitlabci_dockerindocker-dockerindocker
+    commands:
+      - echo $DOCKER_PW | docker login --username="$DOCKER_USER" --password-stdin
+      - pip3 install -U docker jinja2 docopt
+      - .ci/docker/update_image.py ${COMPILER} ${DRONE_COMMIT_BRANCH}
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    secrets: [ docker_user, docker_pw ]
+    when:
+      event: push
+
+matrix:
+  COMPILER:
+    - gcc
+    - clang
