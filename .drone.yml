@@ -17,3 +17,11 @@ pipeline:
     secrets: [ docker_user, docker_pw ]
     when:
       event: push
+
+  notify:
+    image: drillster/drone-email
+    host: mail.milk.pm
+    from: drone@dune-community.ovh
+    when:
+      status: [ changed, failure ]
+    secrets:  [ email_username, email_password ]
