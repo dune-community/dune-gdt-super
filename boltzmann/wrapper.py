@@ -20,7 +20,8 @@ PARAMETER_TYPE = ParameterType({'s': (4,)})
 class Solver(Parametric):
 
     def __init__(self, *args):
-        self.impl = libboltzmann.BoltzmannSolver(*args)
+        #self.impl = libboltzmann.BoltzmannSolver2d(*args)
+        self.impl = libboltzmann.BoltzmannSolver3d(*args)
         self.last_mu = None
         self.solution_space = DuneXtLaListVectorSpace(self.impl.get_initial_values().dim())
         self.build_parameter_type(PARAMETER_TYPE)
