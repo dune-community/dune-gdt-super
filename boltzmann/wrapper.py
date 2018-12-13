@@ -90,15 +90,12 @@ class BoltzmannDiscretizationBase(DiscretizationBase):
         final_dt = self.t_end - (self.nt - 1) * self.dt
         assert final_dt >= 0 and final_dt <= self.dt
         for n in range(self.nt):
-            print('Timestep ', n, ' starts')
             dt = self.dt if n != self.nt - 1 else final_dt
             self.logger.info('Time step {}'.format(n))
             V = U_last - self.lf.apply(U_last, {'t' : n*self.dt, 'dt': self.dt}) * dt
-            print('LF applied')
             if return_half_steps:
                 U_half.append(V)
             U_last = V + rhs.apply(V, mu=mu) * dt
-            print('rhs applied')
             U.append(U_last)
         if return_half_steps:
             return U, U_half
