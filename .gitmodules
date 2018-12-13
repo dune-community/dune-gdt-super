@@ -76,3 +76,6 @@
 [submodule "dune-xt-data"]
 	path = dune-xt-data
 	url = https://github.com/dune-community/dune-xt-data
+[submodule "pymor"]
+	path = pymor
+	url = https://github.com/tobiasleibner/pymor.git
