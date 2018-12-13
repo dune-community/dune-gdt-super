@@ -22,7 +22,7 @@ class Solver(Parametric):
     def __init__(self, *args):
         self.impl = libboltzmann.BoltzmannSolver(*args)
         self.last_mu = None
-        self.solution_space = DuneStuffListVectorSpace(self.impl.get_initial_values().dim())
+        self.solution_space = DuneXtLaListVectorSpace(self.impl.get_initial_values().dim())
         self.build_parameter_type(PARAMETER_TYPE)
 
     def solve(self, with_half_steps=True):
@@ -192,7 +192,7 @@ class RHSOperator(DuneOperatorBase):
         return self.range.make_array([self.solver.impl.apply_rhs_operator(u.impl, 0.) for u in U._list])
 
 
-class DuneStuffVector(VectorInterface):
+class DuneXtLaVector(VectorInterface):
 
     def __init__(self, impl):
         self.impl = impl
@@ -206,7 +206,7 @@ class DuneStuffVector(VectorInterface):
     @classmethod
     def make_zeros(cls, subtype):
         impl = subtype[0](subtype[1], 0.)
-        return DuneStuffVector(impl)
+        return DuneXtLaVector(impl)
 
     @property
     def dim(self):
@@ -221,7 +221,7 @@ class DuneStuffVector(VectorInterface):
         return np.frombuffer(self.impl.buffer(), dtype=np.double)
 
     def copy(self, deep=False):
-        return DuneStuffVector(self.impl.copy())
+        return DuneXtLaVector(self.impl.copy())
 
     def scal(self, alpha):
         self.impl.scal(alpha)
@@ -255,7 +255,7 @@ class DuneStuffVector(VectorInterface):
         return self.impl.amax()
 
     def __add__(self, other):
-        return DuneStuffVector(self.impl + other.impl)
+        return DuneXtLaVector(self.impl + other.impl)
 
     def __iadd__(self, other):
         self.impl += other.impl
@@ -264,17 +264,17 @@ class DuneStuffVector(VectorInterface):
     __radd__ = __add__
 
     def __sub__(self, other):
-        return DuneStuffVector(self.impl - other.impl)
+        return DuneXtLaVector(self.impl - other.impl)
 
     def __isub__(self, other):
         self.impl -= other.impl
         return self
 
     def __mul__(self, other):
-        return DuneStuffVector(self.impl * other)
+        return DuneXtLaVector(self.impl * other)
 
     def __neg__(self):
-        return DuneStuffVector(-self.impl)
+        return DuneXtLaVector(-self.impl)
 
     def __getstate__(self):
         return type(self.impl), self.data
@@ -284,14 +284,14 @@ class DuneStuffVector(VectorInterface):
         self.data[:] = state[1]
 
 
-class DuneStuffListVectorSpace(ListVectorSpace):
+class DuneXtLaListVectorSpace(ListVectorSpace):
 
     def __init__(self, dim, id_=None):
         self.dim = dim
         self.id = id_
 
     def __eq__(self, other):
-        return type(other) is DuneStuffListVectorSpace and self.dim == other.dim and self.id == other.id
+        return type(other) is DuneXtLaListVectorSpace and self.dim == other.dim and self.id == other.id
 
     @classmethod
     def space_from_vector_obj(cls, vec, id_):
@@ -302,10 +302,10 @@ class DuneStuffListVectorSpace(ListVectorSpace):
         return cls(dim, id_)
 
     def zero_vector(self):
-        return DuneStuffVector(CommonDenseVector(self.dim, 0))
+        return DuneXtLaVector(CommonDenseVector(self.dim, 0))
 
     def make_vector(self, obj):
-        return DuneStuffVector(obj)
+        return DuneXtLaVector(obj)
 
     def vector_from_numpy(self, data, ensure_copy=False):
         v = self.zero_vector()

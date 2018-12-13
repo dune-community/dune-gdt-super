@@ -3,7 +3,7 @@ from mpi4py import MPI
 import numpy as np
 
 from hapod import MPICommunicator
-from boltzmann.wrapper import DuneStuffListVectorSpace
+from boltzmann.wrapper import DuneXtLaListVectorSpace
 
 
 class MPIWrapper:
@@ -34,10 +34,10 @@ class MPIWrapper:
             :param modes: vectorarray of (HA)POD modes 
             :param returnlistvectorarray: If False, the modes are returned as a NumpyVectorArray. On each node, 
             the NumpyVectorArrays for all MPI ranks (one for each processor core) share the same underlying 
-            memory buffer. If True, the modes are returned as DuneStuffListVectorArray. Here, a copy is made
+            memory buffer. If True, the modes are returned as DuneXtLaListVectorArray. Here, a copy is made
             for each MPI rank, so this uses num_cores times the memory of the NumpyVectorArray (e.g. for 12
             cores per node, it uses 12 times as much memory.
-            :returns: Either a DuneStuffListVectorArray containing the modes (if returnlistvectorarray==True)
+            :returns: Either a DuneXtLaListVectorArray containing the modes (if returnlistvectorarray==True)
             or a tuple (modes, win) where modes is a NumpyVectorArray and win is the MPI window that holds the
             shared memory buffer. You have to free the memory yourself by calling win.Free() once you are done.'''
         if modes is None:
@@ -63,7 +63,7 @@ class MPIWrapper:
                 self.comm_rank_0_group.Bcast([modes_numpy, MPI.DOUBLE], root=0)
         self.comm_world.Barrier()  # without this barrier, non-zero ranks might be too fast 
         if returnlistvectorarray:
-            modes = DuneStuffListVectorSpace.from_numpy(modes_numpy)
+            modes = DuneXtLaListVectorSpace.from_numpy(modes_numpy)
             win.Free()
             return modes
         else:
@@ -92,7 +92,7 @@ class BoltzmannMPICommunicator(MPICommunicator, MPI.Intracomm):
         len_modes, len_svals, total_num_snapshots, vector_length = comm.recv(source=source, tag=source+1000)
         received_array = np.empty(shape=(len_modes, vector_length))
         comm.Recv(received_array, source=source, tag=source+2000)
-        modes = DuneStuffListVectorSpace.from_numpy(received_array)
+        modes = DuneXtLaListVectorSpace.from_numpy(received_array)
         svals = np.empty(shape=(len_modes,))
         if len_svals > 0:
             comm.Recv(svals, source=source, tag=source+3000)
@@ -139,7 +139,7 @@ class BoltzmannMPICommunicator(MPICommunicator, MPI.Intracomm):
                     comm.Gatherv(svals, None, root=0)
         del vectorarray
         if rank == 0:
-            vectors_gathered = DuneStuffListVectorSpace.from_numpy(vectors_gathered)
+            vectors_gathered = DuneXtLaListVectorSpace.from_numpy(vectors_gathered)
         return vectors_gathered, svals_gathered, num_snapshots_in_associated_leafs, offsets_svals
  
     def __getattr__(self, item):
