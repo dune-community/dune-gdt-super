@@ -15,7 +15,8 @@ from boltzmannutility import solver_statistics
 def calculate_l2_error_for_random_samples(basis, mpi, solver, grid_size, chunk_size,
                                           seed=MPI.COMM_WORLD.Get_rank(),
                                           params_per_rank=10,
-                                          with_half_steps=True):
+                                          with_half_steps=True,
+                                          basis_is_orthonormal=True):
     '''Calculates model reduction and projection error for random parameter'''
 
     random.seed(seed)
@@ -42,12 +43,17 @@ def calculate_l2_error_for_random_samples(basis, mpi, solver, grid_size, chunk_s
         start = timer()
         U = d.solve(mu, return_half_steps=False)
         elapsed_high_dim += timer() - start
-        reductor = GenericRBReductor(d.as_generic_type(), basis)
+
+        # create reduced problem
+        reductor = GenericRBReductor(d.as_generic_type(), basis, basis_is_orthonormal=basis_is_orthonormal)
         rd = reductor.reduce()
 
+        # solve reduced problem
         start = timer()
         U_rb = rd.solve(mu)
         elapsed_red += timer() - start
+
+        # reconstruct high-dimensional solution, calculate error
         U_rb = reductor.reconstruct(U_rb)
         red_errs += np.sum((U - U_rb).l2_norm()**2)
         proj_errs += np.sum((U - basis.lincomb(U.dot(basis))).l2_norm()**2)
@@ -69,11 +75,15 @@ if __name__ == "__main__":
     chunk_size = int(sys.argv[2])
     tol = float(sys.argv[3])
     omega = float(sys.argv[4])
+    orthonormalize=True
     basis, _, total_num_snaps, _, mpi, _, _, solver = boltzmann_binary_tree_hapod(grid_size, chunk_size,
-                                                                                  tol * grid_size, omega=omega)
+                                                                                  tol * grid_size, omega=omega,
+                                                                                  orthonormalize=orthonormalize)
     basis = mpi.shared_memory_bcast_modes(basis, returnlistvectorarray=True)
+
     red_errs, proj_errs, elapsed_red, elapsed_high_dim = calculate_l2_error_for_random_samples(basis, mpi, solver,
-                                                                                               grid_size, chunk_size)
+                                                                                               grid_size, chunk_size,
+                                                                                               basis_is_orthonormal=orthonormalize)
 
     red_err = np.sqrt(np.sum(red_errs) / total_num_snaps) / grid_size if mpi.rank_world == 0 else None
     proj_err = np.sqrt(np.sum(proj_errs) / total_num_snaps) / grid_size if mpi.rank_world == 0 else None

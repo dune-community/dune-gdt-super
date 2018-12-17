@@ -63,6 +63,13 @@ class Solver(Parametric):
             self.last_mu = mu
             self.impl.set_rhs_operator_parameters(*mu)
 
+    def set_rhs_timestepper_params(self, sigma_s_scattering=1, sigma_s_absorbing=0, sigma_t_scattering=1,
+                                   sigma_t_absorbing=10):
+        mu = (sigma_s_scattering, sigma_s_absorbing, sigma_t_scattering, sigma_t_absorbing)
+        if mu != self.last_mu:
+            self.last_mu = mu
+            self.impl.set_rhs_timestepper_parameters(*mu)
+
 
 class BoltzmannDiscretizationBase(DiscretizationBase):
 
@@ -96,7 +103,10 @@ class BoltzmannDiscretizationBase(DiscretizationBase):
             V = U_last - self.lf.apply(U_last, {'t' : n*self.dt, 'dt': self.dt}) * dt
             if return_half_steps:
                 U_half.append(V)
-            U_last = V + rhs.apply(V, mu=mu) * dt
+            U_last = V + rhs.apply(V, mu=mu) * dt # explicit Euler for RHS
+            # matrix exponential for RHS
+            # mu['dt'] = dt
+            # U_last = rhs.apply(V, mu=mu)
             U.append(U_last)
         if return_half_steps:
             return U, U_half
@@ -117,10 +127,12 @@ class DuneDiscretization(BoltzmannDiscretizationBase):
     def __init__(self, nt=60, dt=0.056, *args):
         self.solver = solver = Solver(*args)
         initial_data = VectorOperator(solver.get_initial_values())
-        lf_operator = LFOperator(self.solver)
+        # lf_operator = LFOperator(self.solver)
+        lf_operator = KineticOperator(self.solver) # Todo: rename from lf_operator to kinetic_operator
         self.non_decomp_rhs_operator = ndrhs = RHSOperator(self.solver)
+        param = solver.parse_parameter([0., 0., 0., 0.])
         affine_part = ConstantOperator(ndrhs.apply(initial_data.range.zeros(),
-                                                   mu=solver.parse_parameter([0., 0., 0., 0.])),
+                                                   mu=param),
                                        initial_data.range)
         rhs_operator = affine_part + \
             LincombOperator(
@@ -157,6 +169,7 @@ class DuneOperatorBase(OperatorBase):
         self.source = self.range = solver.solution_space
         self.dt = solver.time_step_length()
 
+
 class LFOperator(DuneOperatorBase):
 
     linear = True
@@ -165,6 +178,19 @@ class LFOperator(DuneOperatorBase):
         assert U in self.source
         return self.range.make_array(
             [self.solver.impl.apply_LF_operator(u.impl,
+                                                mu['t'] if mu is not None and 't' in mu else 0.,
+                                                mu['dt'] if mu is not None and 'dt' in mu else self.dt)
+             for u in U._list])
+
+
+class KineticOperator(DuneOperatorBase):
+
+    linear = True
+
+    def apply(self, U, mu=None):
+        assert U in self.source
+        return self.range.make_array(
+            [self.solver.impl.apply_kinetic_operator(u.impl,
                                                 mu['t'] if mu is not None and 't' in mu else 0.,
                                                 mu['dt'] if mu is not None and 'dt' in mu else self.dt)
              for u in U._list])
@@ -189,8 +215,12 @@ class RHSOperator(DuneOperatorBase):
 
     def apply(self, U, mu=None):
         assert U in self.source
+        # explicit euler for rhs
         self.solver.set_rhs_operator_params(*map(float, mu['s']))
         return self.range.make_array([self.solver.impl.apply_rhs_operator(u.impl, 0.) for u in U._list])
+        # matrix exponential for rhs
+        # return self.range.make_array([self.solver.impl.apply_rhs_timestepper(u.impl, 0., mu['dt'][0]) for u in U._list])
+        # self.solver.set_rhs_timestepper_params(*map(float, mu['s']))
 
 
 class DuneXtLaVector(VectorInterface):

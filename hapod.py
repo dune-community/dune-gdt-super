@@ -161,7 +161,7 @@ def binary_tree_depth(comm):
 
 
 def binary_tree_hapod_over_ranks(comm, modes, num_snaps_in_leafs, parameters, svals=None, last_hapod=False,
-                                 incremental_gramian=True):
+                                 incremental_gramian=True, orthonormalize=True):
     ''' A HAPOD with modes and possibly svals stored on ranks of the MPI communicator comm. A binary tree
         of MPI ranks is used as HAPOD tree.
         May be used as part of a larger HAPOD tree, in that case you need to specify whether this
@@ -191,6 +191,7 @@ def binary_tree_hapod_over_ranks(comm, modes, num_snaps_in_leafs, parameters, sv
                                               else modes_on_source],
                                              total_num_snapshots,
                                              parameters,
+                                             orthonormalize=orthonormalize,
                                              incremental_gramian=incremental_gramian,
                                              root_of_tree=((len(ranks) == 2) and last_hapod))
                     max_local_modes = max(max_local_modes, len(modes))
