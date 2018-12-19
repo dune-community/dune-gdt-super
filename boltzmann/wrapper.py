@@ -100,7 +100,13 @@ class BoltzmannDiscretizationBase(DiscretizationBase):
         for n in range(self.nt):
             dt = self.dt if n != self.nt - 1 else final_dt
             self.logger.info('Time step {}'.format(n))
-            V = U_last - self.lf.apply(U_last, {'t' : n*self.dt, 'dt': self.dt}) * dt
+            # works only for hatfunctions, ensure realizability
+            for vec in U_last._data:
+                vec[np.where(vec < 1e-8)] = 1e-8
+            # todo: handle all bases (probably in C++)
+            param = Parameter({'t' : n*self.dt, 'dt': self.dt})
+            param['s'] = mu['s']
+            V = U_last - self.lf.apply(U_last, param) * dt
             if return_half_steps:
                 U_half.append(V)
             U_last = V + rhs.apply(V, mu=mu) * dt # explicit Euler for RHS
@@ -185,14 +191,17 @@ class LFOperator(DuneOperatorBase):
 
 class KineticOperator(DuneOperatorBase):
 
-    linear = True
+    linear = False
 
     def apply(self, U, mu=None):
         assert U in self.source
+        for vec in U._data:
+            vec[np.where(vec < 1e-8)] = 1e-8
+        print(mu)
         return self.range.make_array(
             [self.solver.impl.apply_kinetic_operator(u.impl,
-                                                mu['t'] if mu is not None and 't' in mu else 0.,
-                                                mu['dt'] if mu is not None and 'dt' in mu else self.dt)
+                                                float(mu['t']) if mu is not None and 't' in mu else 0.,
+                                                float(mu['dt']) if mu is not None and 'dt' in mu else self.dt)
              for u in U._list])
 
 
@@ -207,7 +216,7 @@ class GodunovOperator(DuneOperatorBase):
 
 class RHSOperator(DuneOperatorBase):
 
-    linear = False
+    linear = True
 
     def __init__(self, solver):
         super(RHSOperator, self).__init__(solver)
