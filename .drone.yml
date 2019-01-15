@@ -5,12 +5,28 @@ pipeline:
       - git submodule status
       - ./bin/check_environments.py
 
-  docker:
+  test_provisioning:
     image: dunecommunity/gitlabci_dockerindocker-dockerindocker
     commands:
       - echo $DOCKER_PW | docker login --username="$DOCKER_USER" --password-stdin
       - pip3 install -U docker jinja2 docopt
       - .ci/docker/update_image.py
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    secrets: [ docker_user, docker_pw ]
+    when:
+      event: push
+
+  docker:
+    image: dunecommunity/gitlabci_dockerindocker-dockerindocker
+    environment:
+      - BASE=debian
+    commands:
+      - echo $DOCKER_PW | docker login --username="$DOCKER_USER" --password-stdin
+      - pip3 install -U docker
+      - docker build --build-arg BASE=$${BASE} -t dunecommunity/gdt-super_$${BASE}:"${DRONE_COMMIT_SHA}" -f .ci/super_docker/Dockerfile .
+      - docker push dunecommunity/gdt-super_$${BASE}:"${DRONE_COMMIT_SHA}"
 
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
