@@ -1,5 +1,5 @@
 ARG BASE
-FROM dunecommunity/testing-base_${BASE}:42c68f6
+FROM dunecommunity/testing-base_${BASE}:latest
 
 ENV CC=gcc \
     CXX=g++
