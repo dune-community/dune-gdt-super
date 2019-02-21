@@ -11,10 +11,11 @@ from boltzmann.wrapper import DuneDiscretization
 from boltzmann_binary_tree_hapod import boltzmann_binary_tree_hapod
 from boltzmannutility import solver_statistics
 
+from cvxopt import matrix as cvxmatrix
 
 def calculate_l2_error_for_random_samples(basis, mpi, solver, grid_size, chunk_size,
                                           seed=MPI.COMM_WORLD.Get_rank(),
-                                          params_per_rank=10,
+                                          params_per_rank=2,
                                           with_half_steps=True,
                                           basis_is_orthonormal=True):
     '''Calculates model reduction and projection error for random parameter'''
@@ -24,6 +25,13 @@ def calculate_l2_error_for_random_samples(basis, mpi, solver, grid_size, chunk_s
     _, num_time_steps = solver_statistics(solver, chunk_size, with_half_steps)
     nt = int(num_time_steps - 1) if not with_half_steps else int((num_time_steps - 1)/2)
     elapsed_high_dim = elapsed_red = red_errs = proj_errs = 0.
+
+    high_dim = basis.to_numpy().shape[1]
+    red_dim = len(basis)
+    print(high_dim, red_dim)
+    cvxopt_P = cvxmatrix(np.eye(red_dim, dtype=float))
+    cvxopt_G = cvxmatrix(-basis.to_numpy(ensure_copy=True).transpose())
+    cvxopt_h = cvxmatrix(-1e-8, (high_dim, 1))
 
     for _ in range(params_per_rank):
         mu = [random.uniform(0., 8.), random.uniform(0., 8.), 0., random.uniform(0., 8.)]
@@ -50,7 +58,8 @@ def calculate_l2_error_for_random_samples(basis, mpi, solver, grid_size, chunk_s
 
         # solve reduced problem
         start = timer()
-        U_rb = rd.solve(mu)
+
+        U_rb = rd.solve(mu, cvxopt_P=cvxopt_P, cvxopt_G=cvxopt_G, cvxopt_h=cvxopt_h,basis=basis)
         elapsed_red += timer() - start
 
         # reconstruct high-dimensional solution, calculate error
