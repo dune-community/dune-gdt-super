@@ -13,8 +13,8 @@ from pymor.vectorarrays.numpy import NumpyVectorArray
 import libboltzmann
 from libboltzmann import CommonDenseVector
 
-import cvxopt
-from cvxopt import matrix as cvxmatrix
+#import cvxopt
+#from cvxopt import matrix as cvxmatrix
 
 IMPL_TYPES = (CommonDenseVector,)
 
@@ -95,17 +95,17 @@ class BoltzmannDiscretizationBase(DiscretizationBase):
         self.build_parameter_type(PARAMETER_TYPE)
         self.parameter_space = parameter_space
 
-    def project_to_realizable_set(self, vec, cvxopt_P, cvxopt_G, cvxopt_h, dim, space):
-        cvxopt_q = cvxmatrix(-vec.to_numpy().transpose(), size=(dim,1), tc='d')
-        sol = cvxopt.solvers.qp(P=cvxopt_P, q=cvxopt_q, G=cvxopt_G, h=cvxopt_h)
-        if 'optimal' not in sol['status']:
-            raise NotImplementedError
-        return NumpyVectorArray(np.array(sol['x']).reshape(1, dim), space)
+    #def project_to_realizable_set(self, vec, cvxopt_P, cvxopt_G, cvxopt_h, dim, space):
+    #    cvxopt_q = cvxmatrix(-vec.to_numpy().transpose(), size=(dim,1), tc='d')
+    #    sol = cvxopt.solvers.qp(P=cvxopt_P, q=cvxopt_q, G=cvxopt_G, h=cvxopt_h)
+    #    if 'optimal' not in sol['status']:
+    #        raise NotImplementedError
+    #    return NumpyVectorArray(np.array(sol['x']).reshape(1, dim), space)
 
-    def is_realizable(self, coeffs, basis):
-        tol = 1e-8
-        vec = basis.lincomb(coeffs._data)
-        return np.all(np.greater_equal(vec._data, tol))
+    #def is_realizable(self, coeffs, basis):
+    #    tol = 1e-8
+    #    vec = basis.lincomb(coeffs._data)
+    #    return np.all(np.greater_equal(vec._data, tol))
 
     def _solve(self, mu=None, return_half_steps=False, cvxopt_P=None, cvxopt_G=None, cvxopt_h=None, basis=None):
         U = self.initial_data.as_vector(mu)
@@ -121,14 +121,13 @@ class BoltzmannDiscretizationBase(DiscretizationBase):
             param = Parameter({'t' : n*self.dt, 'dt': self.dt})
             param['s'] = mu['s']
             V = U_last - self.lf.apply(U_last, param) * dt
-            if cvxopt_P is not None and not self.is_realizable(V, basis):
-                V = self.project_to_realizable_set(V, cvxopt_P, cvxopt_G, cvxopt_h, V.dim, V.space)
-                vec = basis.lincomb(V._data)
+            #if cvxopt_P is not None and not self.is_realizable(V, basis):
+            #    V = self.project_to_realizable_set(V, cvxopt_P, cvxopt_G, cvxopt_h, V.dim, V.space)
             if return_half_steps:
                 U_half.append(V)
             U_last = V + rhs.apply(V, mu=mu) * dt # explicit Euler for RHS
-            if cvxopt_P is not None and not self.is_realizable(U_last, basis):
-                U_last = self.project_to_realizable_set(U_last, cvxopt_P, cvxopt_G, cvxopt_h, V.dim, V.space)
+            #if cvxopt_P is not None and not self.is_realizable(U_last, basis):
+            #    U_last = self.project_to_realizable_set(U_last, cvxopt_P, cvxopt_G, cvxopt_h, V.dim, V.space)
             # matrix exponential for RHS
             # mu['dt'] = dt
             # U_last = rhs.apply(V, mu=mu)
@@ -214,8 +213,9 @@ class KineticOperator(DuneOperatorBase):
 
     def apply(self, U, mu=None):
         assert U in self.source
-        #for vec in U._data:
-        #   vec[np.where(vec < 1e-8)] = 1e-8
+        # hack to ensure realizability for hatfunction moment models
+        for vec in U._data:
+           vec[np.where(vec < 1e-8)] = 1e-8
         print(mu)
         return self.range.make_array(
             [self.solver.impl.apply_kinetic_operator(u.impl,
