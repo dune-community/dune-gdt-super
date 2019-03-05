@@ -308,10 +308,19 @@ class DuneXtLaVector(VectorInterface):
             return np.array([], dtype=np.intp)
         assert 0 <= np.min(dof_indices)
         assert np.max(dof_indices) < self.dim
-        return np.array([self.impl[i] for i in dof_indices])
+        d = self.data
+        return np.array([d[i] for i in dof_indices])
+        # note that the following original code no longer works:
+        # return np.array([self.impl[i] for i in dof_indices])
 
     def amax(self):
-        return self.impl.amax()
+        # return self.impl.amax()
+        d = self.data
+        max_ind = np.argmax(d)
+        max_val = d[max_ind]
+        return max_ind, max_val
+        # note that the following original code no longer works:
+        # return self.impl.amax()
 
     def __add__(self, other):
         return DuneXtLaVector(self.impl + other.impl)

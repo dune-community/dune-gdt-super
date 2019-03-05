@@ -5,7 +5,10 @@ from timeit import default_timer as timer
 
 from mpi4py import MPI
 import numpy as np
+from pymor.algorithms.ei import deim
 from pymor.reductors.basic import GenericRBReductor
+from pymor.operators.constructions import Concatenation, VectorArrayOperator
+from pymor.operators.ei import EmpiricalInterpolatedOperator
 
 from boltzmann.wrapper import DuneDiscretization
 from boltzmann_binary_tree_hapod import boltzmann_binary_tree_hapod
@@ -17,7 +20,9 @@ def calculate_l2_error_for_random_samples(basis, mpi, solver, grid_size, chunk_s
                                           seed=MPI.COMM_WORLD.Get_rank(),
                                           params_per_rank=2,
                                           with_half_steps=True,
-                                          basis_is_orthonormal=True):
+                                          basis_is_orthonormal=True,
+                                          eval_basis=None,
+                                          hyper_reduction='deim'):
     '''Calculates model reduction and projection error for random parameter'''
 
     random.seed(seed)
@@ -54,6 +59,18 @@ def calculate_l2_error_for_random_samples(basis, mpi, solver, grid_size, chunk_s
         elapsed_high_dim += timer() - start
 
         # create reduced problem
+        d = d.as_generic_type()
+        assert hyper_reduction in ('none', 'projection', 'deim')
+        if hyper_reduction == 'projection':
+            lf = Concatenation([VectorArrayOperator(eval_basis), VectorArrayOperator(eval_basis, adjoint=True), d.lf])
+            d = d.with_(lf=lf)
+        elif hyper_reduction == 'deim':
+            dofs, cb, _ = deim(eval_basis, len(eval_basis))
+            assert len(cb) == len(eval_basis)
+            print('???', (cb - eval_basis).l2_norm())  # should be zero !
+            lf = EmpiricalInterpolatedOperator(d.lf, dofs, cb, False)
+            d = d.with_(lf=lf)
+
         reductor = GenericRBReductor(d.as_generic_type(), basis, basis_is_orthonormal=basis_is_orthonormal)
         rd = reductor.reduce()
 
@@ -87,14 +104,16 @@ if __name__ == "__main__":
     tol = float(sys.argv[3])
     omega = float(sys.argv[4])
     orthonormalize=True
-    basis, _, total_num_snaps, _, mpi, _, _, solver = boltzmann_binary_tree_hapod(grid_size, chunk_size,
-                                                                                  tol * grid_size, omega=omega,
-                                                                                  orthonormalize=orthonormalize)
+    (basis, eval_basis, _, _, total_num_snaps, total_num_evals, _, mpi, _, _, _, _, solver) = \
+            boltzmann_binary_tree_hapod(grid_size, chunk_size, tol * grid_size, omega=omega, orthonormalize=orthonormalize)
     basis = mpi.shared_memory_bcast_modes(basis, returnlistvectorarray=True)
+    eval_basis = mpi.shared_memory_bcast_modes(eval_basis, returnlistvectorarray=True)
 
     red_errs, proj_errs, elapsed_red, elapsed_high_dim = calculate_l2_error_for_random_samples(basis, mpi, solver,
                                                                                                grid_size, chunk_size,
-                                                                                               basis_is_orthonormal=orthonormalize)
+                                                                                               basis_is_orthonormal=orthonormalize,
+                                                                                               eval_basis=eval_basis,
+                                                                                               hyper_reduction='deim')
 
     red_err = np.sqrt(np.sum(red_errs) / total_num_snaps) / grid_size if mpi.rank_world == 0 else None
     proj_err = np.sqrt(np.sum(proj_errs) / total_num_snaps) / grid_size if mpi.rank_world == 0 else None
