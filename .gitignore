@@ -8,3 +8,6 @@ build/*
 __pycache__
 venv
 *.pyc
+boltzmann/libboltzmann.so
+libboltzmann.so
+
