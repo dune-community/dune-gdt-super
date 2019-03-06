@@ -8,7 +8,7 @@ from pymor.parameters.base import Parameter, ParameterType, Parametric
 from pymor.parameters.functionals import ExpressionParameterFunctional
 from pymor.parameters.spaces import CubicParameterSpace
 from pymor.vectorarrays.list import VectorInterface, ListVectorSpace
-from pymor.vectorarrays.numpy import NumpyVectorArray
+from pymor.vectorarrays.numpy import NumpyVectorArray, NumpyVectorSpace
 
 import libboltzmann
 from libboltzmann import CommonDenseVector
@@ -194,6 +194,15 @@ class DuneOperatorBase(OperatorBase):
         self.dt = solver.time_step_length()
 
 
+class RestrictedDuneOperatorBase(OperatorBase):
+
+    def __init__(self, solver, source_dim, range_dim):
+        self.solver = solver
+        self.source = NumpyVectorSpace(source_dim)
+        self.range = NumpyVectorSpace(range_dim)
+        self.dt = solver.time_step_length()
+
+
 class LFOperator(DuneOperatorBase):
 
     linear = True
@@ -205,6 +214,27 @@ class LFOperator(DuneOperatorBase):
                                                 mu['t'] if mu is not None and 't' in mu else 0.,
                                                 mu['dt'] if mu is not None and 'dt' in mu else self.dt)
              for u in U._list])
+
+class RestrictedKineticOperator(RestrictedDuneOperatorBase):
+
+    linear = False
+
+    def __init__(self, solver, dofs):
+        self.solver = solver
+        dofs_as_list = [int(i) for i in dofs]
+        self.solver.impl.prepare_restricted_operator(dofs_as_list)
+        super(RestrictedKineticOperator, self).__init__(solver, self.solver.impl.len_source_dofs(), len(dofs))
+
+
+    def apply(self, U, mu=None):
+        assert U in self.source
+        # hack to ensure realizability for hatfunction moment models
+        for vec in U._data:
+           vec[np.where(vec < 1e-8)] = 1e-8
+        print(mu)
+        U = DuneXtLaListVectorSpace.from_numpy(U.to_numpy())
+        ret = [DuneXtLaVector(self.solver.impl.apply_restricted_kinetic_operator(u.impl)).to_numpy() for u in U._list]
+        return self.range.make_array(ret)
 
 
 class KineticOperator(DuneOperatorBase):
@@ -222,6 +252,10 @@ class KineticOperator(DuneOperatorBase):
                                                 float(mu['t']) if mu is not None and 't' in mu else 0.,
                                                 float(mu['dt']) if mu is not None and 'dt' in mu else self.dt)
              for u in U._list])
+
+
+    def restricted(self, dofs):
+        return RestrictedKineticOperator(self.solver, dofs), np.array(self.solver.impl.source_dofs())
 
 
 class GodunovOperator(DuneOperatorBase):
