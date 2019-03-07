@@ -49,7 +49,7 @@ def boltzmann_binary_tree_hapod(grid_size, chunk_size, tol, omega=0.95, logfile=
             lf_eval_vectors = timestep_vectors[1::2] - timestep_vectors[:-1:2]
         # TODO The following is a simple hack to ensure we have sufficiently
         # more modes for EI then for the RB space. In reality we want to have
-        # an error landscape againt both basis sizes.
+        # an error landscape against both basis sizes.
         lf_eval_vectors.scal(10)
         num_evals = len(lf_eval_vectors)
 

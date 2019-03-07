@@ -67,7 +67,6 @@ def calculate_l2_error_for_random_samples(basis, mpi, solver, grid_size, chunk_s
         elif hyper_reduction == 'deim':
             dofs, cb, _ = deim(eval_basis, len(eval_basis))
             assert len(cb) == len(eval_basis)
-            print('???', (cb - eval_basis).l2_norm())  # should be zero !
             lf = EmpiricalInterpolatedOperator(d.lf, dofs, cb, False)
             d = d.with_(lf=lf)
 
@@ -77,7 +76,7 @@ def calculate_l2_error_for_random_samples(basis, mpi, solver, grid_size, chunk_s
         # solve reduced problem
         start = timer()
 
-        #U_rb = rd.solve(mu, cvxopt_P=cvxopt_P, cvxopt_G=cvxopt_G, cvxopt_h=cvxopt_h,basis=basis)
+        # U_rb = rd.solve(mu, cvxopt_P=cvxopt_P, cvxopt_G=cvxopt_G, cvxopt_h=cvxopt_h,basis=basis)
         U_rb = rd.solve(mu)
         elapsed_red += timer() - start
 

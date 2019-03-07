@@ -117,7 +117,6 @@ class BoltzmannDiscretizationBase(DiscretizationBase):
         for n in range(self.nt):
             dt = self.dt if n != self.nt - 1 else final_dt
             self.logger.info('Time step {}'.format(n))
-            # todo: handle all bases (probably in C++)
             param = Parameter({'t' : n*self.dt, 'dt': self.dt})
             param['s'] = mu['s']
             V = U_last - self.lf.apply(U_last, param) * dt
@@ -231,9 +230,8 @@ class RestrictedKineticOperator(RestrictedDuneOperatorBase):
         # hack to ensure realizability for hatfunction moment models
         for vec in U._data:
            vec[np.where(vec < 1e-8)] = 1e-8
-        print(mu)
         U = DuneXtLaListVectorSpace.from_numpy(U.to_numpy())
-        ret = [DuneXtLaVector(self.solver.impl.apply_restricted_kinetic_operator(u.impl)).to_numpy() for u in U._list]
+        ret = [DuneXtLaVector(self.solver.impl.apply_restricted_kinetic_operator(u.impl)).to_numpy(True) for u in U._list]
         return self.range.make_array(ret)
 
 
@@ -246,7 +244,6 @@ class KineticOperator(DuneOperatorBase):
         # hack to ensure realizability for hatfunction moment models
         for vec in U._data:
            vec[np.where(vec < 1e-8)] = 1e-8
-        print(mu)
         return self.range.make_array(
             [self.solver.impl.apply_kinetic_operator(u.impl,
                                                 float(mu['t']) if mu is not None and 't' in mu else 0.,
