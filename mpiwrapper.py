@@ -31,9 +31,9 @@ class MPIWrapper:
 
     def shared_memory_bcast_modes(self, modes, returnlistvectorarray=False):
         ''' broadcast modes on rank 0 to all ranks by using a shared memory buffer on each node
-            :param modes: vectorarray of (HA)POD modes 
-            :param returnlistvectorarray: If False, the modes are returned as a NumpyVectorArray. On each node, 
-            the NumpyVectorArrays for all MPI ranks (one for each processor core) share the same underlying 
+            :param modes: vectorarray of (HA)POD modes
+            :param returnlistvectorarray: If False, the modes are returned as a NumpyVectorArray. On each node,
+            the NumpyVectorArrays for all MPI ranks (one for each processor core) share the same underlying
             memory buffer. If True, the modes are returned as DuneXtLaListVectorArray. Here, a copy is made
             for each MPI rank, so this uses num_cores times the memory of the NumpyVectorArray (e.g. for 12
             cores per node, it uses 12 times as much memory.
@@ -61,7 +61,7 @@ class MPIWrapper:
                     del v
             else:
                 self.comm_rank_0_group.Bcast([modes_numpy, MPI.DOUBLE], root=0)
-        self.comm_world.Barrier()  # without this barrier, non-zero ranks might be too fast 
+        self.comm_world.Barrier()  # without this barrier, non-zero ranks might be too fast
         if returnlistvectorarray:
             modes = DuneXtLaListVectorSpace.from_numpy(modes_numpy)
             win.Free()

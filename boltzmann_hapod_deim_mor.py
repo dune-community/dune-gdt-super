@@ -5,6 +5,7 @@ from timeit import default_timer as timer
 
 from mpi4py import MPI
 import numpy as np
+from pymor.algorithms.ei import deim
 from pymor.reductors.basic import GenericRBReductor
 from pymor.operators.constructions import Concatenation, VectorArrayOperator
 from pymor.operators.ei import EmpiricalInterpolatedOperator
@@ -20,7 +21,10 @@ def calculate_l2_error_for_random_samples(basis, mpi, solver, grid_size, chunk_s
                                           params_per_rank=2,
                                           with_half_steps=True,
                                           basis_is_orthonormal=True,
-                                          eval_basis=None):
+                                          eval_basis=None,
+                                          deim_dofs=None,
+                                          deim_cb=None,
+                                          hyper_reduction='deim'):
     '''Calculates model reduction and projection error for random parameter'''
 
     random.seed(seed)
@@ -58,6 +62,13 @@ def calculate_l2_error_for_random_samples(basis, mpi, solver, grid_size, chunk_s
 
         # create reduced problem
         d = d.as_generic_type()
+        assert hyper_reduction in ('none', 'projection', 'deim')
+        if hyper_reduction == 'projection':
+            lf = Concatenation([VectorArrayOperator(eval_basis), VectorArrayOperator(eval_basis, adjoint=True), d.lf])
+            d = d.with_(lf=lf)
+        elif hyper_reduction == 'deim':
+            lf = EmpiricalInterpolatedOperator(d.lf, deim_dofs, deim_cb, False)
+            d = d.with_(lf=lf)
 
         reductor = GenericRBReductor(d.as_generic_type(), basis, basis_is_orthonormal=basis_is_orthonormal)
         rd = reductor.reduce()
@@ -90,14 +101,29 @@ if __name__ == "__main__":
     grid_size = int(sys.argv[1])
     chunk_size = int(sys.argv[2])
     tol = float(sys.argv[3])
-    omega = float(sys.argv[4])
+    deim_tol = float(sys.argv[4])
+    omega = float(sys.argv[5])
     orthonormalize=True
-    (basis, _, _, _, total_num_snaps, total_num_evals, _, mpi, _, _, _, _, solver) = \
-            boltzmann_binary_tree_hapod(grid_size, chunk_size, tol * grid_size, omega=omega, orthonormalize=orthonormalize)
+    (basis, eval_basis, _, _, total_num_snaps, total_num_evals, _, mpi, _, _, _, _, solver) = \
+            boltzmann_binary_tree_hapod(grid_size, chunk_size, tol * grid_size, deim_tol * grid_size, omega=omega,
+                                        orthonormalize=orthonormalize, calc_eval_basis=True)
     basis = mpi.shared_memory_bcast_modes(basis, returnlistvectorarray=True)
+    eval_basis = mpi.shared_memory_bcast_modes(eval_basis, returnlistvectorarray=True)
+    if mpi.rank_world == 0:
+        deim_dofs, deim_cb, _ = deim(eval_basis, len(eval_basis))
+        assert len(deim_cb) == len(eval_basis)
+    else:
+        deim_dofs = deim_cb = None
+    deim_dofs = mpi.comm_world.bcast(deim_dofs, root=0);
+    deim_cb = mpi.shared_memory_bcast_modes(deim_cb, returnlistvectorarray=True);
+
     red_errs, proj_errs, elapsed_red, elapsed_high_dim = calculate_l2_error_for_random_samples(basis, mpi, solver,
                                                                                                grid_size, chunk_size,
-                                                                                               basis_is_orthonormal=orthonormalize)
+                                                                                               basis_is_orthonormal=orthonormalize,
+                                                                                               eval_basis=eval_basis,
+                                                                                               deim_dofs=deim_dofs,
+                                                                                               deim_cb=deim_cb,
+                                                                                               hyper_reduction='deim')
 
     red_err = np.sqrt(np.sum(red_errs) / total_num_snaps) / grid_size if mpi.rank_world == 0 else None
     proj_err = np.sqrt(np.sum(proj_errs) / total_num_snaps) / grid_size if mpi.rank_world == 0 else None
