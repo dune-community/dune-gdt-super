@@ -18,7 +18,6 @@ from libboltzmann import CommonDenseVector
 
 IMPL_TYPES = (CommonDenseVector,)
 
-
 PARAMETER_TYPE = ParameterType({'s': (4,)})
 
 
@@ -61,14 +60,20 @@ class Solver(Parametric):
     def get_initial_values(self):
         return self.solution_space.make_array([self.impl.get_initial_values()])
 
-    def set_rhs_operator_params(self, sigma_s_scattering=1, sigma_s_absorbing=0, sigma_t_scattering=1,
+    def set_rhs_operator_params(self,
+                                sigma_s_scattering=1,
+                                sigma_s_absorbing=0,
+                                sigma_t_scattering=1,
                                 sigma_t_absorbing=10):
         mu = (sigma_s_scattering, sigma_s_absorbing, sigma_t_scattering, sigma_t_absorbing)
         if mu != self.last_mu:
             self.last_mu = mu
             self.impl.set_rhs_operator_parameters(*mu)
 
-    def set_rhs_timestepper_params(self, sigma_s_scattering=1, sigma_s_absorbing=0, sigma_t_scattering=1,
+    def set_rhs_timestepper_params(self,
+                                   sigma_s_scattering=1,
+                                   sigma_s_absorbing=0,
+                                   sigma_t_scattering=1,
                                    sigma_t_absorbing=10):
         mu = (sigma_s_scattering, sigma_s_absorbing, sigma_t_scattering, sigma_t_absorbing)
         if mu != self.last_mu:
@@ -80,14 +85,30 @@ class BoltzmannDiscretizationBase(DiscretizationBase):
 
     special_operators = frozenset({'lf', 'rhs', 'initial_data'})
 
-    def __init__(self, nt=60, dt=0.056, t_end=3.2, initial_data=None, operators=None,
-                 products=None, estimator=None, visualizer=None, parameter_space=None,
-                 cache_region=None, name=None, lf=None, rhs=None):
+    def __init__(self,
+                 nt=60,
+                 dt=0.056,
+                 t_end=3.2,
+                 initial_data=None,
+                 operators=None,
+                 products=None,
+                 estimator=None,
+                 visualizer=None,
+                 parameter_space=None,
+                 cache_region=None,
+                 name=None,
+                 lf=None,
+                 rhs=None):
         super(BoltzmannDiscretizationBase, self).__init__(
-            operators=operators, products=products,
-            estimator=estimator, visualizer=visualizer, cache_region=cache_region, name=name,
-            lf=lf, rhs=rhs, initial_data=initial_data
-        )
+            operators=operators,
+            products=products,
+            estimator=estimator,
+            visualizer=visualizer,
+            cache_region=cache_region,
+            name=name,
+            lf=lf,
+            rhs=rhs,
+            initial_data=initial_data)
         self.nt = nt
         self.dt = dt
         self.t_end = t_end
@@ -117,14 +138,14 @@ class BoltzmannDiscretizationBase(DiscretizationBase):
         for n in range(self.nt):
             dt = self.dt if n != self.nt - 1 else final_dt
             self.logger.info('Time step {}'.format(n))
-            param = Parameter({'t' : n*self.dt, 'dt': self.dt})
+            param = Parameter({'t': n * self.dt, 'dt': self.dt})
             param['s'] = mu['s']
             V = U_last - self.lf.apply(U_last, param) * dt
             #if cvxopt_P is not None and not self.is_realizable(V, basis):
             #    V = self.project_to_realizable_set(V, cvxopt_P, cvxopt_G, cvxopt_h, V.dim, V.space)
             if return_half_steps:
                 U_half.append(V)
-            U_last = V + rhs.apply(V, mu=mu) * dt # explicit Euler for RHS
+            U_last = V + rhs.apply(V, mu=mu) * dt     # explicit Euler for RHS
             #if cvxopt_P is not None and not self.is_realizable(U_last, basis):
             #    U_last = self.project_to_realizable_set(U_last, cvxopt_P, cvxopt_G, cvxopt_h, V.dim, V.space)
             # matrix exponential for RHS
@@ -151,12 +172,10 @@ class DuneDiscretization(BoltzmannDiscretizationBase):
         self.solver = solver = Solver(*args)
         initial_data = VectorOperator(solver.get_initial_values())
         # lf_operator = LFOperator(self.solver)
-        lf_operator = KineticOperator(self.solver) # Todo: rename from lf_operator to kinetic_operator
+        lf_operator = KineticOperator(self.solver)     # Todo: rename from lf_operator to kinetic_operator
         self.non_decomp_rhs_operator = ndrhs = RHSOperator(self.solver)
         param = solver.parse_parameter([0., 0., 0., 0.])
-        affine_part = ConstantOperator(ndrhs.apply(initial_data.range.zeros(),
-                                                   mu=param),
-                                       initial_data.range)
+        affine_part = ConstantOperator(ndrhs.apply(initial_data.range.zeros(), mu=param), initial_data.range)
         rhs_operator = affine_part + \
             LincombOperator(
                 [LinearOperator(FixedParameterOperator(RHSOperator(self.solver),
@@ -176,9 +195,15 @@ class DuneDiscretization(BoltzmannDiscretizationBase):
                  ExpressionParameterFunctional('s[3]', PARAMETER_TYPE)]
             )
         param_space = CubicParameterSpace(PARAMETER_TYPE, 0., 10.)
-        super(DuneDiscretization, self).__init__(initial_data=initial_data, lf=lf_operator, rhs=rhs_operator,
-                                                 t_end=solver.t_end(), nt=nt, dt=dt,
-                                                 parameter_space=param_space, name='DuneDiscretization')
+        super(DuneDiscretization, self).__init__(
+            initial_data=initial_data,
+            lf=lf_operator,
+            rhs=rhs_operator,
+            t_end=solver.t_end(),
+            nt=nt,
+            dt=dt,
+            parameter_space=param_space,
+            name='DuneDiscretization')
 
     def _solve(self, mu=None, return_half_steps=False):
         return self.as_generic_type().with_(rhs=self.non_decomp_rhs_operator) \
@@ -208,11 +233,11 @@ class LFOperator(DuneOperatorBase):
 
     def apply(self, U, mu=None):
         assert U in self.source
-        return self.range.make_array(
-            [self.solver.impl.apply_LF_operator(u.impl,
-                                                mu['t'] if mu is not None and 't' in mu else 0.,
-                                                mu['dt'] if mu is not None and 'dt' in mu else self.dt)
-             for u in U._list])
+        return self.range.make_array([
+            self.solver.impl.apply_LF_operator(u.impl, mu['t'] if mu is not None and 't' in mu else 0.,
+                                               mu['dt'] if mu is not None and 'dt' in mu else self.dt) for u in U._list
+        ])
+
 
 class RestrictedKineticOperator(RestrictedDuneOperatorBase):
 
@@ -224,14 +249,15 @@ class RestrictedKineticOperator(RestrictedDuneOperatorBase):
         self.solver.impl.prepare_restricted_operator(dofs_as_list)
         super(RestrictedKineticOperator, self).__init__(solver, self.solver.impl.len_source_dofs(), len(dofs))
 
-
     def apply(self, U, mu=None):
         assert U in self.source
         # hack to ensure realizability for hatfunction moment models
         for vec in U._data:
-           vec[np.where(vec < 1e-8)] = 1e-8
+            vec[np.where(vec < 1e-8)] = 1e-8
         U = DuneXtLaListVectorSpace.from_numpy(U.to_numpy())
-        ret = [DuneXtLaVector(self.solver.impl.apply_restricted_kinetic_operator(u.impl)).to_numpy(True) for u in U._list]
+        ret = [
+            DuneXtLaVector(self.solver.impl.apply_restricted_kinetic_operator(u.impl)).to_numpy(True) for u in U._list
+        ]
         return self.range.make_array(ret)
 
 
@@ -243,13 +269,13 @@ class KineticOperator(DuneOperatorBase):
         assert U in self.source
         # hack to ensure realizability for hatfunction moment models
         for vec in U._data:
-           vec[np.where(vec < 1e-8)] = 1e-8
-        return self.range.make_array(
-            [self.solver.impl.apply_kinetic_operator(u.impl,
-                                                float(mu['t']) if mu is not None and 't' in mu else 0.,
-                                                float(mu['dt']) if mu is not None and 'dt' in mu else self.dt)
-             for u in U._list])
-
+            vec[np.where(vec < 1e-8)] = 1e-8
+        return self.range.make_array([
+            self.solver.impl.apply_kinetic_operator(u.impl,
+                                                    float(mu['t']) if mu is not None and 't' in mu else 0.,
+                                                    float(mu['dt']) if mu is not None and 'dt' in mu else self.dt)
+            for u in U._list
+        ])
 
     def restricted(self, dofs):
         return RestrictedKineticOperator(self.solver, dofs), np.array(self.solver.impl.source_dofs())

@@ -10,6 +10,7 @@ class MPIWrapper:
     '''Stores MPI communicators for all ranks (world), for all ranks on a single compute node (proc)
        and for all ranks that have rank 0 on their compute node (rank_0_group).
        Further provides some convenience functions for using MPI for VectorArrays'''
+
     def __init__(self):
         # Preparation: setup MPI
         # create world communicator
@@ -24,8 +25,8 @@ class MPIWrapper:
 
         # create communicator containing rank 0 processes from each processor
         self.contained_in_rank_0_group = 1 if self.rank_proc == 0 else 0
-        self.comm_rank_0_group = BoltzmannMPICommunicator(self.comm_world.Split(self.contained_in_rank_0_group,
-                                                                                self.rank_world))
+        self.comm_rank_0_group = BoltzmannMPICommunicator(
+            self.comm_world.Split(self.contained_in_rank_0_group, self.rank_world))
         self.size_rank_0_group = self.comm_rank_0_group.size
         self.rank_rank_0_group = self.comm_rank_0_group.rank
 
@@ -61,7 +62,7 @@ class MPIWrapper:
                     del v
             else:
                 self.comm_rank_0_group.Bcast([modes_numpy, MPI.DOUBLE], root=0)
-        self.comm_world.Barrier()  # without this barrier, non-zero ranks might be too fast
+        self.comm_world.Barrier()     # without this barrier, non-zero ranks might be too fast
         if returnlistvectorarray:
             modes = DuneXtLaListVectorSpace.from_numpy(modes_numpy)
             win.Free()
@@ -82,20 +83,21 @@ class BoltzmannMPICommunicator(MPICommunicator, MPI.Intracomm):
         comm = self.comm
         rank = comm.Get_rank()
         comm.send([len(modes), len(svals) if svals is not None else 0, num_snaps_in_leafs, modes[0].dim],
-                  dest=dest, tag=rank+1000)
-        comm.Send(modes.data, dest=dest, tag=rank+2000)
+                  dest=dest,
+                  tag=rank + 1000)
+        comm.Send(modes.data, dest=dest, tag=rank + 2000)
         if svals is not None:
-            comm.Send(svals, dest=dest, tag=rank+3000)
+            comm.Send(svals, dest=dest, tag=rank + 3000)
 
     def recv_modes(self, source):
         comm = self.comm
-        len_modes, len_svals, total_num_snapshots, vector_length = comm.recv(source=source, tag=source+1000)
+        len_modes, len_svals, total_num_snapshots, vector_length = comm.recv(source=source, tag=source + 1000)
         received_array = np.empty(shape=(len_modes, vector_length))
-        comm.Recv(received_array, source=source, tag=source+2000)
+        comm.Recv(received_array, source=source, tag=source + 2000)
         modes = DuneXtLaListVectorSpace.from_numpy(received_array)
         svals = np.empty(shape=(len_modes,))
         if len_svals > 0:
-            comm.Recv(svals, source=source, tag=source+3000)
+            comm.Recv(svals, source=source, tag=source + 3000)
 
         return modes, svals, total_num_snapshots
 
@@ -103,7 +105,7 @@ class BoltzmannMPICommunicator(MPICommunicator, MPI.Intracomm):
         comm = self.comm
         rank = comm.Get_rank()
         if svals is not None:
-            assert(len(svals) == len(vectorarray))
+            assert (len(svals) == len(vectorarray))
         num_snapshots_in_associated_leafs = comm.reduce(num_snapshots_on_rank, op=MPI.SUM, root=0)
         total_num_modes = comm.reduce(len(vectorarray), op=MPI.SUM, root=0)
         vector_length = vectorarray[0].dim if len(vectorarray) > 0 else 0
@@ -120,7 +122,7 @@ class BoltzmannMPICommunicator(MPICommunicator, MPI.Intracomm):
                 comm.Gather(svals, svals_gathered, root=0)
         else:
             # Gatherv needed because every process can send a different number of modes
-            counts = comm.gather(len(vectorarray)*vector_length, root=0)
+            counts = comm.gather(len(vectorarray) * vector_length, root=0)
             if svals is not None:
                 counts_svals = comm.gather(len(vectorarray), root=0)
             if rank == 0:
@@ -141,9 +143,9 @@ class BoltzmannMPICommunicator(MPICommunicator, MPI.Intracomm):
         if rank == 0:
             vectors_gathered = DuneXtLaListVectorSpace.from_numpy(vectors_gathered)
         return vectors_gathered, svals_gathered, num_snapshots_in_associated_leafs, offsets_svals
- 
+
     def __getattr__(self, item):
         if item in self.__dict__:
-            return self.__dict__[item] 
+            return self.__dict__[item]
         else:
-            return self.comm.__getattr__(item) # redirection
+            return self.comm.__getattr__(item)     # redirection

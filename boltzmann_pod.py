@@ -32,17 +32,17 @@ def boltzmann_pod(grid_size, tol, logfile=None):
     # perform a POD
     elapsed_pod = 0
     if mpi.rank_world == 0:
-        result, svals = pod(result, atol=0., rtol=0., l2_err=tol*np.sqrt(total_num_snapshots))
+        result, svals = pod(result, atol=0., rtol=0., l2_err=tol * np.sqrt(total_num_snapshots))
         elapsed_pod = timer() - start
 
     # write statistics to file
     if logfile is not None and mpi.rank_world == 0:
-            logfile.write("After the POD, there are " + str(len(result)) + " modes of "
-                          + str(total_num_snapshots) + " snapshots left!\n")
-            logfile.write("The maximum amount of memory used on rank 0 was: " +
-                          str(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1000.**2) + " GB\n")
-            elapsed = timer() - start
-            logfile.write("Time elapsed: " + str(elapsed) + "\n")
+        logfile.write("After the POD, there are " + str(len(result)) + " modes of " + str(total_num_snapshots) +
+                      " snapshots left!\n")
+        logfile.write("The maximum amount of memory used on rank 0 was: " +
+                      str(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1000.**2) + " GB\n")
+        elapsed = timer() - start
+        logfile.write("Time elapsed: " + str(elapsed) + "\n")
 
     return result, svals, total_num_snapshots, mu, mpi, elapsed_data_gen, elapsed_pod, solver
 
