@@ -70,8 +70,10 @@ def calculate_l2_error_for_random_samples(basis, mpi, solver, grid_size, chunk_s
             lf = EmpiricalInterpolatedOperator(d.lf, deim_dofs, deim_cb, False)
             d = d.with_(lf=lf)
 
+        start = timer()
         reductor = GenericRBReductor(d.as_generic_type(), basis, basis_is_orthonormal=basis_is_orthonormal)
         rd = reductor.reduce()
+        print("Reduction took ", timer() - start)
 
         # solve reduced problem
         start = timer()
@@ -105,7 +107,7 @@ if __name__ == "__main__":
     omega = float(sys.argv[5])
     orthonormalize=True
     (basis, eval_basis, _, _, total_num_snaps, total_num_evals, _, mpi, _, _, _, _, solver) = \
-            boltzmann_binary_tree_hapod(grid_size, chunk_size, tol * grid_size, deim_tol * grid_size, omega=omega,
+            boltzmann_binary_tree_hapod(grid_size, chunk_size, tol*grid_size, eval_tol=deim_tol*grid_size, omega=omega,
                                         orthonormalize=orthonormalize, calc_eval_basis=True)
     basis = mpi.shared_memory_bcast_modes(basis, returnlistvectorarray=True)
     eval_basis = mpi.shared_memory_bcast_modes(eval_basis, returnlistvectorarray=True)
@@ -135,3 +137,5 @@ if __name__ == "__main__":
         print('Solving the reduced problem took %g seconds on average.' % elapsed_red_mean)
         print('The mean l2 reduction error and mean l2 projection error were %g and %g, respectively.'
               % (red_err, proj_err))
+        print('Basis size and collateral basis size were %g and %g, respectively.'
+              % (len(basis), len(eval_basis)))
