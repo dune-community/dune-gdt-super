@@ -80,7 +80,7 @@ def calculate_l2_error_for_random_samples(basis,
         U_rb = rd.solve(mu)
         elapsed_red += timer() - start
 
-        # reconstruct high-dimensional solution, calculate error
+        # reconstruct high-dimensional solution, calculate l^2 error
         U_rb = reductor.reconstruct(U_rb)
         red_errs += np.sum((U - U_rb).l2_norm()**2)
         proj_errs += np.sum((U - basis.lincomb(U.dot(basis))).l2_norm()**2)
@@ -101,13 +101,19 @@ if __name__ == "__main__":
     '''Computes HAPOD to get reduced basis and then calculate projection and model reduction error for random samples'''
     grid_size = int(sys.argv[1])
     chunk_size = int(sys.argv[2])
-    tol = float(sys.argv[3])
-    deim_tol = float(sys.argv[4])
+    L2_tol = float(sys.argv[3])
+    L2_deim_tol = float(sys.argv[4])
     omega = float(sys.argv[5])
     orthonormalize = True
+    # We want to prescribe the mean L^2 error, but the HAPOD works with the l^2 error, so rescale tolerance
+    tol_scale_factor = (grid_size/7)**(3/2)
+    l2_tol = L2_tol * tol_scale_factor
+    l2_deim_tol = L2_deim_tol * tol_scale_factor
+    start = timer()
     (basis, eval_basis, _, _, total_num_snaps, total_num_evals, _, mpi, _, _, _, _, solver) = \
-            boltzmann_binary_tree_hapod(grid_size, chunk_size, tol*grid_size, eval_tol=deim_tol*grid_size, omega=omega,
+            boltzmann_binary_tree_hapod(grid_size, chunk_size, l2_tol, eval_tol=l2_deim_tol, omega=omega,
                                         orthonormalize=orthonormalize, calc_eval_basis=True)
+    elapsed_basis_gen = timer() - start
     basis = mpi.shared_memory_bcast_modes(basis, returnlistvectorarray=True)
     eval_basis = mpi.shared_memory_bcast_modes(eval_basis, returnlistvectorarray=True)
     if mpi.rank_world == 0:
@@ -120,6 +126,7 @@ if __name__ == "__main__":
     deim_cb = mpi.shared_memory_bcast_modes(
         deim_cb, returnlistvectorarray=True)
 
+    # the function returns arrays of l^2 errors, each entry representing results for one snapshot
     red_errs, proj_errs, elapsed_red, elapsed_high_dim = calculate_l2_error_for_random_samples(
         basis,
         mpi,
@@ -132,14 +139,16 @@ if __name__ == "__main__":
         deim_cb=deim_cb,
         hyper_reduction='deim')
 
-    red_err = np.sqrt(np.sum(red_errs) / total_num_snaps) / grid_size if mpi.rank_world == 0 else None
-    proj_err = np.sqrt(np.sum(proj_errs) / total_num_snaps) / grid_size if mpi.rank_world == 0 else None
+    # calculate mean l^2 errors, convert back to L^2 errors, calculate mean execution times
+    red_err = np.sqrt(np.sum(red_errs) / total_num_snaps) / tol_scale_factor if mpi.rank_world == 0 else None
+    proj_err = np.sqrt(np.sum(proj_errs) / total_num_snaps) / tol_scale_factor if mpi.rank_world == 0 else None
     elapsed_red_mean = np.sum(elapsed_red) / len(elapsed_red) if mpi.rank_world == 0 else None
     elapsed_high_dim_mean = np.sum(elapsed_high_dim) / len(elapsed_high_dim) if mpi.rank_world == 0 else None
     if mpi.rank_world == 0:
         print("\n\n\nResults:\n")
+        print('Creating the bases %g seconds.' % elapsed_basis_gen)
         print('Solving the high-dimensional problem took %g seconds on average.' % elapsed_high_dim_mean)
         print('Solving the reduced problem took %g seconds on average.' % elapsed_red_mean)
-        print('The mean l2 reduction error and mean l2 projection error were %g and %g, respectively.' % (red_err,
+        print('The mean L2 reduction error and mean L2 projection error were %g and %g, respectively.' % (red_err,
                                                                                                           proj_err))
         print('Basis size and collateral basis size were %g and %g, respectively.' % (len(basis), len(eval_basis)))
