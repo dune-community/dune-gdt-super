@@ -64,9 +64,8 @@ class MPIWrapper:
                 self.comm_rank_0_group.Bcast([modes_numpy, MPI.DOUBLE], root=0)
         self.comm_world.Barrier()     # without this barrier, non-zero ranks might be too fast
         if returnlistvectorarray:
-            modes = DuneXtLaListVectorSpace.from_numpy(modes_numpy)
-            win.Free()
-            return modes
+            modes = DuneXtLaListVectorSpace.from_memory(modes_numpy)
+            return modes, win
         else:
             modes = NumpyVectorSpace.from_numpy(modes_numpy)
             return modes, win

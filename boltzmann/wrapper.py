@@ -7,7 +7,7 @@ from pymor.operators.constructions import (VectorOperator, ConstantOperator, Lin
 from pymor.parameters.base import Parameter, ParameterType, Parametric
 from pymor.parameters.functionals import ExpressionParameterFunctional
 from pymor.parameters.spaces import CubicParameterSpace
-from pymor.vectorarrays.list import VectorInterface, ListVectorSpace
+from pymor.vectorarrays.list import VectorInterface, ListVectorSpace, ListVectorArray
 from pymor.vectorarrays.numpy import NumpyVectorArray, NumpyVectorSpace
 
 import libboltzmann
@@ -421,7 +421,17 @@ class DuneXtLaListVectorSpace(ListVectorSpace):
     def make_vector(self, obj):
         return DuneXtLaVector(obj)
 
+    @classmethod
+    def from_memory(cls, numpy_array):
+        (num_vecs, dim) = numpy_array.shape
+        vecs = []
+        for i in range(num_vecs):
+            vecs.append(DuneXtLaVector(CommonDenseVector.create_from_buffer(numpy_array.data, i * dim, dim)))
+        space = DuneXtLaListVectorSpace(dim)
+        return ListVectorArray(vecs, space)
+
     def vector_from_numpy(self, data, ensure_copy=False):
+        # TODO: do not copy if ensure_copy is False
         v = self.zero_vector()
-        v.data[:] = data.copy() if ensure_copy else data
+        v.data[:] = data
         return v
