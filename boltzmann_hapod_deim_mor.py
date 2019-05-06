@@ -107,8 +107,8 @@ def calculate_l2_error_for_random_samples(basis,
 
     # calculate mean l^2 errors and execution times
     print("num_tested_vecs", num_tested_vecs)
-    mean_red_err = np.sum(np.sqrt(red_errs)) / num_tested_vecs if mpi.rank_world == 0 else 0.
-    mean_proj_err = np.sum(np.sqrt(proj_errs)) / num_tested_vecs if mpi.rank_world == 0 else 0.
+    mean_red_err = np.sqrt(np.sum(red_errs) / num_tested_vecs) if mpi.rank_world == 0 else 0.
+    mean_proj_err = np.sqrt(np.sum(proj_errs) / num_tested_vecs) if mpi.rank_world == 0 else 0.
     elapsed_red_mean = np.sum(elapsed_red) / len(elapsed_red) if mpi.rank_world == 0 else 0.
     elapsed_high_dim_mean = np.sum(elapsed_high_dim) / len(elapsed_high_dim) if mpi.rank_world == 0 else 0.
 
