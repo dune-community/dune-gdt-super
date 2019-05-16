@@ -1,0 +1,47 @@
+stages:
+  - base
+  - modules
+
+variables:
+  GIT_SUBMODULE_STRATEGY: none
+
+.docker-in-docker:
+    retry:
+        max: 2
+        when:
+            - always
+    image: docker:stable
+    variables:
+        DOCKER_HOST: tcp://docker:2375/
+        DOCKER_DRIVER: overlay2
+    before_script:
+        - apk --update add openssh-client rsync git file bash python3
+        - pip3 install -U docker jinja2 docopt
+        - echo $DOCKER_PW | docker login --username="$DOCKER_USER" --password-stdin
+        - git submodule update --init .ci/shared
+    services:
+        - docker:dind
+    environment:
+        name: unsafe
+    stage: modules
+    script: .ci/shared/docker/update_test_dockers.py ${MODULE_NAME}
+
+base:
+    extends: .docker-in-docker
+    stage: base
+    variables:
+      MODULE_NAME: BASE
+
+gdt:
+    extends: .docker-in-docker
+    variables:
+      MODULE_NAME: dune-gdt
+
+super:
+  extends: .docker-in-docker
+  variables:
+    BASE: debian
+    IMAGE: dunecommunity/gdt-super_${BASE}:${CI_COMMIT_SHA}
+  script: |
+    docker build --build-arg BASE=${BASE} -t ${IMAGE} -f .ci/shared/docker/super_docker/Dockerfile .
+    docker push ${IMAGE}
