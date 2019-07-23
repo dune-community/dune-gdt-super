@@ -11,6 +11,9 @@ variables:
         when:
             - always
     image: docker:stable
+    tags:
+      - long execution time
+      - docker-in-docker
     variables:
         DOCKER_HOST: tcp://docker:2375/
         DOCKER_DRIVER: overlay2
