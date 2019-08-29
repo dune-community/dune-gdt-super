@@ -14,6 +14,7 @@ from boltzmannutility import solver_statistics
 
 #from cvxopt import matrix as cvxmatrix
 
+
 def calculate_l2_error_for_random_samples(basis,
                                           mpi,
                                           solver,

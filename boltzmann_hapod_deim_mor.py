@@ -27,7 +27,8 @@ def calculate_l2_error_for_random_samples(basis,
                                           with_half_steps=True,
                                           deim_dofs=None,
                                           deim_cb=None,
-                                          hyper_reduction='deim'):
+                                          hyper_reduction='deim',
+                                          linear=False):
     '''Calculates model reduction and projection error for random parameter'''
 
     random.seed(seed)
@@ -50,14 +51,14 @@ def calculate_l2_error_for_random_samples(basis,
         mu = [random.uniform(0., 8.), random.uniform(0., 8.), 0., random.uniform(0., 8.)]
 
         # solve without saving solution to measure time
-        fom = DuneModel(nt, solver.time_step_length(), '', 0, grid_size, False, True, *mu)
+        fom = DuneModel(nt, solver.time_step_length(), '', 0, grid_size, False, True, *mu, linear)
         parsed_mu = fom.parse_parameter(mu)
         start = timer()
         fom.solve(parsed_mu, return_half_steps=False)
         elapsed_high_dim += timer() - start
 
         # now create Model that saves time steps to calculate error
-        fom = DuneModel(nt, solver.time_step_length(), '', 2000000, grid_size, False, False, *mu)
+        fom = DuneModel(nt, solver.time_step_length(), '', 2000000, grid_size, False, False, *mu, linear)
         assert hyper_reduction in ('none', 'projection', 'deim')
         if hyper_reduction == 'projection':
             lf = Concatenation([VectorArrayOperator(deim_cb), VectorArrayOperator(deim_cb, adjoint=True), fom.lf])
@@ -130,7 +131,8 @@ if __name__ == "__main__":
     logfile = open(filename, "a")
     start = timer()
     (basis, eval_basis, _, _, total_num_snaps, total_num_evals, _, mpi, _, _, _, _, solver) = \
-            boltzmann_binary_tree_hapod(grid_size, chunk_size, l2_tol, eval_tol=l2_deim_tol, omega=omega, calc_eval_basis=True, logfile=logfile)
+            boltzmann_binary_tree_hapod(grid_size, chunk_size, l2_tol, eval_tol=l2_deim_tol, omega=omega,
+                                        calc_eval_basis=True, logfile=logfile,linear=False)
     logfile.close()
     logfile = open(filename, "a")
     elapsed_basis_gen = timer() - start
@@ -145,7 +147,15 @@ if __name__ == "__main__":
 
     # the function returns arrays of l^2 errors, each entry representing results for one snapshot
     red_err, proj_err, elapsed_red, elapsed_high_dim = calculate_l2_error_for_random_samples(
-        basis, mpi, solver, grid_size, chunk_size, deim_dofs=deim_dofs, deim_cb=deim_cb, hyper_reduction='deim')
+        basis,
+        mpi,
+        solver,
+        grid_size,
+        chunk_size,
+        deim_dofs=deim_dofs,
+        deim_cb=deim_cb,
+        hyper_reduction='deim',
+        linear=False)
 
     # convert back to L^2 errors
     red_err = red_err / tol_scale_factor

@@ -32,6 +32,9 @@ class Solver(Parametric):
         self.solution_space = DuneXtLaListVectorSpace(self.impl.get_initial_values().dim())
         self.build_parameter_type(PARAMETER_TYPE)
 
+    def linear(self):
+        return self.impl.linear();
+
     def solve(self, with_half_steps=True):
         return self.solution_space.make_array(self.impl.solve(with_half_steps))
 
@@ -201,6 +204,7 @@ class DuneOperatorBase(OperatorBase):
 
     def __init__(self, solver):
         self.solver = solver
+        self.linear = solver.linear();
         self.source = self.range = solver.solution_space
         self.dt = solver.time_step_length()
 
@@ -251,13 +255,12 @@ class RestrictedKineticOperator(RestrictedDuneOperatorBase):
 
 class KineticOperator(DuneOperatorBase):
 
-    linear = False
-
     def apply(self, U, mu=None):
         assert U in self.source
-        # hack to ensure realizability for hatfunction moment models
-        for vec in U._data:
-            vec[np.where(vec < 1e-8)] = 1e-8
+        if not self.linear:
+            # hack to ensure realizability for hatfunction moment models
+            for vec in U._data:
+                vec[np.where(vec < 1e-8)] = 1e-8
         return self.range.make_array([
             self.solver.impl.apply_kinetic_operator(u.impl,
                                                     float(mu['t']) if mu is not None and 't' in mu else 0.,

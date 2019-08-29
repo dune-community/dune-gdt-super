@@ -32,10 +32,10 @@ def create_and_scatter_boltzmann_parameters(comm, min_param=0., max_param=8.):
     return comm.scatter(parameters_list, root=0)
 
 
-def create_boltzmann_solver(gridsize, mu):
+def create_boltzmann_solver(gridsize, mu, linear=True):
     return wrapper.Solver(
         "boltzmann_sigma_s_s_" + str(mu[0]) + "_a_" + str(mu[1]) + "sigma_t_s_" + str(mu[2]) + "_a_" + str(mu[3]),
-        2000000, gridsize, False, False, *mu)
+        2000000, gridsize, False, False, *mu, linear)
 
 
 def solver_statistics(solver, chunk_size, with_half_steps=True):
