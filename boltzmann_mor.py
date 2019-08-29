@@ -5,16 +5,14 @@ from timeit import default_timer as timer
 
 from mpi4py import MPI
 import numpy as np
-from pymor.reductors.basic import GenericRBReductor
 from pymor.operators.constructions import Concatenation, VectorArrayOperator
 from pymor.operators.ei import EmpiricalInterpolatedOperator
 
-from boltzmann.wrapper import DuneModel
+from boltzmann.wrapper import DuneModel, BoltzmannModelBase, BoltzmannRBReductor
 from boltzmann_binary_tree_hapod import boltzmann_binary_tree_hapod
 from boltzmannutility import solver_statistics
 
 #from cvxopt import matrix as cvxmatrix
-
 
 def calculate_l2_error_for_random_samples(basis,
                                           mpi,
@@ -45,26 +43,23 @@ def calculate_l2_error_for_random_samples(basis,
     for _ in range(params_per_rank):
         mu = [random.uniform(0., 8.), random.uniform(0., 8.), 0., random.uniform(0., 8.)]
 
-        d = DuneModel(nt, solver.time_step_length(), '', 2000000, grid_size, False, True, *mu)
+        fom = DuneModel(nt, solver.time_step_length(), '', 2000000, grid_size, False, True, *mu)
 
-        mu = d.parse_parameter(mu)
+        mu = fom.parse_parameter(mu)
 
         # calculate high-dimensional solution
         start = timer()
-        U = d.solve(mu, return_half_steps=False)
+        U = fom.solve(mu, return_half_steps=False)
         elapsed_high_dim += timer() - start
 
-        # create reduced problem
-        d = d.as_generic_type()
-
-        reductor = GenericRBReductor(d.as_generic_type(), basis, basis_is_orthonormal=basis_is_orthonormal)
-        rd = reductor.reduce()
+        reductor = BoltzmannRBReductor(fom, basis)
+        rom = reductor.reduce()
 
         # solve reduced problem
         start = timer()
 
         # U_rb = rd.solve(mu, cvxopt_P=cvxopt_P, cvxopt_G=cvxopt_G, cvxopt_h=cvxopt_h,basis=basis)
-        U_rb = rd.solve(mu)
+        U_rb = rom.solve(mu)
         elapsed_red += timer() - start
 
         # reconstruct high-dimensional solution, calculate error
@@ -93,7 +88,7 @@ if __name__ == "__main__":
     orthonormalize = True
     (basis, _, _, _, total_num_snaps, total_num_evals, _, mpi, _, _, _, _, solver) = \
             boltzmann_binary_tree_hapod(grid_size, chunk_size, tol * grid_size, omega=omega, orthonormalize=orthonormalize)
-    basis = mpi.shared_memory_bcast_modes(basis, returnlistvectorarray=True)
+    basis, win = mpi.shared_memory_bcast_modes(basis, returnlistvectorarray=True)
     red_errs, proj_errs, elapsed_red, elapsed_high_dim = calculate_l2_error_for_random_samples(
         basis, mpi, solver, grid_size, chunk_size, basis_is_orthonormal=orthonormalize)
 

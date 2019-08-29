@@ -1,5 +1,6 @@
 import numpy as np
 
+from pymor.algorithms.projection import project
 from pymor.models.basic import ModelBase
 from pymor.operators.basic import OperatorBase
 from pymor.operators.constructions import (VectorOperator, ConstantOperator, LincombOperator, LinearOperator,
@@ -7,6 +8,7 @@ from pymor.operators.constructions import (VectorOperator, ConstantOperator, Lin
 from pymor.parameters.base import Parameter, ParameterType, Parametric
 from pymor.parameters.functionals import ExpressionParameterFunctional
 from pymor.parameters.spaces import CubicParameterSpace
+from pymor.reductors.basic import ProjectionBasedReductor
 from pymor.vectorarrays.list import VectorInterface, ListVectorSpace, ListVectorArray
 from pymor.vectorarrays.numpy import NumpyVectorArray, NumpyVectorSpace
 
@@ -83,38 +85,29 @@ class Solver(Parametric):
 
 class BoltzmannModelBase(ModelBase):
 
-    special_operators = frozenset({'lf', 'rhs', 'initial_data'})
-
     def __init__(self,
+                 lf,
+                 rhs,
+                 initial_data,
                  nt=60,
                  dt=0.056,
                  t_end=3.2,
-                 initial_data=None,
                  operators=None,
                  products=None,
                  estimator=None,
                  visualizer=None,
                  parameter_space=None,
                  cache_region=None,
-                 name=None,
-                 lf=None,
-                 rhs=None):
-        super(BoltzmannModelBase, self).__init__(
-            operators=operators,
+                 name=None):
+        super().__init__(
             products=products,
             estimator=estimator,
             visualizer=visualizer,
             cache_region=cache_region,
-            name=name,
-            lf=lf,
-            rhs=rhs,
-            initial_data=initial_data)
-        self.nt = nt
-        self.dt = dt
-        self.t_end = t_end
-        self.solution_space = self.initial_data.range
+            name=name)
         self.build_parameter_type(PARAMETER_TYPE)
-        self.parameter_space = parameter_space
+        self.__auto_init(locals())
+        self.solution_space = self.initial_data.range
 
     #def project_to_realizable_set(self, vec, cvxopt_P, cvxopt_G, cvxopt_h, dim, space):
     #    cvxopt_q = cvxmatrix(-vec.to_numpy().transpose(), size=(dim,1), tc='d')
@@ -128,7 +121,8 @@ class BoltzmannModelBase(ModelBase):
     #    vec = basis.lincomb(coeffs._data)
     #    return np.all(np.greater_equal(vec._data, tol))
 
-    def _solve(self, mu=None, return_half_steps=False, cvxopt_P=None, cvxopt_G=None, cvxopt_h=None, basis=None):
+    def _solve(self, mu=None, return_output=False, return_half_steps=False, cvxopt_P=None, cvxopt_G=None, cvxopt_h=None, basis=None):
+        assert not return_output
         U = self.initial_data.as_vector(mu)
         U_half = U.empty()
         U_last = U.copy()
@@ -156,14 +150,6 @@ class BoltzmannModelBase(ModelBase):
             return U, U_half
         else:
             return U
-
-    def as_generic_type(self):
-        init_args = {k: getattr(self, k) for k in BoltzmannModelBase._init_arguments}
-        operators = dict(self.operators)
-        for on in self.special_operators:
-            del operators[on]
-        init_args['operators'] = operators
-        return BoltzmannModelBase(**init_args)
 
 
 class DuneModel(BoltzmannModelBase):
@@ -195,7 +181,7 @@ class DuneModel(BoltzmannModelBase):
                  ExpressionParameterFunctional('s[3]', PARAMETER_TYPE)]
             )
         param_space = CubicParameterSpace(PARAMETER_TYPE, 0., 10.)
-        super(DuneModel, self).__init__(
+        super().__init__(
             initial_data=initial_data,
             lf=lf_operator,
             rhs=rhs_operator,
@@ -205,9 +191,10 @@ class DuneModel(BoltzmannModelBase):
             parameter_space=param_space,
             name='DuneModel')
 
-    def _solve(self, mu=None, return_half_steps=False):
-        return self.as_generic_type().with_(rhs=self.non_decomp_rhs_operator) \
-                                     .solve(mu=mu, return_half_steps=return_half_steps)
+    def _solve(self, mu=None, return_output=False, return_half_steps=False):
+        assert not return_output
+        return (self.with_(new_type=BoltzmannModelBase, rhs=self.non_decomp_rhs_operator)
+                    .solve(mu=mu, return_half_steps=return_half_steps))
 
 
 class DuneOperatorBase(OperatorBase):
@@ -435,3 +422,37 @@ class DuneXtLaListVectorSpace(ListVectorSpace):
         v = self.zero_vector()
         v.data[:] = data
         return v
+
+
+class BoltzmannRBReductor(ProjectionBasedReductor):
+    def __init__(self, fom, RB=None, check_orthonormality=None, check_tol=None):
+        assert isinstance(fom, BoltzmannModelBase)
+        RB = fom.solution_space.empty() if RB is None else RB
+        assert RB in fom.solution_space, (RB.space, fom.solution_space)
+        super().__init__(fom, {'RB': RB},
+                         check_orthonormality=check_orthonormality, check_tol=check_tol)
+
+    def project_operators(self):
+        fom = self.fom
+        RB = self.bases['RB']
+        projected_operators = {
+            'lf':           project(fom.lf, RB, RB),
+            'rhs':          project(fom.rhs, RB, RB),
+            'initial_data': project(fom.initial_data, RB, None),
+            'products':     {k: project(v, RB, RB) for k, v in fom.products.items()},
+        }
+        return projected_operators
+
+    def project_operators_to_subbasis(self, dims):
+        rom = self._last_rom
+        dim = dims['RB']
+        projected_operators = {
+            'lf':               project_to_subbasis(rom.lf, dim, dim),
+            'rhs':              project_to_subbasis(rom.rhs, dim, dim),
+            'initial_data':     project_to_subbasis(rom.initial_data, dim, None),
+            'products':         {k: project_to_subbasis(v, dim, dim) for k, v in rom.products.items()},
+        }
+        return projected_operators
+
+    def build_rom(self, projected_operators, estimator):
+        return self.fom.with_(new_type=BoltzmannModelBase, **projected_operators)
