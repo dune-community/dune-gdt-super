@@ -1,6 +1,6 @@
 import numpy as np
 
-from pymor.discretizations.basic import DiscretizationBase
+from pymor.models.basic import ModelBase
 from pymor.operators.basic import OperatorBase
 from pymor.operators.constructions import (VectorOperator, ConstantOperator, LincombOperator, LinearOperator,
                                            FixedParameterOperator)
@@ -81,7 +81,7 @@ class Solver(Parametric):
             self.impl.set_rhs_timestepper_parameters(*mu)
 
 
-class BoltzmannDiscretizationBase(DiscretizationBase):
+class BoltzmannModelBase(ModelBase):
 
     special_operators = frozenset({'lf', 'rhs', 'initial_data'})
 
@@ -99,7 +99,7 @@ class BoltzmannDiscretizationBase(DiscretizationBase):
                  name=None,
                  lf=None,
                  rhs=None):
-        super(BoltzmannDiscretizationBase, self).__init__(
+        super(BoltzmannModelBase, self).__init__(
             operators=operators,
             products=products,
             estimator=estimator,
@@ -158,15 +158,15 @@ class BoltzmannDiscretizationBase(DiscretizationBase):
             return U
 
     def as_generic_type(self):
-        init_args = {k: getattr(self, k) for k in BoltzmannDiscretizationBase._init_arguments}
+        init_args = {k: getattr(self, k) for k in BoltzmannModelBase._init_arguments}
         operators = dict(self.operators)
         for on in self.special_operators:
             del operators[on]
         init_args['operators'] = operators
-        return BoltzmannDiscretizationBase(**init_args)
+        return BoltzmannModelBase(**init_args)
 
 
-class DuneDiscretization(BoltzmannDiscretizationBase):
+class DuneModel(BoltzmannModelBase):
 
     def __init__(self, nt=60, dt=0.056, *args):
         self.solver = solver = Solver(*args)
@@ -195,7 +195,7 @@ class DuneDiscretization(BoltzmannDiscretizationBase):
                  ExpressionParameterFunctional('s[3]', PARAMETER_TYPE)]
             )
         param_space = CubicParameterSpace(PARAMETER_TYPE, 0., 10.)
-        super(DuneDiscretization, self).__init__(
+        super(DuneModel, self).__init__(
             initial_data=initial_data,
             lf=lf_operator,
             rhs=rhs_operator,
@@ -203,7 +203,7 @@ class DuneDiscretization(BoltzmannDiscretizationBase):
             nt=nt,
             dt=dt,
             parameter_space=param_space,
-            name='DuneDiscretization')
+            name='DuneModel')
 
     def _solve(self, mu=None, return_half_steps=False):
         return self.as_generic_type().with_(rhs=self.non_decomp_rhs_operator) \
@@ -400,9 +400,9 @@ class DuneXtLaVector(VectorInterface):
 
 class DuneXtLaListVectorSpace(ListVectorSpace):
 
-    def __init__(self, dim, id_=None):
+    def __init__(self, dim, id=None):
         self.dim = dim
-        self.id = id_
+        self.id = id
 
     def __eq__(self, other):
         return type(other) is DuneXtLaListVectorSpace and self.dim == other.dim and self.id == other.id
@@ -412,8 +412,8 @@ class DuneXtLaListVectorSpace(ListVectorSpace):
         return cls(len(vec), id_)
 
     @classmethod
-    def space_from_dim(cls, dim, id_):
-        return cls(dim, id_)
+    def space_from_dim(cls, dim, id):
+        return cls(dim, id)
 
     def zero_vector(self):
         return DuneXtLaVector(CommonDenseVector(self.dim, 0))

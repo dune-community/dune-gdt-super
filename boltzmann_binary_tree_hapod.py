@@ -201,8 +201,8 @@ if __name__ == "__main__":
     inc_gramian = not (sys.argv[5] == "False" or sys.argv[5] == "0") if len(sys.argv) > 5 else True
     filename = "HAPOD_binary_tree_gridsize_%d_chunksize_%d_tol_%f_omega_%f" % (grid_size, chunk_size, tol, omega)
     logfile = open(filename, "a")
-    final_modes, _, total_num_snapshots, mu, mpi, _, _, _ = boltzmann_binary_tree_hapod(
-        grid_size, chunk_size, tol * grid_size, omega=omega, logfile=logfile, incremental_gramian=inc_gramian)
+    final_modes, _, _, _,  total_num_snapshots, _, mu, mpi, _, _, _, _, _ = boltzmann_binary_tree_hapod(
+        grid_size, chunk_size, tol * grid_size, None, omega=omega, logfile=logfile, incremental_gramian=inc_gramian)
     final_modes, win = mpi.shared_memory_bcast_modes(final_modes)
     calculate_error(final_modes, grid_size, mu, total_num_snapshots, mpi, logfile=logfile)
     win.Free()

@@ -11,7 +11,7 @@ from pymor.operators.constructions import Concatenation, VectorArrayOperator
 from pymor.operators.ei import EmpiricalInterpolatedOperator
 from pymor.vectorarrays.numpy import NumpyVectorSpace
 
-from boltzmann.wrapper import DuneDiscretization
+from boltzmann.wrapper import DuneModel
 from boltzmann_binary_tree_hapod import boltzmann_binary_tree_hapod
 from boltzmannutility import solver_statistics, create_boltzmann_solver
 
@@ -51,14 +51,14 @@ def calculate_l2_error_for_random_samples(basis,
         mu = [random.uniform(0., 8.), random.uniform(0., 8.), 0., random.uniform(0., 8.)]
 
         # solve without saving solution to measure time
-        d = DuneDiscretization(nt, solver.time_step_length(), '', 0, grid_size, False, True, *mu)
+        d = DuneModel(nt, solver.time_step_length(), '', 0, grid_size, False, True, *mu)
         parsed_mu = d.parse_parameter(mu)
         start = timer()
         d.solve(parsed_mu, return_half_steps=False)
         elapsed_high_dim += timer() - start
 
-        # now create Discretization that saves time steps to calculate error
-        d = DuneDiscretization(nt, solver.time_step_length(), '', 2000000, grid_size, False, False, *mu)
+        # now create Model that saves time steps to calculate error
+        d = DuneModel(nt, solver.time_step_length(), '', 2000000, grid_size, False, False, *mu)
         d = d.as_generic_type()
         assert hyper_reduction in ('none', 'projection', 'deim')
         if hyper_reduction == 'projection':

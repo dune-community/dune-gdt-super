@@ -6,5 +6,5 @@ else
 fi
 rm -f $(pwd)/boltzmann/libboltzmann.so
 rm -f $(pwd)/libboltzmann.so
-ln -s $(pwd)/build/${build_type}/dune-gdt/dune/gdt/libboltzmann.so $(pwd)/
-ln -s $(pwd)/build/${build_type}/dune-gdt/dune/gdt/libboltzmann.so $(pwd)/boltzmann/
+ln -s $(pwd)/build/${build_type}/dune-gdt/lib/libboltzmann.so $(pwd)/
+ln -s $(pwd)/build/${build_type}/dune-gdt/lib/libboltzmann.so $(pwd)/boltzmann/
