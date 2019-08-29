@@ -8,7 +8,7 @@ import numpy as np
 from pymor.operators.constructions import Concatenation, VectorArrayOperator
 from pymor.operators.ei import EmpiricalInterpolatedOperator
 
-from boltzmann.wrapper import DuneModel, BoltzmannModelBase, BoltzmannRBReductor
+from boltzmann.wrapper import DuneModel, BoltzmannRBReductor
 from boltzmann_binary_tree_hapod import boltzmann_binary_tree_hapod
 from boltzmannutility import solver_statistics
 

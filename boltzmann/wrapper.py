@@ -232,6 +232,7 @@ class RestrictedKineticOperator(RestrictedDuneOperatorBase):
 
     def __init__(self, solver, dofs):
         self.solver = solver
+        self.dofs = dofs
         dofs_as_list = [int(i) for i in dofs]
         self.solver.impl.prepare_restricted_operator(dofs_as_list)
         super(RestrictedKineticOperator, self).__init__(solver, self.solver.impl.len_source_dofs(), len(dofs))

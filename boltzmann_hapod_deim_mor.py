@@ -6,12 +6,11 @@ from timeit import default_timer as timer
 from mpi4py import MPI
 import numpy as np
 from pymor.algorithms.ei import deim
-from pymor.reductors.basic import GenericRBReductor
 from pymor.operators.constructions import Concatenation, VectorArrayOperator
 from pymor.operators.ei import EmpiricalInterpolatedOperator
 from pymor.vectorarrays.numpy import NumpyVectorSpace
 
-from boltzmann.wrapper import DuneModel
+from boltzmann.wrapper import DuneModel, BoltzmannRBReductor, BoltzmannModelBase
 from boltzmann_binary_tree_hapod import boltzmann_binary_tree_hapod
 from boltzmannutility import solver_statistics, create_boltzmann_solver
 
@@ -51,33 +50,31 @@ def calculate_l2_error_for_random_samples(basis,
         mu = [random.uniform(0., 8.), random.uniform(0., 8.), 0., random.uniform(0., 8.)]
 
         # solve without saving solution to measure time
-        d = DuneModel(nt, solver.time_step_length(), '', 0, grid_size, False, True, *mu)
-        parsed_mu = d.parse_parameter(mu)
+        fom = DuneModel(nt, solver.time_step_length(), '', 0, grid_size, False, True, *mu)
+        parsed_mu = fom.parse_parameter(mu)
         start = timer()
-        d.solve(parsed_mu, return_half_steps=False)
+        fom.solve(parsed_mu, return_half_steps=False)
         elapsed_high_dim += timer() - start
 
         # now create Model that saves time steps to calculate error
-        d = DuneModel(nt, solver.time_step_length(), '', 2000000, grid_size, False, False, *mu)
-        d = d.as_generic_type()
+        fom = DuneModel(nt, solver.time_step_length(), '', 2000000, grid_size, False, False, *mu)
         assert hyper_reduction in ('none', 'projection', 'deim')
         if hyper_reduction == 'projection':
-            lf = Concatenation([VectorArrayOperator(deim_cb), VectorArrayOperator(deim_cb, adjoint=True), d.lf])
-            d = d.with_(lf=lf)
+            lf = Concatenation([VectorArrayOperator(deim_cb), VectorArrayOperator(deim_cb, adjoint=True), fom.lf])
         elif hyper_reduction == 'deim':
-            lf = EmpiricalInterpolatedOperator(d.lf, deim_dofs, deim_cb, False)
-            d = d.with_(lf=lf)
+            lf = EmpiricalInterpolatedOperator(fom.lf, deim_dofs, deim_cb, False)
+        fom = fom.with_(new_type=BoltzmannModelBase, lf=lf)
 
         print("Starting reduction ", timer() - start)
         start = timer()
-        reductor = GenericRBReductor(d.as_generic_type(), basis, basis_is_orthonormal=True)
-        rd = reductor.reduce()
+        reductor = BoltzmannRBReductor(fom, basis)
+        rom = reductor.reduce()
         print("Reduction took ", timer() - start)
 
         # solve reduced problem
         start = timer()
-        # U_rb = rd.solve(mu, cvxopt_P=cvxopt_P, cvxopt_G=cvxopt_G, cvxopt_h=cvxopt_h,basis=basis)
-        U_rb = rd.solve(parsed_mu, return_half_steps=False)
+        # U_rb = rom.solve(mu, cvxopt_P=cvxopt_P, cvxopt_G=cvxopt_G, cvxopt_h=cvxopt_h,basis=basis)
+        U_rb = rom.solve(parsed_mu, return_half_steps=False)
         elapsed_red += timer() - start
 
         # reconstruct high-dimensional solution, calculate l^2 error
