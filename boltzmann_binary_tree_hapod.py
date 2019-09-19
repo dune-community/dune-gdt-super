@@ -47,7 +47,7 @@ def boltzmann_binary_tree_hapod(grid_size,
     eval_modes = solver.solution_space.empty()
     for i in range(num_chunks):
         assert chunk_size % 2 == 0
-        timestep_vectors = solver.next_n_time_steps(chunk_size)
+        timestep_vectors = solver.next_n_timesteps(chunk_size)
         # assert (len(timestep_vectors) % 2 == 1) == (i == 0), (len(timestep_vectors), i)
         num_snapshots = len(timestep_vectors)
         assert i + 1 == num_chunks or num_snapshots == chunk_size

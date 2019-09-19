@@ -53,7 +53,7 @@ def calculate_trajectory_error(final_modes, grid_size, mu, with_half_steps=True)
     error = 0
     solver = create_boltzmann_solver(grid_size, mu)
     while not solver.finished():
-        next_vectors = solver.next_n_time_steps(1, with_half_steps)
+        next_vectors = solver.next_n_timesteps(1, with_half_steps)
         next_vectors_np = NumpyVectorSpace(next_vectors[0].dim).from_data(next_vectors.data)
         error += np.sum((next_vectors_np - final_modes.lincomb(next_vectors_np.dot(final_modes))).l2_norm()**2)
     return error
@@ -86,34 +86,3 @@ def calculate_error(final_modes, grid_size, mu, total_num_snapshots, mpi_wrapper
         logfile.write("l2_error is: " + str(err) + "\n")
         logfile.close()
     return err
-
-
-def create_and_scatter_cellmodel_parameters(comm, Re_min = 1e-14, Re_max = 1e-4, Fa_min = 0.1, Fa_max = 10, xi_min =
-                                            0.1, xi_max = 10) :
-    ''' Samples all 3 parameters uniformly with the same width and adds random parameter combinations until
-        comm.Get_size() parameters are created. After that, parameter combinations are scattered to ranks. '''
-    num_samples_per_parameter = int(comm.Get_size()**(1. / 3.) + 0.1)
-    sample_width_Re = (Re_max - Re_min) / (num_samples_per_parameter - 1) if num_samples_per_parameter > 1 else 1e10
-    sample_width_Fa = (Fa_max - Fa_min) / (num_samples_per_parameter - 1) if num_samples_per_parameter > 1 else 1e10
-    sample_width_xi = (xi_max - xi_min) / (num_samples_per_parameter - 1) if num_samples_per_parameter > 1 else 1e10
-    Re_range = np.arange(Re_min, Re_max + 1e-15, sample_width_Re)
-    Fa_range = np.arange(Fa_min, Fa_max + 1e-15, sample_width_Fa)
-    xi_range = np.arange(xi_min, xi_max + 1e-15, sample_width_xi)
-    parameters_list = []
-    for Re in Re_range:
-        for Fa in Fa_range:
-            for xi in xi_range:
-                parameters_list.append([Re, Fa, xi])
-    while len(parameters_list) < comm.Get_size():
-        parameters_list.append([
-            random.uniform(Re_min, Re_max),
-            random.uniform(Fa_min, Fa_max),
-            random.uniform(xi_min, xi_max)
-        ])
-    return comm.scatter(parameters_list, root=0)
-
-
-def create_cellmodel_solver(testcase, grid_size_x, grid_size_y, mu):
-    return CellModelSolver(testcase, grid_size_x, grid_size_y, *mu)
-
-

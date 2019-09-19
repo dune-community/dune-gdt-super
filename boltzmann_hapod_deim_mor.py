@@ -84,7 +84,7 @@ def calculate_l2_error_for_random_samples(basis,
         solver = create_boltzmann_solver(grid_size, mu)
         solver.reset()     # resets some static variables in C++
         while not solver.finished():
-            next_U = solver.next_n_time_steps(step_n, False)
+            next_U = solver.next_n_timesteps(step_n, False)
             next_U_rb = reductor.reconstruct(U_rb[curr_step:curr_step + len(next_U)])
             red_errs += np.sum((next_U - next_U_rb).l2_norm()**2)
             proj_errs += np.sum((next_U - basis.lincomb(next_U.dot(basis))).l2_norm()**2)

@@ -31,7 +31,7 @@ def boltzmann_incremental_hapod(grid_size, chunk_size, tol, omega=0.95, logfile=
     max_vectors_before_pod, max_local_modes, total_num_snapshots, svals = [0, 0, 0, []]
     modes = solver.solution_space.empty()
     for i in range(num_chunks):
-        timestep_vectors = solver.next_n_time_steps(chunk_size)
+        timestep_vectors = solver.next_n_timesteps(chunk_size)
         num_snapshots = len(timestep_vectors)
         # calculate POD of timestep vectors on each core
         timestep_vectors, timestep_svals = local_pod([timestep_vectors],

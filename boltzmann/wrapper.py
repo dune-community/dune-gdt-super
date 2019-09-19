@@ -1,4 +1,6 @@
+import random
 import numpy as np
+from timeit import default_timer as timer
 
 from pymor.algorithms.projection import project
 from pymor.models.basic import ModelBase
@@ -29,17 +31,17 @@ class Solver(Parametric):
         self.impl = libhapodgdt.BoltzmannSolver2d(*args)
         #self.impl = libhapodgdt.BoltzmannSolver3d(*args)
         self.last_mu = None
-        self.solution_space = DuneXtLaListVectorSpace(self.impl.get_initial_values().dim())
+        self.solution_space = DuneXtLaListVectorSpace(self.impl.get_initial_values().dim)
         self.build_parameter_type(PARAMETER_TYPE)
 
     def linear(self):
-        return self.impl.linear();
+        return self.impl.linear()
 
     def solve(self, with_half_steps=True):
         return self.solution_space.make_array(self.impl.solve(with_half_steps))
 
-    def next_n_time_steps(self, n, with_half_steps=True):
-        return self.solution_space.make_array(self.impl.next_n_time_steps(n, with_half_steps))
+    def next_n_timesteps(self, n, with_half_steps=True):
+        return self.solution_space.make_array(self.impl.next_n_timesteps(n, with_half_steps))
 
     def reset(self):
         self.impl.reset()
@@ -102,29 +104,35 @@ class BoltzmannModelBase(ModelBase):
                  parameter_space=None,
                  cache_region=None,
                  name=None):
-        super().__init__(
-            products=products,
-            estimator=estimator,
-            visualizer=visualizer,
-            cache_region=cache_region,
-            name=name)
+        super().__init__(products=products,
+                         estimator=estimator,
+                         visualizer=visualizer,
+                         cache_region=cache_region,
+                         name=name)
         self.build_parameter_type(PARAMETER_TYPE)
         self.__auto_init(locals())
         self.solution_space = self.initial_data.range
 
-    #def project_to_realizable_set(self, vec, cvxopt_P, cvxopt_G, cvxopt_h, dim, space):
+    # def project_to_realizable_set(self, vec, cvxopt_P, cvxopt_G, cvxopt_h, dim, space):
     #    cvxopt_q = cvxmatrix(-vec.to_numpy().transpose(), size=(dim,1), tc='d')
     #    sol = cvxopt.solvers.qp(P=cvxopt_P, q=cvxopt_q, G=cvxopt_G, h=cvxopt_h)
     #    if 'optimal' not in sol['status']:
     #        raise NotImplementedError
     #    return NumpyVectorArray(np.array(sol['x']).reshape(1, dim), space)
 
-    #def is_realizable(self, coeffs, basis):
+    # def is_realizable(self, coeffs, basis):
     #    tol = 1e-8
     #    vec = basis.lincomb(coeffs._data)
     #    return np.all(np.greater_equal(vec._data, tol))
 
-    def _solve(self, mu=None, return_output=False, return_half_steps=False, cvxopt_P=None, cvxopt_G=None, cvxopt_h=None, basis=None):
+    def _solve(self,
+               mu=None,
+               return_output=False,
+               return_half_steps=False,
+               cvxopt_P=None,
+               cvxopt_G=None,
+               cvxopt_h=None,
+               basis=None):
         assert not return_output
         U = self.initial_data.as_vector(mu)
         U_half = U.empty()
@@ -138,12 +146,12 @@ class BoltzmannModelBase(ModelBase):
             param = Parameter({'t': n * self.dt, 'dt': self.dt})
             param['s'] = mu['s']
             V = U_last - self.lf.apply(U_last, param) * dt
-            #if cvxopt_P is not None and not self.is_realizable(V, basis):
+            # if cvxopt_P is not None and not self.is_realizable(V, basis):
             #    V = self.project_to_realizable_set(V, cvxopt_P, cvxopt_G, cvxopt_h, V.dim, V.space)
             if return_half_steps:
                 U_half.append(V)
             U_last = V + rhs.apply(V, mu=mu) * dt     # explicit Euler for RHS
-            #if cvxopt_P is not None and not self.is_realizable(U_last, basis):
+            # if cvxopt_P is not None and not self.is_realizable(U_last, basis):
             #    U_last = self.project_to_realizable_set(U_last, cvxopt_P, cvxopt_G, cvxopt_h, V.dim, V.space)
             # matrix exponential for RHS
             # mu['dt'] = dt
@@ -161,7 +169,8 @@ class DuneModel(BoltzmannModelBase):
         self.solver = solver = Solver(*args)
         initial_data = VectorOperator(solver.get_initial_values())
         # lf_operator = LFOperator(self.solver)
-        lf_operator = KineticOperator(self.solver)     # Todo: rename from lf_operator to kinetic_operator
+        # Todo: rename from lf_operator to kinetic_operator
+        lf_operator = KineticOperator(self.solver)
         self.non_decomp_rhs_operator = ndrhs = RHSOperator(self.solver)
         param = solver.parse_parameter([0., 0., 0., 0.])
         affine_part = ConstantOperator(ndrhs.apply(initial_data.range.zeros(), mu=param), initial_data.range)
@@ -184,27 +193,26 @@ class DuneModel(BoltzmannModelBase):
                  ExpressionParameterFunctional('s[3]', PARAMETER_TYPE)]
             )
         param_space = CubicParameterSpace(PARAMETER_TYPE, 0., 10.)
-        super().__init__(
-            initial_data=initial_data,
-            lf=lf_operator,
-            rhs=rhs_operator,
-            t_end=solver.t_end(),
-            nt=nt,
-            dt=dt,
-            parameter_space=param_space,
-            name='DuneModel')
+        super().__init__(initial_data=initial_data,
+                         lf=lf_operator,
+                         rhs=rhs_operator,
+                         t_end=solver.t_end(),
+                         nt=nt,
+                         dt=dt,
+                         parameter_space=param_space,
+                         name='DuneModel')
 
     def _solve(self, mu=None, return_output=False, return_half_steps=False):
         assert not return_output
-        return (self.with_(new_type=BoltzmannModelBase, rhs=self.non_decomp_rhs_operator)
-                    .solve(mu=mu, return_half_steps=return_half_steps))
+        return (self.with_(new_type=BoltzmannModelBase,
+                           rhs=self.non_decomp_rhs_operator).solve(mu=mu, return_half_steps=return_half_steps))
 
 
 class DuneOperatorBase(OperatorBase):
 
     def __init__(self, solver):
         self.solver = solver
-        self.linear = solver.linear();
+        self.linear = solver.linear()
         self.source = self.range = solver.solution_space
         self.dt = solver.time_step_length()
 
@@ -303,6 +311,7 @@ class DuneXtLaVector(VectorInterface):
 
     def __init__(self, impl):
         self.impl = impl
+        self.dim = impl.dim
 
     def to_numpy(self, ensure_copy=False):
         if ensure_copy:
@@ -316,12 +325,8 @@ class DuneXtLaVector(VectorInterface):
         return DuneXtLaVector(impl)
 
     @property
-    def dim(self):
-        return self.impl.dim()
-
-    @property
     def subtype(self):
-        return (type(self.impl), self.impl.dim())
+        return (type(self.impl), self.impl.dim)
 
     @property
     def data(self):
@@ -434,17 +439,16 @@ class BoltzmannRBReductor(ProjectionBasedReductor):
         assert isinstance(fom, BoltzmannModelBase)
         RB = fom.solution_space.empty() if RB is None else RB
         assert RB in fom.solution_space, (RB.space, fom.solution_space)
-        super().__init__(fom, {'RB': RB},
-                         check_orthonormality=check_orthonormality, check_tol=check_tol)
+        super().__init__(fom, {'RB': RB}, check_orthonormality=check_orthonormality, check_tol=check_tol)
 
     def project_operators(self):
         fom = self.fom
         RB = self.bases['RB']
         projected_operators = {
-            'lf':           project(fom.lf, RB, RB),
-            'rhs':          project(fom.rhs, RB, RB),
+            'lf': project(fom.lf, RB, RB),
+            'rhs': project(fom.rhs, RB, RB),
             'initial_data': project(fom.initial_data, RB, None),
-            'products':     {k: project(v, RB, RB) for k, v in fom.products.items()},
+            'products': {k: project(v, RB, RB) for k, v in fom.products.items()},
         }
         return projected_operators
 
@@ -452,15 +456,87 @@ class BoltzmannRBReductor(ProjectionBasedReductor):
         rom = self._last_rom
         dim = dims['RB']
         projected_operators = {
-            'lf':               project_to_subbasis(rom.lf, dim, dim),
-            'rhs':              project_to_subbasis(rom.rhs, dim, dim),
-            'initial_data':     project_to_subbasis(rom.initial_data, dim, None),
-            'products':         {k: project_to_subbasis(v, dim, dim) for k, v in rom.products.items()},
+            'lf': project_to_subbasis(rom.lf, dim, dim),
+            'rhs': project_to_subbasis(rom.rhs, dim, dim),
+            'initial_data': project_to_subbasis(rom.initial_data, dim, None),
+            'products': {k: project_to_subbasis(v, dim, dim) for k, v in rom.products.items()},
         }
         return projected_operators
 
     def build_rom(self, projected_operators, estimator):
         return self.fom.with_(new_type=BoltzmannModelBase, **projected_operators)
+
+
+############################### CellModel ######################################################
+
+CELLMODEL_PARAMETER_TYPE = ParameterType({'s': (3,)})
+
+
+class CellModelSolver(Parametric):
+
+    def __init__(self, testcase, t_end, grid_size_x, grid_size_y, mu):
+        self.impl = libhapodgdt.CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, *mu)
+        self.last_mu = mu
+        self.pfield_solution_space = DuneXtLaListVectorSpace(self.impl.pfield_vector().dim)
+        self.ofield_solution_space = DuneXtLaListVectorSpace(self.impl.ofield_vector().dim)
+        self.stokes_solution_space = DuneXtLaListVectorSpace(self.impl.stokes_vector().dim)
+        self.build_parameter_type(PARAMETER_TYPE)
+
+    def linear(self):
+        return self.impl.linear()
+
+    def solve(self, dt, write = False, write_step = 0, filename = '', subsampling=True):
+        result = self.impl.solve(dt, write, write_step, filename, subsampling)
+        return [
+            self.pfield_solution_space.make_array(result[0]),
+            self.ofield_solution_space.make_array(result[1]),
+            self.stokes_solution_space.make_array(result[2])
+        ]
+
+    def next_n_timesteps(self, n, dt):
+        result = self.impl.next_n_timesteps(n, dt)
+        return [
+            self.pfield_solution_space.make_array(result[0]),
+            self.ofield_solution_space.make_array(result[1]),
+            self.stokes_solution_space.make_array(result[2])
+        ]
+
+    # def reset(self):
+    #     self.impl.reset()
+
+    def finished(self):
+        return self.impl.finished()
+
+    def apply_pfield_product_operator(self, U, mu=None):
+        U_out = [self.impl.apply_pfield_product_operator(vec.impl) for vec in U._list]
+        return self.pfield_solution_space.make_array(U_out)
+
+    def apply_ofield_product_operator(self, U, mu=None):
+        U_out = [self.impl.apply_ofield_product_operator(vec.impl) for vec in U._list]
+        return self.ofield_solution_space.make_array(U_out)
+
+    def apply_stokes_product_operator(self, U, mu=None):
+        U_out = [self.impl.apply_stokes_product_operator(vec.impl) for vec in U._list]
+        return self.stokes_solution_space.make_array(U_out)
+
+    # def current_time(self):
+    #     return self.impl.current_time()
+
+    # def t_end(self):
+    #     return self.impl.t_end()
+
+    # def set_current_time(self, time):
+    #     return self.impl.set_current_time(time)
+
+    # def set_current_solution(self, vec):
+    #     return self.impl.set_current_solution(vec)
+
+    # def time_step_length(self):
+    #     return self.impl.time_step_length()
+
+    # def get_initial_values(self):
+    #      return self.solution_space.make_array([self.impl.get_initial_values()])
+
 
 class CellModelPfieldProductOperator(OperatorBase):
 
@@ -470,12 +546,15 @@ class CellModelPfieldProductOperator(OperatorBase):
     def apply(self, U, mu=None):
         return self.solver.apply_pfield_product_operator(U)
 
+
 class CellModelOfieldProductOperator(OperatorBase):
+
     def __init__(self, solver):
         self.solver = solver
 
     def apply(self, U, mu=None):
         return self.solver.apply_ofield_product_operator(U)
+
 
 class CellModelStokesProductOperator(OperatorBase):
 
@@ -486,6 +565,120 @@ class CellModelStokesProductOperator(OperatorBase):
         return self.solver.apply_stokes_product_operator(U)
 
 
+def create_and_scatter_cellmodel_parameters(comm,
+                                            Re_min=1e-14,
+                                            Re_max=1e-4,
+                                            Fa_min=0.1,
+                                            Fa_max=10,
+                                            xi_min=0.1,
+                                            xi_max=10):
+    ''' Samples all 3 parameters uniformly with the same width and adds random parameter combinations until
+        comm.Get_size() parameters are created. After that, parameter combinations are scattered to ranks. '''
+    num_samples_per_parameter = int(comm.Get_size()**(1. / 3.) + 0.1)
+    sample_width_Re = (Re_max - Re_min) / (num_samples_per_parameter - 1) if num_samples_per_parameter > 1 else 1e10
+    sample_width_Fa = (Fa_max - Fa_min) / (num_samples_per_parameter - 1) if num_samples_per_parameter > 1 else 1e10
+    sample_width_xi = (xi_max - xi_min) / (num_samples_per_parameter - 1) if num_samples_per_parameter > 1 else 1e10
+    Re_range = np.arange(Re_min, Re_max + 1e-15, sample_width_Re)
+    Fa_range = np.arange(Fa_min, Fa_max + 1e-15, sample_width_Fa)
+    xi_range = np.arange(xi_min, xi_max + 1e-15, sample_width_xi)
+    parameters_list = []
+    for Re in Re_range:
+        for Fa in Fa_range:
+            for xi in xi_range:
+                parameters_list.append([Re, Fa, xi])
+    while len(parameters_list) < comm.Get_size():
+        parameters_list.append(
+            [random.uniform(Re_min, Re_max),
+             random.uniform(Fa_min, Fa_max),
+             random.uniform(xi_min, xi_max)])
+    return comm.scatter(parameters_list, root=0)
 
 
+def calculate_cellmodel_trajectory_error(final_modes_pfield, final_modes_ofield, final_modes_stokes, testcase, t_end,
+                                         dt, grid_size_x, grid_size_y, mu):
+    err_pfield = err_ofield = err_stokes = 0
+    solver = CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, mu)
+    n = 0
+    while not solver.finished():
+        print("timestep: ", n)
+        next_vectors_pfield, next_vectors_ofield, next_vectors_stokes = solver.next_n_timesteps(1, dt)
+        err_pfield += np.sum(
+            np.sqrt(
+                next_vectors_pfield.dot(
+                    solver.apply_pfield_product_operator(
+                        next_vectors_pfield -
+                        final_modes_pfield.lincomb(next_vectors_pfield.dot(final_modes_pfield))))))
+        print("error_pfield_done: ", n)
+        err_ofield += np.sum(
+            np.sqrt(
+                next_vectors_ofield.dot(
+                    solver.apply_ofield_product_operator(
+                        next_vectors_ofield -
+                        final_modes_ofield.lincomb(next_vectors_ofield.dot(final_modes_ofield))))))
+        print("error_ofield_done: ", n)
+        err_stokes += np.sum(
+            np.sqrt(
+                next_vectors_stokes.dot(
+                    solver.apply_stokes_product_operator(
+                        next_vectors_stokes -
+                        final_modes_stokes.lincomb(next_vectors_stokes.dot(final_modes_stokes))))))
+        n += 1;
+    return err_pfield, err_ofield, err_stokes
 
+
+def calculate_mean_cellmodel_projection_error(final_modes_pfield,
+                                              total_num_snapshots_pfield,
+                                              final_modes_ofield,
+                                              total_num_snapshots_ofield,
+                                              final_modes_stokes,
+                                              total_num_snapshots_stokes,
+                                              testcase,
+                                              t_end,
+                                              dt,
+                                              grid_size_x,
+                                              grid_size_y,
+                                              mu,
+                                              mpi_wrapper,
+                                              with_half_steps=True):
+    trajectory_error_pfield, trajectory_error_ofield, trajectory_error_stokes = calculate_cellmodel_trajectory_error(
+        final_modes_pfield, final_modes_ofield, final_modes_stokes, testcase, t_end, dt, grid_size_x, grid_size_y, mu)
+    print("trajcetory_error done")
+    trajectory_errors_pfield = mpi_wrapper.comm_world.gather(trajectory_error_pfield, root=0)
+    trajectory_errors_ofield = mpi_wrapper.comm_world.gather(trajectory_error_ofield, root=0)
+    trajectory_errors_stokes = mpi_wrapper.comm_world.gather(trajectory_error_stokes, root=0)
+    err_pfield = err_ofield = err_stokes = 0
+    if mpi_wrapper.rank_world == 0:
+        err_pfield = np.sum(trajectory_errors_pfield) / total_num_snapshots_pfield
+        err_ofield = np.sum(trajectory_errors_ofield) / total_num_snapshots_ofield
+        err_stokes = np.sum(trajectory_errors_stokes) / total_num_snapshots_stokes
+    return err_pfield, err_ofield, err_stokes
+
+
+def calculate_cellmodel_error(final_modes_pfield,
+                              total_num_snapshots_pfield,
+                              final_modes_ofield,
+                              total_num_snapshots_ofield,
+                              final_modes_stokes,
+                              total_num_snapshots_stokes,
+                              testcase,
+                              t_end,
+                              dt,
+                              grid_size_x,
+                              grid_size_y,
+                              mu,
+                              mpi_wrapper,
+                              logfile=None):
+    ''' Calculates projection error. As we cannot store all snapshots due to memory restrictions, the
+        problem is solved again and the error calculated on the fly'''
+    start = timer()
+    err_pfield, err_ofield, err_stokes = calculate_mean_cellmodel_projection_error(
+        final_modes_pfield, total_num_snapshots_pfield, final_modes_ofield, total_num_snapshots_ofield,
+        final_modes_stokes, total_num_snapshots_stokes, testcase, t_end, dt, grid_size_x, grid_size_y, mu, mpi_wrapper)
+    elapsed = timer() - start
+    if mpi_wrapper.rank_world == 0 and logfile is not None:
+        logfile.write("Time used for calculating error: " + str(elapsed) + "\n")
+        logfile.write("pfield_l2_error is: " + str(err_pfield) + "\n")
+        logfile.write("ofield_l2_error is: " + str(err_ofield) + "\n")
+        logfile.write("stokes_l2_error is: " + str(err_stokes) + "\n")
+        logfile.close()
+    return err_pfield, err_ofield, err_stokes
