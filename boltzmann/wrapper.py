@@ -12,8 +12,8 @@ from pymor.reductors.basic import ProjectionBasedReductor
 from pymor.vectorarrays.list import VectorInterface, ListVectorSpace, ListVectorArray
 from pymor.vectorarrays.numpy import NumpyVectorArray, NumpyVectorSpace
 
-import libboltzmann
-from libboltzmann import CommonDenseVector
+import libhapodgdt
+from libhapodgdt import CommonDenseVector
 
 #import cvxopt
 #from cvxopt import matrix as cvxmatrix
@@ -26,8 +26,8 @@ PARAMETER_TYPE = ParameterType({'s': (4,)})
 class Solver(Parametric):
 
     def __init__(self, *args):
-        #self.impl = libboltzmann.BoltzmannSolver2d(*args)
-        self.impl = libboltzmann.BoltzmannSolver3d(*args)
+        self.impl = libhapodgdt.BoltzmannSolver2d(*args)
+        #self.impl = libhapodgdt.BoltzmannSolver3d(*args)
         self.last_mu = None
         self.solution_space = DuneXtLaListVectorSpace(self.impl.get_initial_values().dim())
         self.build_parameter_type(PARAMETER_TYPE)
@@ -429,6 +429,7 @@ class DuneXtLaListVectorSpace(ListVectorSpace):
 
 
 class BoltzmannRBReductor(ProjectionBasedReductor):
+
     def __init__(self, fom, RB=None, check_orthonormality=None, check_tol=None):
         assert isinstance(fom, BoltzmannModelBase)
         RB = fom.solution_space.empty() if RB is None else RB
@@ -460,3 +461,31 @@ class BoltzmannRBReductor(ProjectionBasedReductor):
 
     def build_rom(self, projected_operators, estimator):
         return self.fom.with_(new_type=BoltzmannModelBase, **projected_operators)
+
+class CellModelPfieldProductOperator(OperatorBase):
+
+    def __init__(self, solver):
+        self.solver = solver
+
+    def apply(self, U, mu=None):
+        return self.solver.apply_pfield_product_operator(U)
+
+class CellModelOfieldProductOperator(OperatorBase):
+    def __init__(self, solver):
+        self.solver = solver
+
+    def apply(self, U, mu=None):
+        return self.solver.apply_ofield_product_operator(U)
+
+class CellModelStokesProductOperator(OperatorBase):
+
+    def __init__(self, solver):
+        self.solver = solver
+
+    def apply(self, U, mu=None):
+        return self.solver.apply_stokes_product_operator(U)
+
+
+
+
+
