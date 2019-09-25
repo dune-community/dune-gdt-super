@@ -475,7 +475,7 @@ CELLMODEL_PARAMETER_TYPE = ParameterType({'s': (3,)})
 class CellModelSolver(Parametric):
 
     def __init__(self, testcase, t_end, grid_size_x, grid_size_y, mu):
-        self.impl = libhapodgdt.CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, *mu)
+        self.impl = libhapodgdt.CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, False, *mu)
         self.last_mu = mu
         self.pfield_solution_space = DuneXtLaListVectorSpace(self.impl.pfield_vector().dim)
         self.ofield_solution_space = DuneXtLaListVectorSpace(self.impl.ofield_vector().dim)
