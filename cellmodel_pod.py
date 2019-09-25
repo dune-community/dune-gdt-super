@@ -20,7 +20,7 @@ def calculate_pod(result, product, mpi):
     elapsed_pod = 0
     start = timer()
     if mpi.rank_world == 0:
-        result, svals = pod(result, product=product, atol=0., rtol=0., l2_err=tol * np.sqrt(total_num_snapshots))
+        result, svals = pod(result, product=product, atol=0., rtol=0., l2_err=tol)
         elapsed_pod = timer() - start
     return result, svals, elapsed_pod, total_num_snapshots
 
@@ -35,7 +35,7 @@ def cellmodel_pod(testcase, t_end, dt, grid_size_x, grid_size_y, tol, logfile=No
 
     # calculate Boltzmann problem trajectory
     start = timer()
-    snapshots_pfield, snapshots_ofield, snapshots_stokes = solver.solve(dt)
+    snapshots_pfield, snapshots_ofield, snapshots_stokes = solver.solve(dt, True, dt, "result_" + str(mu))
     mpi.comm_world.Barrier()
     elapsed_data_gen = timer() - start
 
@@ -46,13 +46,10 @@ def cellmodel_pod(testcase, t_end, dt, grid_size_x, grid_size_y, tol, logfile=No
 
     [result_pfield, svals_pfield, elapsed_pod_pfield,
      total_num_snapshots_pfield] = calculate_pod(snapshots_pfield, pfield_product, mpi)
-    print("pfield pod done")
     [result_ofield, svals_ofield, elapsed_pod_ofield,
      total_num_snapshots_ofield] = calculate_pod(snapshots_ofield, ofield_product, mpi)
-    print("pfield pod done")
     [result_stokes, svals_stokes, elapsed_pod_stokes,
      total_num_snapshots_stokes] = calculate_pod(snapshots_stokes, stokes_product, mpi)
-    print("pfield pod done")
 
     # write statistics to file
     if logfile is not None and mpi.rank_world == 0:
@@ -80,7 +77,7 @@ if __name__ == "__main__":
     grid_size_x = int(sys.argv[4])
     grid_size_y = int(sys.argv[5])
     tol = float(sys.argv[6])
-    filename = "cellmodel_POD_gridsize_%d_tol_%f" % (grid_size_y, tol)
+    filename = "cellmodel_POD_grid_%dx%d_tol_%f" % (grid_size_x, grid_size_y, tol)
     logfile = open(filename, "a")
     [
         final_modes_pfield, _, total_num_snapshots_pfield, final_modes_ofield, _, total_num_snapshots_ofield,
