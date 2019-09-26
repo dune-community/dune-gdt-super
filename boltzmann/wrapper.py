@@ -1,5 +1,6 @@
-import random
+import math
 import numpy as np
+import random
 from timeit import default_timer as timer
 
 from pymor.algorithms.projection import project
@@ -485,7 +486,7 @@ class CellModelSolver(Parametric):
     def linear(self):
         return self.impl.linear()
 
-    def solve(self, dt, write = False, write_step = 0, filename = '', subsampling=True):
+    def solve(self, dt, write=False, write_step=0, filename='', subsampling=True):
         result = self.impl.solve(dt, write, write_step, filename, subsampling)
         return [
             self.pfield_solution_space.make_array(result[0]),
@@ -602,22 +603,22 @@ def calculate_cellmodel_trajectory_error(final_modes_pfield, final_modes_ofield,
     while not solver.finished():
         print("timestep: ", n)
         next_vectors_pfield, next_vectors_ofield, next_vectors_stokes = solver.next_n_timesteps(1, dt)
-        pfield_residual = next_vectors_pfield - final_modes_pfield.lincomb(next_vectors_pfield.dot(solver.apply_pfield_product_operator(final_modes_pfield)))
+        pfield_residual = next_vectors_pfield - final_modes_pfield.lincomb(
+            next_vectors_pfield.dot(solver.apply_pfield_product_operator(final_modes_pfield)))
         err_pfield += np.sum(pfield_residual.dot(solver.apply_pfield_product_operator(pfield_residual)))
-        ofield_residual = next_vectors_ofield - final_modes_ofield.lincomb(next_vectors_ofield.dot(solver.apply_ofield_product_operator(final_modes_ofield)))
+        ofield_residual = next_vectors_ofield - final_modes_ofield.lincomb(
+            next_vectors_ofield.dot(solver.apply_ofield_product_operator(final_modes_ofield)))
         err_ofield += np.sum(ofield_residual.dot(solver.apply_ofield_product_operator(ofield_residual)))
-        stokes_residual = next_vectors_stokes - final_modes_stokes.lincomb(next_vectors_stokes.dot(solver.apply_stokes_product_operator(final_modes_stokes)))
+        stokes_residual = next_vectors_stokes - final_modes_stokes.lincomb(
+            next_vectors_stokes.dot(solver.apply_stokes_product_operator(final_modes_stokes)))
         err_stokes += np.sum(stokes_residual.dot(solver.apply_stokes_product_operator(stokes_residual)))
-        n += 1;
+        n += 1
     return err_pfield, err_ofield, err_stokes
 
 
 def calculate_mean_cellmodel_projection_error(final_modes_pfield,
-                                              total_num_snapshots_pfield,
                                               final_modes_ofield,
-                                              total_num_snapshots_ofield,
                                               final_modes_stokes,
-                                              total_num_snapshots_stokes,
                                               testcase,
                                               t_end,
                                               dt,
@@ -640,11 +641,8 @@ def calculate_mean_cellmodel_projection_error(final_modes_pfield,
 
 
 def calculate_cellmodel_error(final_modes_pfield,
-                              total_num_snapshots_pfield,
                               final_modes_ofield,
-                              total_num_snapshots_ofield,
                               final_modes_stokes,
-                              total_num_snapshots_stokes,
                               testcase,
                               t_end,
                               dt,
@@ -656,9 +654,11 @@ def calculate_cellmodel_error(final_modes_pfield,
     ''' Calculates projection error. As we cannot store all snapshots due to memory restrictions, the
         problem is solved again and the error calculated on the fly'''
     start = timer()
-    err_pfield, err_ofield, err_stokes = calculate_mean_cellmodel_projection_error(
-        final_modes_pfield, total_num_snapshots_pfield, final_modes_ofield, total_num_snapshots_ofield,
-        final_modes_stokes, total_num_snapshots_stokes, testcase, t_end, dt, grid_size_x, grid_size_y, mu, mpi_wrapper)
+    err_pfield, err_ofield, err_stokes = calculate_mean_cellmodel_projection_error(final_modes_pfield,
+                                                                                   final_modes_ofield,
+                                                                                   final_modes_stokes, testcase, t_end,
+                                                                                   dt, grid_size_x, grid_size_y, mu,
+                                                                                   mpi_wrapper)
     elapsed = timer() - start
     if mpi_wrapper.rank_world == 0 and logfile is not None:
         logfile.write("Time used for calculating error: " + str(elapsed) + "\n")
@@ -667,3 +667,12 @@ def calculate_cellmodel_error(final_modes_pfield,
         logfile.write("stokes_l2_error is: " + str(err_stokes) + "\n")
         logfile.close()
     return err_pfield, err_ofield, err_stokes
+
+
+def get_num_chunks_and_num_timesteps(t_end, dt, chunk_size):
+    num_time_steps = math.ceil(t_end / dt) + 1.
+    num_chunks = int(math.ceil(num_time_steps / chunk_size))
+    last_chunk_size = num_time_steps - chunk_size * (num_chunks - 1)
+    assert num_chunks >= 2
+    assert 1 <= last_chunk_size <= chunk_size
+    return num_chunks, num_time_steps

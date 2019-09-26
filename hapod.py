@@ -17,8 +17,8 @@ class HapodParameters:
 
     def get_epsilon_alpha(self, num_snaps_in_leafs, root_of_tree=False):
         if not root_of_tree:
-            epsilon_alpha = self.epsilon_ast * np.sqrt(1. - self.omega**2) * \
-                            np.sqrt(num_snaps_in_leafs) / np.sqrt(self.rooted_tree_depth - 1)
+            epsilon_alpha = self.epsilon_ast * np.sqrt(
+                (1. - self.omega**2) * num_snaps_in_leafs / (self.rooted_tree_depth - 1))
         else:
             epsilon_alpha = self.epsilon_ast * self.omega * np.sqrt(num_snaps_in_leafs)
         return epsilon_alpha
@@ -29,6 +29,7 @@ def local_pod(inputs,
               parameters,
               root_of_tree=False,
               orthonormalize=True,
+              product=None,
               incremental_gramian=True):
     '''Calculates a POD in the HAPOD tree. The input is a list where each element is either a vectorarray or
        a pair of (orthogonal) vectorarray and singular values from an earlier POD. If incremental_gramian is True, the
@@ -67,10 +68,10 @@ def local_pod(inputs,
         for i in range(len(inputs)):
             modes_i, svals_i = [inputs[i][0], inputs[i][1] if svals_provided[i] else None]
             gramian[offsets[i]:offsets[i+1], offsets[i]:offsets[i+1]] = np.diag(svals_i)**2 if svals_provided[i] \
-                                                                                            else modes_i.gramian()
+                                                                                            else modes_i.gramian(product)
             for j in range(i + 1, len(inputs)):
                 modes_j = inputs[j][0]
-                cross_gramian = modes_i.dot(modes_j)
+                cross_gramian = modes_i.dot(product.apply(modes_j) if product is not None else modes_j)
                 gramian[offsets[i]:offsets[i + 1], offsets[j]:offsets[j + 1]] = cross_gramian
                 gramian[offsets[j]:offsets[j + 1], offsets[i]:offsets[i + 1]] = cross_gramian.T
             all_modes.append(modes_i)
@@ -96,14 +97,20 @@ def local_pod(inputs,
         del EVECS
 
         if orthonormalize:
-            final_modes = gram_schmidt(final_modes, copy=False)
+            final_modes = gram_schmidt(final_modes, product=product, copy=False)
 
         return final_modes, svals
     else:
         modes = inputs[0][0].empty()
         for i in range(len(inputs)):
             modes.append(inputs[i][0])
-        return pod(modes, atol=0., rtol=0., l2_err=epsilon_alpha, orthonormalize=orthonormalize, check=False)
+        return pod(modes,
+                   product=product,
+                   atol=0.,
+                   rtol=0.,
+                   l2_err=epsilon_alpha,
+                   orthonormalize=orthonormalize,
+                   check=True)
 
 
 class MPICommunicator(object):
@@ -177,6 +184,7 @@ def binary_tree_hapod_over_ranks(comm,
                                  svals=None,
                                  last_hapod=False,
                                  incremental_gramian=True,
+                                 product=None,
                                  orthonormalize=True):
     ''' A HAPOD with modes and possibly svals stored on ranks of the MPI communicator comm. A binary tree
         of MPI ranks is used as HAPOD tree.
@@ -209,6 +217,7 @@ def binary_tree_hapod_over_ranks(comm,
                         parameters,
                         orthonormalize=orthonormalize,
                         incremental_gramian=incremental_gramian,
+                        product=product,
                         root_of_tree=((len(ranks) == 2) and last_hapod))
                     max_local_modes = max(max_local_modes, len(modes))
             ranks = list(remaining_ranks)

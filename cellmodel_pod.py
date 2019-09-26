@@ -87,19 +87,16 @@ if __name__ == "__main__":
     final_modes_ofield, win_ofield = mpi.shared_memory_bcast_modes(final_modes_ofield, True)
     final_modes_stokes, win_stokes = mpi.shared_memory_bcast_modes(final_modes_stokes, True)
     err_pfield, err_ofield, err_stokes = calculate_cellmodel_error(final_modes_pfield,
-                              total_num_snapshots_pfield,
-                              final_modes_ofield,
-                              total_num_snapshots_ofield,
-                              final_modes_stokes,
-                              total_num_snapshots_stokes,
-                              testcase,
-                              t_end,
-                              dt,
-                              grid_size_x,
-                              grid_size_y,
-                              mu,
-                              mpi,
-                              logfile=logfile)
+                                                                   final_modes_ofield,
+                                                                   final_modes_stokes,
+                                                                   testcase,
+                                                                   t_end,
+                                                                   dt,
+                                                                   grid_size_x,
+                                                                   grid_size_y,
+                                                                   mu,
+                                                                   mpi,
+                                                                   logfile=logfile)
     win_pfield.Free()
     win_ofield.Free()
     win_stokes.Free()

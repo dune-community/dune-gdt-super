@@ -192,8 +192,6 @@ def boltzmann_binary_tree_hapod(grid_size,
             max_vectors_before_pod, max_eval_vectors_before_pod, max_local_modes, max_local_eval_modes, solver)
 
 
-#TODO Adapt remaining code for new return value signature.
-
 if __name__ == "__main__":
     grid_size = int(sys.argv[1])
     chunk_size = int(sys.argv[2])
