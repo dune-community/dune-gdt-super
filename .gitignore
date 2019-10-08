@@ -12,6 +12,8 @@ boltzmann/libhapodgdt.so
 libhapodgdt.so
 .vscode
 tags
+tags.lock
+tags.temp
 *.code-workspace
 
 
