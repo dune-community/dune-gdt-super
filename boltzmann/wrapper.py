@@ -315,10 +315,10 @@ class DuneXtLaVector(VectorInterface):
         self.dim = impl.dim
 
     def to_numpy(self, ensure_copy=False):
-        if ensure_copy:
+        # if ensure_copy:
             return np.frombuffer(self.impl.buffer(), dtype=np.double).copy()
-        else:
-            return np.frombuffer(self.impl.buffer(), dtype=np.double)
+        # else:
+        #    return np.frombuffer(self.impl.buffer(), dtype=np.double)
 
     @classmethod
     def make_zeros(cls, subtype):
@@ -479,6 +479,7 @@ class CellModelSolver(Parametric):
         self.impl = libhapodgdt.CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, False, *mu)
         self.last_mu = mu
         self.pfield_solution_space = DuneXtLaListVectorSpace(self.impl.pfield_vector().dim)
+        self.pfield_numpy_space = NumpyVectorSpace(self.impl.pfield_vector().dim)
         self.ofield_solution_space = DuneXtLaListVectorSpace(self.impl.ofield_vector().dim)
         self.stokes_solution_space = DuneXtLaListVectorSpace(self.impl.stokes_vector().dim)
         self.build_parameter_type(PARAMETER_TYPE)
@@ -508,9 +509,15 @@ class CellModelSolver(Parametric):
     def finished(self):
         return self.impl.finished()
 
-    def apply_pfield_product_operator(self, U, mu=None):
-        U_out = [self.impl.apply_pfield_product_operator(vec.impl) for vec in U._list]
-        return self.pfield_solution_space.make_array(U_out)
+    def apply_pfield_product_operator(self, U, mu=None, numpy=False):
+        pfield_space = self.pfield_solution_space
+        if not numpy:
+            U_out = [self.impl.apply_pfield_product_operator(vec.impl) for vec in U._list]
+            return pfield_space.make_array(U_out)
+        else:
+            U_list = pfield_space.make_array([pfield_space.vector_from_numpy(vec).impl for vec in U.to_numpy()])
+            U_out = [DuneXtLaVector(self.impl.apply_pfield_product_operator(vec.impl)).to_numpy(True) for vec in U_list._list]
+            return self.pfield_numpy_space.make_array(U_out)
 
     def apply_ofield_product_operator(self, U, mu=None):
         U_out = [self.impl.apply_ofield_product_operator(vec.impl) for vec in U._list]
@@ -544,8 +551,8 @@ class CellModelPfieldProductOperator(OperatorBase):
     def __init__(self, solver):
         self.solver = solver
 
-    def apply(self, U, mu=None):
-        return self.solver.apply_pfield_product_operator(U)
+    def apply(self, U, mu=None, numpy=False):
+        return self.solver.apply_pfield_product_operator(U, numpy=numpy)
 
 
 class CellModelOfieldProductOperator(OperatorBase):
@@ -605,13 +612,13 @@ def calculate_cellmodel_trajectory_error(final_modes_pfield, final_modes_ofield,
         next_vectors_pfield, next_vectors_ofield, next_vectors_stokes = solver.next_n_timesteps(1, dt)
         pfield_residual = next_vectors_pfield - final_modes_pfield.lincomb(
             next_vectors_pfield.dot(solver.apply_pfield_product_operator(final_modes_pfield)))
-        err_pfield += np.sum(pfield_residual.dot(solver.apply_pfield_product_operator(pfield_residual)))
+        err_pfield += np.sum(pfield_residual.pairwise_dot(solver.apply_pfield_product_operator(pfield_residual)))
         ofield_residual = next_vectors_ofield - final_modes_ofield.lincomb(
             next_vectors_ofield.dot(solver.apply_ofield_product_operator(final_modes_ofield)))
-        err_ofield += np.sum(ofield_residual.dot(solver.apply_ofield_product_operator(ofield_residual)))
+        err_ofield += np.sum(ofield_residual.pairwise_dot(solver.apply_ofield_product_operator(ofield_residual)))
         stokes_residual = next_vectors_stokes - final_modes_stokes.lincomb(
             next_vectors_stokes.dot(solver.apply_stokes_product_operator(final_modes_stokes)))
-        err_stokes += np.sum(stokes_residual.dot(solver.apply_stokes_product_operator(stokes_residual)))
+        err_stokes += np.sum(stokes_residual.pairwise_dot(solver.apply_stokes_product_operator(stokes_residual)))
         n += 1
     return err_pfield, err_ofield, err_stokes
 

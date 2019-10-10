@@ -32,15 +32,14 @@ class MPIWrapper:
 
     def shared_memory_bcast_modes(self, modes, returnlistvectorarray=False):
         ''' broadcast modes on rank 0 to all ranks by using a shared memory buffer on each node
-            :param modes: vectorarray of (HA)POD modes
-            :param returnlistvectorarray: If False, the modes are returned as a NumpyVectorArray. On each node,
-            the NumpyVectorArrays for all MPI ranks (one for each processor core) share the same underlying
-            memory buffer. If True, the modes are returned as DuneXtLaListVectorArray. Here, a copy is made
-            for each MPI rank, so this uses num_cores times the memory of the NumpyVectorArray (e.g. for 12
-            cores per node, it uses 12 times as much memory.
-            :returns: Either a DuneXtLaListVectorArray containing the modes (if returnlistvectorarray==True)
-            or a tuple (modes, win) where modes is a NumpyVectorArray and win is the MPI window that holds the
-            shared memory buffer. You have to free the memory yourself by calling win.Free() once you are done.'''
+            :param modes: ListVectorArray of (HA)POD modes
+            :param returnlistvectorarray: If True, a DuneXtLaListVectorArray is returned instead of a
+            NumpyVectorArray. On each node, the VectorArrays for all MPI ranks (one for each processor
+            core) share the same underlying memory buffer.
+            :returns: A tuple (modes, win) where modes is a DuneXtLaListVectorArray (if
+            returnlistvectorarray=True) or a NumpyVectorArray (if returnlistvectorarray=False)
+            containing the modes and win is the MPI window that holds the shared memory buffer. You
+            have to free the memory yourself by calling win.Free() once you are done.'''
         if modes is None:
             modes = np.empty(shape=(0, 0), dtype='d')
         modes_length = self.comm_world.bcast(len(modes) if self.rank_world == 0 else 0, root=0)
