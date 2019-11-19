@@ -24,7 +24,12 @@ if __name__ == "__main__":
     snaps = NumpyVectorArray(snaps, NumpyVectorSpace(snaps.shape[1]))
     product = MatrixOperator(scipy.io.mmread("phasefield_mass_matrix.mtx").tocsr())
     tol = 1e-4
-    modes, svals = pod(snaps, product=product, atol=0., rtol=0., l2_err=tol)
+    snaps_scaled = snaps.copy()
+    max_l2_norm = 0.
+    for i in range(len(snaps)):
+        max_l2_norm = max(np.sqrt((snaps[i].dot(product.apply(snaps[i])))[0][0]), max_l2_norm)
+    snaps_scaled.scal(1./max_l2_norm)
+    modes, svals = pod(snaps_scaled, product=product, atol=0., rtol=0., l2_err= tol / max_l2_norm)
     residual = snaps - modes.lincomb(snaps.dot(product.apply(modes)))
     error_pfield = np.sqrt(np.sum(residual.pairwise_dot(product.apply(residual))))
     print("tol: {}, error: {}".format(tol, error_pfield))

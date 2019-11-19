@@ -505,6 +505,8 @@ class CellModelSolver(Parametric):
 
     # def reset(self):
     #     self.impl.reset()
+    def visualize(self, prefix, num, dt):
+        self.impl.visualize(prefix, num, dt)
 
     def finished(self):
         return self.impl.finished()
@@ -526,6 +528,58 @@ class CellModelSolver(Parametric):
     def apply_stokes_product_operator(self, U, mu=None):
         U_out = [self.impl.apply_stokes_product_operator(vec.impl) for vec in U._list]
         return self.stokes_solution_space.make_array(U_out)
+
+    def pfield_vector(self):
+        return DuneXtLaVector(self.impl.pfield_vector())
+
+    def ofield_vector(self):
+        return DuneXtLaVector(self.impl.ofield_vector())
+
+    def stokes_vector(self):
+        return DuneXtLaVector(self.impl.stokes_vector())
+
+    def set_pfield_variables(self, cell_index, vec):
+        return self.impl.set_pfield_variables(cell_index, vec.impl)
+
+    def set_ofield_variables(self, cell_index, vec):
+        return self.impl.set_ofield_variables(cell_index, vec.impl)
+
+    def set_stokes_variables(self, vec):
+        return self.impl.set_stokes_variables(vec.impl)
+
+    def prepare_pfield_operator(self, dt, cell_index):
+        return self.impl.prepare_pfield_operator(dt, cell_index)
+
+    def prepare_ofield_operator(self, dt, cell_index):
+        return self.impl.prepare_ofield_operator(dt, cell_index)
+
+    def prepare_stokes_operator(self):
+        return self.impl.prepare_stokes_operator()
+
+    def solve_pfield(self, vec, cell_index):
+        return DuneXtLaVector(self.impl.solve_pfield(vec.impl, cell_index))
+
+    def solve_ofield(self, vec, cell_index):
+        return DuneXtLaVector(self.impl.solve_ofield(vec.impl, cell_index))
+
+    def solve_stokes(self):
+        return DuneXtLaVector(self.impl.solve_stokes())
+
+    def apply_pfield_operator(self, U, cell_index, dt, mu=None):
+        self.prepare_pfield_operator(dt, cell_index)
+        U_out = [self.impl.apply_pfield_operator(vec.impl, cell_index) for vec in U._list]
+        return self.pfield_solution_space.make_array(U_out)
+
+    def apply_ofield_operator(self, U, cell_index, dt, mu=None):
+        self.prepare_ofield_operator(dt, cell_index)
+        U_out = [self.impl.apply_ofield_operator(vec.impl, cell_index) for vec in U._list]
+        return self.ofield_solution_space.make_array(U_out)
+
+    def apply_stokes_operator(self, U, mu=None):
+        self.prepare_stokes_operator()
+        U_out = [self.impl.apply_stokes_operator(vec.impl) for vec in U._list]
+        return self.stokes_solution_space.make_array(U_out)
+
 
     # def current_time(self):
     #     return self.impl.current_time()
@@ -550,6 +604,7 @@ class CellModelPfieldProductOperator(OperatorBase):
 
     def __init__(self, solver):
         self.solver = solver
+        self.linear = True
 
     def apply(self, U, mu=None, numpy=False):
         return self.solver.apply_pfield_product_operator(U, numpy=numpy)
@@ -559,6 +614,7 @@ class CellModelOfieldProductOperator(OperatorBase):
 
     def __init__(self, solver):
         self.solver = solver
+        self.linear = True
 
     def apply(self, U, mu=None):
         return self.solver.apply_ofield_product_operator(U)
@@ -568,9 +624,44 @@ class CellModelStokesProductOperator(OperatorBase):
 
     def __init__(self, solver):
         self.solver = solver
+        self.linear = True
 
     def apply(self, U, mu=None):
         return self.solver.apply_stokes_product_operator(U)
+
+class CellModelPfieldOperator(OperatorBase):
+
+    def __init__(self, solver, cell_index, dt):
+        self.solver = solver
+        self.cell_index = cell_index
+        self.dt = dt
+        self.linear = False
+
+    def apply(self, U, mu=None, numpy=False):
+        return self.solver.apply_pfield_operator(U, self.cell_index, self.dt)
+
+
+class CellModelOfieldOperator(OperatorBase):
+
+    def __init__(self, solver, cell_index, dt):
+        self.solver = solver
+        self.cell_index = cell_index
+        self.dt = dt
+        self.linear = False
+
+    def apply(self, U, mu=None):
+        return self.solver.apply_ofield_operator(U, self.cell_index, self.dt)
+
+
+class CellModelStokesOperator(OperatorBase):
+
+    def __init__(self, solver):
+        self.solver = solver
+        self.linear = True
+
+    def apply(self, U, mu=None):
+        return self.solver.apply_stokes_operator(U)
+
 
 
 def create_and_scatter_cellmodel_parameters(comm,
