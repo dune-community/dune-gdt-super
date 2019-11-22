@@ -22,10 +22,7 @@ if __name__ == "__main__":
     num_cells = 1
     solver = CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, mu)
 
-    # if (visualize)
-    #   solver.visualize(filename, 0, t_, subsampling);
     t = 0
-    # next_save_time = min(t_end, t + write_step)
     save_step_counter = 1
 
     # initial values
@@ -57,5 +54,5 @@ if __name__ == "__main__":
 
         t += actual_dt
 
-    solver.visualize('solve_from_python', 0, t)
+    solver.visualize('solve_from_dune', 0, t)
     mpi.comm_world.Barrier()

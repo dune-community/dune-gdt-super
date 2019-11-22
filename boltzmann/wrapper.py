@@ -566,17 +566,14 @@ class CellModelSolver(Parametric):
         return DuneXtLaVector(self.impl.solve_stokes())
 
     def apply_pfield_operator(self, U, cell_index, dt, mu=None):
-        self.prepare_pfield_operator(dt, cell_index)
         U_out = [self.impl.apply_pfield_operator(vec.impl, cell_index) for vec in U._list]
         return self.pfield_solution_space.make_array(U_out)
 
     def apply_ofield_operator(self, U, cell_index, dt, mu=None):
-        self.prepare_ofield_operator(dt, cell_index)
         U_out = [self.impl.apply_ofield_operator(vec.impl, cell_index) for vec in U._list]
         return self.ofield_solution_space.make_array(U_out)
 
     def apply_stokes_operator(self, U, mu=None):
-        self.prepare_stokes_operator()
         U_out = [self.impl.apply_stokes_operator(vec.impl) for vec in U._list]
         return self.stokes_solution_space.make_array(U_out)
 
