@@ -115,13 +115,13 @@ def calculate_l2_error_for_random_samples(basis,
 
 if __name__ == "__main__":
     '''Computes HAPOD to get reduced basis and then calculate projection and model reduction error for random samples'''
-    grid_size = int(sys.argv[1])
-    chunk_size = int(sys.argv[2])
-    L2_tol = float(sys.argv[3])
-    L2_deim_tol = float(sys.argv[4])
-    omega = 0.95 if len(sys.argv) <= 5 else float(sys.argv[5])
-    timings = False if len(sys.argv) <= 6 else bool(sys.argv[6])
-    print(len(sys.argv))
+    argc = len(sys.argv)
+    grid_size = 20 if argc < 2 else int(sys.argv[1])
+    chunk_size = 10 if argc < 3 else int(sys.argv[2])
+    L2_tol = 1e-3 if argc < 4 else float(sys.argv[3])
+    L2_deim_tol = 1e-3 if argc < 5 else float(sys.argv[4])
+    omega = 0.95 if argc < 6 else float(sys.argv[5])
+    timings = False if argc < 7 else bool(sys.argv[6])
     # We want to prescribe the mean L^2 error, but the HAPOD works with the l^2 error, so rescale tolerance
     tol_scale_factor = (grid_size / 7)**(3 / 2)
     l2_tol = L2_tol * tol_scale_factor

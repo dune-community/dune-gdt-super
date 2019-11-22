@@ -48,8 +48,9 @@ def boltzmann_pod(grid_size, tol, logfile=None):
 
 
 if __name__ == "__main__":
-    grid_size = int(sys.argv[1])
-    tol = float(sys.argv[2])
+    argc = len(sys.argv)
+    grid_size = 20 if argc < 2 else int(sys.argv[1])
+    tol = 1e-3 if argc < 3 else float(sys.argv[2])
     filename = "POD_gridsize_%d_tol_%f" % (grid_size, tol)
     logfile = open(filename, "a")
     final_modes, _, total_num_snapshots, mu, mpi, _, _, _ = boltzmann_pod(grid_size, tol * grid_size, logfile=logfile)

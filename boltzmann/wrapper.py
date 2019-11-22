@@ -640,6 +640,27 @@ class CellModelPfieldOperator(OperatorBase):
     def apply(self, U, mu=None, numpy=False):
         return self.solver.apply_pfield_operator(U, self.cell_index, self.dt)
 
+class RestrictedCellModelPfieldOperator(RestrictedDuneOperatorBase):
+
+    linear = False
+
+    def __init__(self, solver, cell_index, dt, dofs):
+        self.solver = solver
+        self.dofs = dofs
+        dofs_as_list = [int(i) for i in dofs]
+        self.solver.impl.prepare_restricted_pfield_operator(dofs_as_list)
+        super(RestrictedCellModelPfieldOperator, self).__init__(solver, self.solver.impl.len_source_dofs(), len(dofs))
+
+    def apply(self, U, mu=None):
+        assert U in self.source
+        # hack to ensure realizability for hatfunction moment models
+        U = DuneXtLaListVectorSpace.from_numpy(U.to_numpy())
+        ret = [
+            DuneXtLaVector(self.solver.impl.apply_restricted_pfield_operator(u.impl, self.cell_index, self.dt)).to_numpy(True) for u in U._list
+        ]
+        return self.range.make_array(ret)
+
+
 
 class CellModelOfieldOperator(OperatorBase):
 

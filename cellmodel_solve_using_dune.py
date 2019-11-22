@@ -1,8 +1,10 @@
 import sys
 import numpy as np
 from boltzmann.wrapper import CellModelSolver, CellModelPfieldOperator, CellModelOfieldOperator, CellModelStokesOperator
+from mpiwrapper import MPIWrapper
 
 if __name__ == "__main__":
+    mpi = MPIWrapper()
     # testcase = sys.argv[1]
     # t_end = float(sys.argv[2])
     # dt = float(sys.argv[3])
@@ -42,7 +44,6 @@ if __name__ == "__main__":
         # do a timestep
         print("Current time: {}".format(t))
         for kk in range(num_cells):
-            pfield_op.apply_inverse()
             solver.prepare_pfield_operator(dt, kk)
             pfield_vec = solver.solve_pfield(pfield_vec, kk)
             solver.set_pfield_variables(kk, pfield_vec)
@@ -56,14 +57,5 @@ if __name__ == "__main__":
 
         t += actual_dt
 
-        # // check if data should be written in this timestep (and write)
-        # if (write) {
-        #   if (write_step < 0. || Dune::XT::Common::FloatCmp::ge(t_, next_save_time)) {
-        #     visualize(filename, save_step_counter, t_, subsampling);
-        #     next_save_time += write_step;
-        #     ++save_step_counter;
-        #   }
-        # }
     solver.visualize('solve_from_python', 0, t)
-
-    # logfile.close()
+    mpi.comm_world.Barrier()

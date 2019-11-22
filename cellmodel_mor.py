@@ -31,12 +31,12 @@ def calculate_l2_error_for_random_samples(basis,
     nt = int(num_time_steps - 1) if not with_half_steps else int((num_time_steps - 1) / 2)
     elapsed_high_dim = elapsed_red = red_errs = proj_errs = 0.
 
-    Re_min=1e-14
-    Re_max=1e-4
-    Fa_min=0.1
-    Fa_max=10
-    xi_min=0.1
-    xi_max=10
+    Re_min = 1e-14
+    Re_max = 1e-4
+    Fa_min = 0.1
+    Fa_max = 10
+    xi_min = 0.1
+    xi_max = 10
     for _ in range(params_per_rank):
 
         mu = [random.uniform(Re_min, Re_max), random.uniform(Fa_min, Fa_max), random.uniform(xi_min, xi_max)]
@@ -92,23 +92,22 @@ if __name__ == "__main__":
                                                                                         chunk_size, tol, omega)
     logfile = open(filename, 'w')
     ret, mu, mpi, solver = cellmodel_binary_tree_hapod(testcase,
-                                               t_end,
-                                               dt,
-                                               grid_size_x,
-                                               grid_size_y,
-                                               chunk_size,
-                                               tol=tol,
-                                               eval_tol=tol,
-                                               omega=omega,
-                                               logfile=logfile,
-                                               incremental_gramian=True,
-                                               orthonormalize=True,
-                                               calc_eval_basis=False,
-                                               linear=True)
+                                                       t_end,
+                                                       dt,
+                                                       grid_size_x,
+                                                       grid_size_y,
+                                                       chunk_size,
+                                                       tol=tol,
+                                                       eval_tol=tol,
+                                                       omega=omega,
+                                                       logfile=logfile,
+                                                       incremental_gramian=True,
+                                                       orthonormalize=True,
+                                                       calc_eval_basis=False,
+                                                       linear=True)
     rb_pfield, win_pfield = mpi.shared_memory_bcast_modes(ret[0][0].modes, True)
     rb_ofield, win_ofield = mpi.shared_memory_bcast_modes(ret[1][0].modes, True)
     rb_stokes, win_stokes = mpi.shared_memory_bcast_modes(ret[2][0].modes, True)
-
 
     red_errs, proj_errs, elapsed_red, elapsed_high_dim = calculate_l2_error_for_random_samples(
         rb_pfield, rb_ofield, rb_stokes, mpi, solver, grid_size, chunk_size)
@@ -121,13 +120,10 @@ if __name__ == "__main__":
         print("\n\n\nResults:\n")
         print('Solving the high-dimensional problem took %g seconds on average.' % elapsed_high_dim_mean)
         print('Solving the reduced problem took %g seconds on average.' % elapsed_red_mean)
-        print('The mean l2 reduction error and mean l2 projection error were %g and %g, respectively.' % (red_err,
-                                                                                                          proj_err))
-
-
+        print('The mean l2 reduction error and mean l2 projection error were %g and %g, respectively.' %
+              (red_err, proj_err))
 
     win_pfield.Free()
     win_ofield.Free()
     win_stokes.Free()
     logfile.close()
-

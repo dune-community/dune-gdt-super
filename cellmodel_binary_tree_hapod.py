@@ -160,15 +160,16 @@ def cellmodel_binary_tree_hapod(testcase,
 
 
 if __name__ == "__main__":
-    testcase = sys.argv[1]
-    t_end = float(sys.argv[2])
-    dt = float(sys.argv[3])
-    grid_size_x = int(sys.argv[4])
-    grid_size_y = int(sys.argv[5])
-    tol = float(sys.argv[6])
-    chunk_size = int(sys.argv[7])
-    omega = float(sys.argv[8])
-    inc_gramian = not (sys.argv[9] == "False" or sys.argv[9] == "0") if len(sys.argv) > 9 else True
+    argc = len(sys.argv)
+    testcase = 'single_cell' if argc < 2 else sys.argv[1]
+    t_end = 1e-2 if argc < 3 else float(sys.argv[2])
+    dt = 1e-3 if argc < 4 else float(sys.argv[3])
+    grid_size_x = 20 if argc < 5 else int(sys.argv[4])
+    grid_size_y = 5 if argc < 6 else int(sys.argv[5])
+    tol = 1e-4 if argc < 7 else float(sys.argv[6])
+    chunk_size = 5 if argc < 8 else int(sys.argv[7])
+    omega = 0.95 if argc < 9 else  float(sys.argv[8])
+    inc_gramian = True if argc < 10 else not (sys.argv[9] == "False" or sys.argv[9] == "0")
     filename = "cellmodel_binary_tree_hapod_grid_%dx%d_chunksize_%d_tol_%f_omega_%f" % (grid_size_x, grid_size_y,
                                                                                         chunk_size, tol, omega)
     logfile = open(filename, 'w')

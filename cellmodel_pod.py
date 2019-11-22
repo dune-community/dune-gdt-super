@@ -76,40 +76,40 @@ def cellmodel_pod(testcase, t_end, dt, grid_size_x, grid_size_y, tol, logfile=No
     ]
 
 
-class MatrixOperator(OperatorBase):
-
-    def __init__(self, mat):
-        self.mat = scipy.sparse.block_diag((mat, mat, mat), 'csr')
-        self.mass_mat = mat
-        self.n = n = mat.shape[0]
-        assert (self.mat[0:n, 0:n] != mat).nnz == 0
-        assert (self.mat[n:2 * n, n:2 * n] != mat).nnz == 0
-        assert (self.mat[2 * n:3 * n, 2 * n:3 * n] != mat).nnz == 0
-        self.numpy_solution_space = NumpyVectorSpace(self.mat.shape[0])
-        self.solution_space = DuneXtLaListVectorSpace(self.mat.shape[0])
-
-    def apply(self, U, mu=None, res=None):
-        U_out = np.transpose(self.mat @ np.transpose(U.to_numpy()))
-        return self.solution_space.from_numpy(U_out)
-
-    def calculate_error(self, modes, name, product=None):
-        if product is None:
-            product = self
-        snaps = load_snapshots(name)
-        residual = snaps - modes.lincomb(
-            snaps.dot(self.numpy_solution_space.from_numpy(product.apply(modes).to_numpy())))
-        return np.sqrt(
-            np.sum(residual.pairwise_dot(self.numpy_solution_space.from_numpy(product.apply(residual).to_numpy()))))
-
-        # residual = snaps - modes.lincomb(snaps.dot(product.apply(modes, numpy=True)))
-        # return np.sqrt(np.sum(residual.pairwise_dot(product.apply(residual, numpy=True))))
+# class MatrixOperator(OperatorBase):
+#
+#     def __init__(self, mat):
+#         self.mat = scipy.sparse.block_diag((mat, mat, mat), 'csr')
+#         self.mass_mat = mat
+#         self.n = n = mat.shape[0]
+#         assert (self.mat[0:n, 0:n] != mat).nnz == 0
+#         assert (self.mat[n:2 * n, n:2 * n] != mat).nnz == 0
+#         assert (self.mat[2 * n:3 * n, 2 * n:3 * n] != mat).nnz == 0
+#         self.numpy_solution_space = NumpyVectorSpace(self.mat.shape[0])
+#         self.solution_space = DuneXtLaListVectorSpace(self.mat.shape[0])
+#
+#     def apply(self, U, mu=None, res=None):
+#         U_out = np.transpose(self.mat @ np.transpose(U.to_numpy()))
+#         return self.solution_space.from_numpy(U_out)
+#
+#     def calculate_error(self, modes, name, product=None):
+#         if product is None:
+#             product = self
+#         snaps = load_snapshots(name)
+#         residual = snaps - modes.lincomb(
+#             snaps.dot(self.numpy_solution_space.from_numpy(product.apply(modes).to_numpy())))
+#         return np.sqrt(
+#             np.sum(residual.pairwise_dot(self.numpy_solution_space.from_numpy(product.apply(residual).to_numpy()))))
+#
+#        # residual = snaps - modes.lincomb(snaps.dot(product.apply(modes, numpy=True)))
+#        # return np.sqrt(np.sum(residual.pairwise_dot(product.apply(residual, numpy=True))))
 
 
 if __name__ == "__main__":
     argc = len(sys.argv)
     testcase = 'single_cell' if argc < 2 else sys.argv[1]
-    t_end = 1e-2 if argc < 3 else sys.argv[2]
-    dt = 1e-3 if argc < 4 else sys.argv[3]
+    t_end = 1e-2 if argc < 3 else float(sys.argv[2])
+    dt = 1e-3 if argc < 4 else float(sys.argv[3])
     grid_size_x = 20 if argc < 5 else int(sys.argv[4])
     grid_size_y = 5 if argc < 6 else int(sys.argv[5])
     tol = 1e-4 if argc < 7 else float(sys.argv[6])
@@ -144,6 +144,7 @@ if __name__ == "__main__":
     win_pfield.Free()
     win_ofield.Free()
     win_stokes.Free()
+    mpi.comm_world.Barrier()
     logfile.close()
     if mpi.rank_world == 0:
         logfile = open(filename, "r")
