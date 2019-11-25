@@ -478,11 +478,12 @@ class CellModelSolver(Parametric):
     def __init__(self, testcase, t_end, grid_size_x, grid_size_y, mu):
         self.impl = libhapodgdt.CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, False, *mu)
         self.last_mu = mu
-        self.pfield_solution_space = DuneXtLaListVectorSpace(self.impl.pfield_vector().dim)
-        self.pfield_numpy_space = NumpyVectorSpace(self.impl.pfield_vector().dim)
-        self.ofield_solution_space = DuneXtLaListVectorSpace(self.impl.ofield_vector().dim)
-        self.stokes_solution_space = DuneXtLaListVectorSpace(self.impl.stokes_vector().dim)
+        self.pfield_solution_space = DuneXtLaListVectorSpace(self.impl.pfield_vec(0).dim)
+        self.pfield_numpy_space = NumpyVectorSpace(self.impl.pfield_vec(0).dim)
+        self.ofield_solution_space = DuneXtLaListVectorSpace(self.impl.ofield_vec(0).dim)
+        self.stokes_solution_space = DuneXtLaListVectorSpace(self.impl.stokes_vec().dim)
         self.build_parameter_type(PARAMETER_TYPE)
+        self.num_cells = self.impl.num_cells()
 
     def linear(self):
         return self.impl.linear()
@@ -514,67 +515,67 @@ class CellModelSolver(Parametric):
     def apply_pfield_product_operator(self, U, mu=None, numpy=False):
         pfield_space = self.pfield_solution_space
         if not numpy:
-            U_out = [self.impl.apply_pfield_product_operator(vec.impl) for vec in U._list]
+            U_out = [self.impl.apply_pfield_product_op(vec.impl) for vec in U._list]
             return pfield_space.make_array(U_out)
         else:
             U_list = pfield_space.make_array([pfield_space.vector_from_numpy(vec).impl for vec in U.to_numpy()])
-            U_out = [DuneXtLaVector(self.impl.apply_pfield_product_operator(vec.impl)).to_numpy(True) for vec in U_list._list]
+            U_out = [DuneXtLaVector(self.impl.apply_pfield_product_op(vec.impl)).to_numpy(True) for vec in U_list._list]
             return self.pfield_numpy_space.make_array(U_out)
 
     def apply_ofield_product_operator(self, U, mu=None):
-        U_out = [self.impl.apply_ofield_product_operator(vec.impl) for vec in U._list]
+        U_out = [self.impl.apply_ofield_product_op(vec.impl) for vec in U._list]
         return self.ofield_solution_space.make_array(U_out)
 
     def apply_stokes_product_operator(self, U, mu=None):
-        U_out = [self.impl.apply_stokes_product_operator(vec.impl) for vec in U._list]
+        U_out = [self.impl.apply_stokes_product_op(vec.impl) for vec in U._list]
         return self.stokes_solution_space.make_array(U_out)
 
-    def pfield_vector(self):
-        return DuneXtLaVector(self.impl.pfield_vector())
+    def pfield_vector(self, cell_index):
+        return DuneXtLaVector(self.impl.pfield_vec(cell_index))
 
-    def ofield_vector(self):
-        return DuneXtLaVector(self.impl.ofield_vector())
+    def ofield_vector(self, cell_index):
+        return DuneXtLaVector(self.impl.ofield_vec(cell_index))
 
     def stokes_vector(self):
-        return DuneXtLaVector(self.impl.stokes_vector())
+        return DuneXtLaVector(self.impl.stokes_vec())
 
-    def set_pfield_variables(self, cell_index, vec):
-        return self.impl.set_pfield_variables(cell_index, vec.impl)
+    def set_pfield_vec(self, cell_index, vec):
+        return self.impl.set_pfield_vec(cell_index, vec.impl)
 
-    def set_ofield_variables(self, cell_index, vec):
-        return self.impl.set_ofield_variables(cell_index, vec.impl)
+    def set_ofield_vec(self, cell_index, vec):
+        return self.impl.set_ofield_vec(cell_index, vec.impl)
 
-    def set_stokes_variables(self, vec):
-        return self.impl.set_stokes_variables(vec.impl)
+    def set_stokes_vec(self, vec):
+        return self.impl.set_stokes_vec(vec.impl)
 
     def prepare_pfield_operator(self, dt, cell_index):
-        return self.impl.prepare_pfield_operator(dt, cell_index)
+        return self.impl.prepare_pfield_op(dt, cell_index)
 
     def prepare_ofield_operator(self, dt, cell_index):
-        return self.impl.prepare_ofield_operator(dt, cell_index)
+        return self.impl.prepare_ofield_op(dt, cell_index)
 
     def prepare_stokes_operator(self):
-        return self.impl.prepare_stokes_operator()
+        return self.impl.prepare_stokes_op()
 
     def solve_pfield(self, vec, cell_index):
-        return DuneXtLaVector(self.impl.solve_pfield(vec.impl, cell_index))
+        return DuneXtLaVector(self.impl.apply_inverse_pfield_op(vec.impl, cell_index))
 
     def solve_ofield(self, vec, cell_index):
-        return DuneXtLaVector(self.impl.solve_ofield(vec.impl, cell_index))
+        return DuneXtLaVector(self.impl.apply_inverse_ofield_op(vec.impl, cell_index))
 
     def solve_stokes(self):
-        return DuneXtLaVector(self.impl.solve_stokes())
+        return DuneXtLaVector(self.impl.apply_inverse_stokes_op())
 
     def apply_pfield_operator(self, U, cell_index, dt, mu=None):
-        U_out = [self.impl.apply_pfield_operator(vec.impl, cell_index) for vec in U._list]
+        U_out = [self.impl.apply_pfield_op(vec.impl, cell_index) for vec in U._list]
         return self.pfield_solution_space.make_array(U_out)
 
     def apply_ofield_operator(self, U, cell_index, dt, mu=None):
-        U_out = [self.impl.apply_ofield_operator(vec.impl, cell_index) for vec in U._list]
+        U_out = [self.impl.apply_ofield_op(vec.impl, cell_index) for vec in U._list]
         return self.ofield_solution_space.make_array(U_out)
 
     def apply_stokes_operator(self, U, mu=None):
-        U_out = [self.impl.apply_stokes_operator(vec.impl) for vec in U._list]
+        U_out = [self.impl.apply_stokes_op(vec.impl) for vec in U._list]
         return self.stokes_solution_space.make_array(U_out)
 
 
@@ -634,29 +635,16 @@ class CellModelPfieldOperator(OperatorBase):
         self.dt = dt
         self.linear = False
 
-    def apply(self, U, mu=None, numpy=False):
+    def apply(self, U, mu=None):
         return self.solver.apply_pfield_operator(U, self.cell_index, self.dt)
 
-class RestrictedCellModelPfieldOperator(RestrictedDuneOperatorBase):
+    def apply_inverse(self, V, mu=None, least_squares=False):
+        assert sum(V.norm()) == 0., "Not implemented for non-zero rhs!"
+        assert least_squares == False, "Least squares not implemented!"
+        return self.solver.apply_inverse_pfield_op(self.solver.pfield_vec(self.cell_index), self.cell_index)
 
-    linear = False
-
-    def __init__(self, solver, cell_index, dt, dofs):
-        self.solver = solver
-        self.dofs = dofs
-        dofs_as_list = [int(i) for i in dofs]
-        self.solver.impl.prepare_restricted_pfield_operator(dofs_as_list)
-        super(RestrictedCellModelPfieldOperator, self).__init__(solver, self.solver.impl.len_source_dofs(), len(dofs))
-
-    def apply(self, U, mu=None):
-        assert U in self.source
-        # hack to ensure realizability for hatfunction moment models
-        U = DuneXtLaListVectorSpace.from_numpy(U.to_numpy())
-        ret = [
-            DuneXtLaVector(self.solver.impl.apply_restricted_pfield_operator(u.impl, self.cell_index, self.dt)).to_numpy(True) for u in U._list
-        ]
-        return self.range.make_array(ret)
-
+    def prepare(self):
+        self.solver.prepare_pfield_op(self.dt, self.cell_index)
 
 
 class CellModelOfieldOperator(OperatorBase):
@@ -670,6 +658,14 @@ class CellModelOfieldOperator(OperatorBase):
     def apply(self, U, mu=None):
         return self.solver.apply_ofield_operator(U, self.cell_index, self.dt)
 
+    def apply_inverse(self, V, mu=None, least_squares=False):
+        assert sum(V.norm()) == 0., "Not implemented for non-zero rhs!"
+        assert least_squares == False, "Least squares not implemented!"
+        return self.solver.apply_inverse_ofield_op(self.solver.ofield_vec(self.cell_index), self.cell_index)
+
+    def prepare(self):
+        self.solver.prepare_ofield_op(self.dt, self.cell_index)
+
 
 class CellModelStokesOperator(OperatorBase):
 
@@ -679,6 +675,34 @@ class CellModelStokesOperator(OperatorBase):
 
     def apply(self, U, mu=None):
         return self.solver.apply_stokes_operator(U)
+
+    def apply_inverse(self, V, mu=None, least_squares=False):
+        assert sum(V.norm()) == 0., "Not implemented for non-zero rhs!"
+        assert least_squares == False, "Least squares not implemented!"
+        return self.solver.apply_inverse_stokes_op()
+
+    def prepare(self):
+        self.solver.prepare_stokes_op()
+
+class RestrictedCellModelPfieldOperator(RestrictedDuneOperatorBase):
+
+    linear = False
+
+    def __init__(self, solver, cell_index, dt, dofs):
+        self.solver = solver
+        self.dofs = dofs
+        dofs_as_list = [int(i) for i in dofs]
+        self.solver.impl.prepare_restricted_pfield_op(dofs_as_list)
+        super(RestrictedCellModelPfieldOperator, self).__init__(solver, self.solver.impl.len_source_dofs(), len(dofs))
+
+    def apply(self, U, mu=None):
+        assert U in self.source
+        # hack to ensure realizability for hatfunction moment models
+        U = DuneXtLaListVectorSpace.from_numpy(U.to_numpy())
+        ret = [
+            DuneXtLaVector(self.solver.impl.apply_restricted_pfield_op(u.impl, self.cell_index, self.dt)).to_numpy(True) for u in U._list
+        ]
+        return self.range.make_array(ret)
 
 
 
