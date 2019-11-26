@@ -506,8 +506,8 @@ class CellModelSolver(Parametric):
 
     # def reset(self):
     #     self.impl.reset()
-    def visualize(self, prefix, num, dt):
-        self.impl.visualize(prefix, num, dt)
+    def visualize(self, prefix, num, dt, subsampling=True):
+        self.impl.visualize(prefix, num, dt, subsampling)
 
     def finished(self):
         return self.impl.finished()
@@ -735,30 +735,27 @@ def create_and_scatter_cellmodel_parameters(comm,
     return comm.scatter(parameters_list, root=0)
 
 
-def calculate_cellmodel_trajectory_error(final_modes_pfield, final_modes_ofield, final_modes_stokes, testcase, t_end,
-                                         dt, grid_size_x, grid_size_y, mu):
-    err_pfield = err_ofield = err_stokes = 0
+def calculate_cellmodel_trajectory_error(modes, testcase, t_end, dt, grid_size_x, grid_size_y, mu):
+    errs = [0.]*len(modes)
+    # modes has length 2*num_cells+1
+    nc = (len(modes)-1) / 2
     solver = CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, mu)
     n = 0
     while not solver.finished():
         print("timestep: ", n)
-        next_vectors_pfield, next_vectors_ofield, next_vectors_stokes = solver.next_n_timesteps(1, dt)
-        pfield_residual = next_vectors_pfield - final_modes_pfield.lincomb(
-            next_vectors_pfield.dot(solver.apply_pfield_product_operator(final_modes_pfield)))
-        err_pfield += np.sum(pfield_residual.pairwise_dot(solver.apply_pfield_product_operator(pfield_residual)))
-        ofield_residual = next_vectors_ofield - final_modes_ofield.lincomb(
-            next_vectors_ofield.dot(solver.apply_ofield_product_operator(final_modes_ofield)))
-        err_ofield += np.sum(ofield_residual.pairwise_dot(solver.apply_ofield_product_operator(ofield_residual)))
-        stokes_residual = next_vectors_stokes - final_modes_stokes.lincomb(
-            next_vectors_stokes.dot(solver.apply_stokes_product_operator(final_modes_stokes)))
-        err_stokes += np.sum(stokes_residual.pairwise_dot(solver.apply_stokes_product_operator(stokes_residual)))
+        next_vectors = solver.next_n_timesteps(1, dt)
+        for k in range(nc):
+            res = next_vectors[k] - modes[k].lincomb(next_vectors[k].dot(solver.apply_pfield_product_operator(modes[k])))
+            err[k] += np.sum(res.pairwise_dot(solver.apply_pfield_product_operator(res)))
+            res = next_vectors[nc+k] - modes[nc+k].lincomb(next_vectors[nc+k].dot(solver.apply_ofield_product_operator(modes[nc+k])))
+            err[nc+k] += np.sum(res.pairwise_dot(solver.apply_ofield_product_operator(res)))
+        res = next_vectors[2*nc] - modes[2*nc].lincomb(next_vectors[2*nc].dot(solver.apply_stokes_product_operator(modes[2*nc])))
+        err[2*nc] += np.sum(res.pairwise_dot(solver.apply_stokes_product_operator(res)))
         n += 1
-    return err_pfield, err_ofield, err_stokes
+    return errs
 
 
-def calculate_mean_cellmodel_projection_error(final_modes_pfield,
-                                              final_modes_ofield,
-                                              final_modes_stokes,
+def calculate_mean_cellmodel_projection_error(modes,
                                               testcase,
                                               t_end,
                                               dt,
@@ -767,22 +764,16 @@ def calculate_mean_cellmodel_projection_error(final_modes_pfield,
                                               mu,
                                               mpi_wrapper,
                                               with_half_steps=True):
-    trajectory_error_pfield, trajectory_error_ofield, trajectory_error_stokes = calculate_cellmodel_trajectory_error(
-        final_modes_pfield, final_modes_ofield, final_modes_stokes, testcase, t_end, dt, grid_size_x, grid_size_y, mu)
-    trajectory_errors_pfield = mpi_wrapper.comm_world.gather(trajectory_error_pfield, root=0)
-    trajectory_errors_ofield = mpi_wrapper.comm_world.gather(trajectory_error_ofield, root=0)
-    trajectory_errors_stokes = mpi_wrapper.comm_world.gather(trajectory_error_stokes, root=0)
-    err_pfield = err_ofield = err_stokes = 0
-    if mpi_wrapper.rank_world == 0:
-        err_pfield = np.sqrt(np.sum(trajectory_errors_pfield))
-        err_ofield = np.sqrt(np.sum(trajectory_errors_ofield))
-        err_stokes = np.sqrt(np.sum(trajectory_errors_stokes))
-    return err_pfield, err_ofield, err_stokes
+    trajectory_errs = calculate_cellmodel_trajectory_errors(modes, testcase, t_end, dt, grid_size_x, grid_size_y, mu)
+    errs = [0.]*len(modes)
+    for trajectory_err, err in zip(trajectory_errs, errs):
+            trajectory_err = mpi_wrapper.comm_world.gather(trajectory_err, root=0)
+            if mpi_wrapper.rank_world == 0:
+                err = np.sqrt(np.sum(trajectory_err))
+    return errs
 
 
-def calculate_cellmodel_error(final_modes_pfield,
-                              final_modes_ofield,
-                              final_modes_stokes,
+def calculate_cellmodel_error(modes,
                               testcase,
                               t_end,
                               dt,
@@ -794,19 +785,17 @@ def calculate_cellmodel_error(final_modes_pfield,
     ''' Calculates projection error. As we cannot store all snapshots due to memory restrictions, the
         problem is solved again and the error calculated on the fly'''
     start = timer()
-    err_pfield, err_ofield, err_stokes = calculate_mean_cellmodel_projection_error(final_modes_pfield,
-                                                                                   final_modes_ofield,
-                                                                                   final_modes_stokes, testcase, t_end,
-                                                                                   dt, grid_size_x, grid_size_y, mu,
-                                                                                   mpi_wrapper)
+    errs = calculate_mean_cellmodel_projection_error(modes, testcase, t_end, dt, grid_size_x, grid_size_y, mu, mpi_wrapper)
     elapsed = timer() - start
     if mpi_wrapper.rank_world == 0 and logfile is not None:
         logfile.write("Time used for calculating error: " + str(elapsed) + "\n")
-        logfile.write("pfield_l2_error is: " + str(err_pfield) + "\n")
-        logfile.write("ofield_l2_error is: " + str(err_ofield) + "\n")
-        logfile.write("stokes_l2_error is: " + str(err_stokes) + "\n")
+        nc = (len(modes)-1)/2
+        for k in range(nc):
+            logfile.write("L2 error for {}-th pfield is: {}\n".format(k, errs[k]))
+            logfile.write("L2 error for {}-th ofield is: {}\n".format(k, errs[nc+k]))
+        logfile.write("L2 error for stokes is: {}\n".format(errs[2*nc]))
         logfile.close()
-    return err_pfield, err_ofield, err_stokes
+    return errs
 
 
 def get_num_chunks_and_num_timesteps(t_end, dt, chunk_size):

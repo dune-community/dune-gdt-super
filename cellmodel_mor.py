@@ -91,20 +91,21 @@ if __name__ == "__main__":
     filename = "cellmodel_binary_tree_hapod_grid_%dx%d_chunksize_%d_tol_%f_omega_%f" % (grid_size_x, grid_size_y,
                                                                                         chunk_size, tol, omega)
     logfile = open(filename, 'w')
-    ret, mu, mpi, solver = cellmodel_binary_tree_hapod(testcase,
-                                                       t_end,
-                                                       dt,
-                                                       grid_size_x,
-                                                       grid_size_y,
-                                                       chunk_size,
-                                                       tol=tol,
-                                                       eval_tol=tol,
-                                                       omega=omega,
-                                                       logfile=logfile,
-                                                       incremental_gramian=True,
-                                                       orthonormalize=True,
-                                                       calc_eval_basis=False,
-                                                       linear=True)
+    ret, mu, mpi, solver = cellmodel_binary_tree_hapod(
+        testcase,
+        t_end,
+        dt,
+        grid_size_x,
+        grid_size_y,
+        chunk_size,
+        tol=tol,
+        eval_tol=tol,
+        omega=omega,
+        logfile=logfile,
+        incremental_gramian=True,
+        orthonormalize=True,
+        calc_eval_basis=False,
+        linear=True)
     rb_pfield, win_pfield = mpi.shared_memory_bcast_modes(ret[0][0].modes, True)
     rb_ofield, win_ofield = mpi.shared_memory_bcast_modes(ret[1][0].modes, True)
     rb_stokes, win_stokes = mpi.shared_memory_bcast_modes(ret[2][0].modes, True)
@@ -120,8 +121,8 @@ if __name__ == "__main__":
         print("\n\n\nResults:\n")
         print('Solving the high-dimensional problem took %g seconds on average.' % elapsed_high_dim_mean)
         print('Solving the reduced problem took %g seconds on average.' % elapsed_red_mean)
-        print('The mean l2 reduction error and mean l2 projection error were %g and %g, respectively.' %
-              (red_err, proj_err))
+        print('The mean l2 reduction error and mean l2 projection error were %g and %g, respectively.' % (red_err,
+                                                                                                          proj_err))
 
     win_pfield.Free()
     win_ofield.Free()

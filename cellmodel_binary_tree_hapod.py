@@ -168,39 +168,41 @@ if __name__ == "__main__":
     grid_size_y = 5 if argc < 6 else int(sys.argv[5])
     tol = 1e-4 if argc < 7 else float(sys.argv[6])
     chunk_size = 5 if argc < 8 else int(sys.argv[7])
-    omega = 0.95 if argc < 9 else  float(sys.argv[8])
+    omega = 0.95 if argc < 9 else float(sys.argv[8])
     inc_gramian = True if argc < 10 else not (sys.argv[9] == "False" or sys.argv[9] == "0")
     filename = "cellmodel_binary_tree_hapod_grid_%dx%d_chunksize_%d_tol_%f_omega_%f" % (grid_size_x, grid_size_y,
                                                                                         chunk_size, tol, omega)
     logfile = open(filename, 'w')
-    ret, mu, mpi = cellmodel_binary_tree_hapod(testcase,
-                                               t_end,
-                                               dt,
-                                               grid_size_x,
-                                               grid_size_y,
-                                               chunk_size,
-                                               tol=tol,
-                                               eval_tol=tol,
-                                               omega=omega,
-                                               logfile=logfile,
-                                               incremental_gramian=True,
-                                               orthonormalize=True,
-                                               calc_eval_basis=False,
-                                               linear=True)
+    ret, mu, mpi = cellmodel_binary_tree_hapod(
+        testcase,
+        t_end,
+        dt,
+        grid_size_x,
+        grid_size_y,
+        chunk_size,
+        tol=tol,
+        eval_tol=tol,
+        omega=omega,
+        logfile=logfile,
+        incremental_gramian=True,
+        orthonormalize=True,
+        calc_eval_basis=False,
+        linear=True)
     final_modes_pfield, win_pfield = mpi.shared_memory_bcast_modes(ret[0][0].modes, True)
     final_modes_ofield, win_ofield = mpi.shared_memory_bcast_modes(ret[1][0].modes, True)
     final_modes_stokes, win_stokes = mpi.shared_memory_bcast_modes(ret[2][0].modes, True)
-    err_pfield, err_ofield, err_stokes = calculate_cellmodel_error(final_modes_pfield,
-                                                                   final_modes_ofield,
-                                                                   final_modes_stokes,
-                                                                   testcase,
-                                                                   t_end,
-                                                                   dt,
-                                                                   grid_size_x,
-                                                                   grid_size_y,
-                                                                   mu,
-                                                                   mpi,
-                                                                   logfile=logfile)
+    err_pfield, err_ofield, err_stokes = calculate_cellmodel_error(
+        final_modes_pfield,
+        final_modes_ofield,
+        final_modes_stokes,
+        testcase,
+        t_end,
+        dt,
+        grid_size_x,
+        grid_size_y,
+        mu,
+        mpi,
+        logfile=logfile)
     win_pfield.Free()
     win_ofield.Free()
     win_stokes.Free()

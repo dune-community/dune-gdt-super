@@ -38,10 +38,11 @@ def cellmodel_pod(testcase, t_end, dt, grid_size_x, grid_size_y, tol, logfile=No
     # get cellmodel solver to create snapshots
     mu = create_and_scatter_cellmodel_parameters(mpi.comm_world)
     solver = CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, mu)
+    nc = solver.num_cells
 
     # calculate Boltzmann problem trajectory
     start = timer()
-    snapshots_pfield, snapshots_ofield, snapshots_stokes = solver.solve(dt, True, dt, "result_" + str(mu))
+    snapshots = solver.solve(dt, True, dt, "result_" + str(mu))
     mpi.comm_world.Barrier()
     elapsed_data_gen = timer() - start
 
@@ -50,30 +51,30 @@ def cellmodel_pod(testcase, t_end, dt, grid_size_x, grid_size_y, tol, logfile=No
     ofield_product = CellModelOfieldProductOperator(solver)
     stokes_product = CellModelStokesProductOperator(solver)
 
-    [result_pfield, svals_pfield, elapsed_pod_pfield, total_num_snapshots_pfield] = calculate_pod(
-        snapshots_pfield, pfield_product, mpi, tol, "pfield")
-    [result_ofield, svals_ofield, elapsed_pod_ofield, total_num_snapshots_ofield] = calculate_pod(
-        snapshots_ofield, ofield_product, mpi, tol, "ofield")
-    [result_stokes, svals_stokes, elapsed_pod_stokes, total_num_snapshots_stokes] = calculate_pod(
-        snapshots_stokes, stokes_product, mpi, tol, "stokes")
+    modes, svals, elapsed_pod, total_num_snaps = [[None] * (2 * nc + 1) for i in range(4)]
+    for k in range(nc):
+        modes[k], svals[k], elapsed_pod[k], total_num_snaps[k] = calculate_pod(snapshots[k], pfield_product, mpi, tol,
+                                                                               "pfield_" + str(k))
+        modes[nc + k], svals[nc + k], elapsed_pod[nc + k], total_num_snaps[nc + k] = calculate_pod(
+            snapshots[nc + k], ofield_product, mpi, tol, "ofield_" + str(k))
+    modes[2 * nc], svals[2 * nc], elapsed_pod[2 * nc], total_num_snaps[2 * nc] = calculate_pod(
+        snapshots[2 * nc], stokes_product, mpi, tol, "stokes")
 
     # write statistics to file
     if logfile is not None and mpi.rank_world == 0:
-        logfile.write("After the pfield POD, there are " + str(len(result_pfield)) + " modes of " +
-                      str(total_num_snapshots_pfield) + " snapshots left!\n")
-        logfile.write("After the ofield POD, there are " + str(len(result_ofield)) + " modes of " +
-                      str(total_num_snapshots_ofield) + " snapshots left!\n")
-        logfile.write("After the stokes POD, there are " + str(len(result_stokes)) + " modes of " +
-                      str(total_num_snapshots_stokes) + " snapshots left!\n")
+        for k in range(nc):
+            logfile.write("After the {}-th pfield POD, there are {} modes of {} snapshots left!\n".format(
+                k, len(modes[k]), total_num_snaps[k]))
+            logfile.write("After the {}-th ofield POD, there are {} modes of {} snapshots left!\n".format(
+                k, len(modes[nc + k]), total_num_snaps[nc + k]))
+        logfile.write("After the stokes POD, there are {} modes of {} snapshots left!\n".format(
+            len(modes[2 * nc]), total_num_snaps[2 * nc]))
         logfile.write("The maximum amount of memory used on rank 0 was: " +
                       str(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1000.**2) + " GB\n")
         elapsed = timer() - start
         logfile.write("Time elapsed: " + str(elapsed) + "\n")
 
-    return [
-        result_pfield, svals_pfield, total_num_snapshots_pfield, result_ofield, svals_ofield,
-        total_num_snapshots_pfield, result_stokes, svals_stokes, total_num_snapshots_stokes, mu, mpi
-    ]
+    return [modes, svals, total_num_snaps, mu, mpi]
 
 
 # class MatrixOperator(OperatorBase):
@@ -104,7 +105,6 @@ def cellmodel_pod(testcase, t_end, dt, grid_size_x, grid_size_y, tol, logfile=No
 #        # residual = snaps - modes.lincomb(snaps.dot(product.apply(modes, numpy=True)))
 #        # return np.sqrt(np.sum(residual.pairwise_dot(product.apply(residual, numpy=True))))
 
-
 if __name__ == "__main__":
     argc = len(sys.argv)
     testcase = 'single_cell' if argc < 2 else sys.argv[1]
@@ -115,35 +115,21 @@ if __name__ == "__main__":
     tol = 1e-4 if argc < 7 else float(sys.argv[6])
     filename = "cellmodel_POD_grid_%dx%d_tol_%f" % (grid_size_x, grid_size_y, tol)
     logfile = open(filename, "a")
-    [
-        final_modes_pfield, _, total_num_snapshots_pfield, final_modes_ofield, _, total_num_snapshots_ofield,
-        final_modes_stokes, _, total_num_snapshots_stokes, mu, mpi
-    ] = cellmodel_pod(
+    modes, _, total_num_snaps, mu, mpi = cellmodel_pod(
         testcase, t_end, dt, grid_size_x, grid_size_y, tol, logfile=logfile)
 
+    # Broadcast modes to all ranks, if possible via shared memory
     retlistvecs = True
-    final_modes_pfield, win_pfield = mpi.shared_memory_bcast_modes(
-        final_modes_pfield, returnlistvectorarray=retlistvecs)
-    final_modes_ofield, win_ofield = mpi.shared_memory_bcast_modes(
-        final_modes_ofield, returnlistvectorarray=retlistvecs)
-    final_modes_stokes, win_stokes = mpi.shared_memory_bcast_modes(
-        final_modes_stokes, returnlistvectorarray=retlistvecs)
+    wins = total_num_snaps.copy()
+    for i in range(len(modes)):
+        modes[i], wins[i] = mpi.shared_memory_bcast_modes(modes[i], returnlistvectorarray=retlistvecs)
 
-    err_pfield, err_ofield, err_stokes = calculate_cellmodel_error(
-        final_modes_pfield,
-        final_modes_ofield,
-        final_modes_stokes,
-        testcase,
-        t_end,
-        dt,
-        grid_size_x,
-        grid_size_y,
-        mu,
-        mpi,
-        logfile=logfile)
-    win_pfield.Free()
-    win_ofield.Free()
-    win_stokes.Free()
+    # calculate errors
+    errors = calculate_cellmodel_errors(modes, testcase, t_end, dt, grid_size_x, grid_size_y, mu, mpi, logfile=logfile)
+
+    # free MPI windows
+    for win in wins:
+        win.Free()
     mpi.comm_world.Barrier()
     logfile.close()
     if mpi.rank_world == 0:
