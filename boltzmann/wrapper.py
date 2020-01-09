@@ -2,8 +2,10 @@ import math
 import numpy as np
 import random
 from timeit import default_timer as timer
+import weakref
 
 from pymor.algorithms.projection import project
+from pymor.core.interfaces import abstractmethod
 from pymor.models.basic import ModelBase
 from pymor.operators.basic import OperatorBase
 from pymor.operators.constructions import (VectorOperator, ConstantOperator, LincombOperator, LinearOperator,
@@ -12,6 +14,7 @@ from pymor.parameters.base import Parameter, ParameterType, Parametric
 from pymor.parameters.functionals import ExpressionParameterFunctional
 from pymor.parameters.spaces import CubicParameterSpace
 from pymor.reductors.basic import ProjectionBasedReductor
+from pymor.vectorarrays.block import BlockVectorSpace
 from pymor.vectorarrays.list import VectorInterface, ListVectorSpace, ListVectorArray
 from pymor.vectorarrays.numpy import NumpyVectorArray, NumpyVectorSpace
 
@@ -557,14 +560,14 @@ class CellModelSolver(Parametric):
     def prepare_stokes_operator(self):
         return self.impl.prepare_stokes_op()
 
-    def solve_pfield(self, vec, cell_index):
-        return DuneXtLaVector(self.impl.apply_inverse_pfield_op(vec.impl, cell_index))
+    def apply_inverse_pfield_operator(self, vec, cell_index):
+        return self.pfield_solution_space.make_array([self.impl.apply_inverse_pfield_op(vec.impl, cell_index)])
 
-    def solve_ofield(self, vec, cell_index):
-        return DuneXtLaVector(self.impl.apply_inverse_ofield_op(vec.impl, cell_index))
+    def apply_inverse_ofield_operator(self, vec, cell_index):
+        return self.ofield_solution_space.make_array([self.impl.apply_inverse_ofield_op(vec.impl, cell_index)])
 
-    def solve_stokes(self):
-        return DuneXtLaVector(self.impl.apply_inverse_stokes_op())
+    def apply_inverse_stokes_operator(self):
+        return self.stokes_solution_space.make_array([self.impl.apply_inverse_stokes_op()])
 
     def apply_pfield_operator(self, U, cell_index, dt, mu=None):
         U_out = [self.impl.apply_pfield_op(vec.impl, cell_index) for vec in U._list]
@@ -627,81 +630,207 @@ class CellModelStokesProductOperator(OperatorBase):
     def apply(self, U, mu=None):
         return self.solver.apply_stokes_product_operator(U)
 
-class CellModelPfieldOperator(OperatorBase):
+
+class FixedComponentWrapperOperator(OperatorBase):
+
+    def __init__(self, operator, idx, value):
+        value = value.copy()
+        self.__auto_init(locals())
+        self._fixed_component_operator = None
+        op = self._get_operator()
+        self.source = op.source
+        self.range = op.range
+        self.linear = op.linear
+
+    def _get_operator(self):
+        if self._fixed_component_operator is None:
+            op = None
+        else:
+            op = self._fixed_component_operator()
+
+        if op is None:
+            op = self.operator._fix_component(self.idx, self.value)
+            self._fixed_component_operator = weakref.ref(op)
+
+        return op
+
+    def apply(self, U, mu=None):
+        op = self._get_operator()
+        return op.apply(U, mu=mu)
+
+    def apply_inverse(self, V, mu=None, least_squares=False):
+        op = self._get_operator()
+        return op.apply_inverse(V, mu=mu, least_squares=least_squares)
+
+    def jacobian(self, U, mu=None):
+        op = self._get_operator()
+        return op.jacobian(U, mu=mu)
+
+
+class MutableStateOperator(OperatorBase):
+
+    mutable_state_index = 1
+
+    def apply(self, U, mu):
+        assert U in self.source
+        op = self.fix_component(self.mutable_state_index, U._blocks[self.mutable_state_index])
+        U = U._blocks[:self.mutable_state_index] + U._blocks[self.mutable_state_index+1:]
+        if len(U) > 1:
+            U = op.source.make_array(U)
+        return op.apply(U, mu=mu)
+
+    @abstractmethod
+    def _set_state(self, U):
+        pass
+
+    def _fix_component(self, idx, U):
+        if idx != self.mutable_state_index:
+            raise NotImplementedError
+        # store a strong ref to the current fixed component operator
+        # FixedComponentWrapperOperators storing a weakref to an older instance
+        # will loose their operators and will have to call this method again
+        operator = self._set_state(U)
+        self._last_fixed_component_operator = operator
+        return operator
+
+    def fix_component(self, idx, U):
+        assert len(U) == 1
+        return FixedComponentWrapperOperator(self, idx, U)
+
+
+class MutableStateCellModelOperator(MutableStateOperator):
+
+    def _fix_component(self, idx, U):
+        if idx != self.mutable_state_index:
+            raise NotImplementedError
+        operator = self._set_state(U)
+        self.solver._last_fixed_component_operator = operator
+        return operator
+
+
+class CellModelPfieldFixedOperator(OperatorBase):
 
     def __init__(self, solver, cell_index, dt):
-        self.solver = solver
-        self.cell_index = cell_index
-        self.dt = dt
+        self.__auto_init(locals())
         self.linear = False
+        self.source = self.range = self.solver.pfield_solution_space
 
     def apply(self, U, mu=None):
         return self.solver.apply_pfield_operator(U, self.cell_index, self.dt)
 
     def apply_inverse(self, V, mu=None, least_squares=False):
         assert sum(V.norm()) == 0., "Not implemented for non-zero rhs!"
-        assert least_squares == False, "Least squares not implemented!"
-        return self.solver.apply_inverse_pfield_op(self.solver.pfield_vec(self.cell_index), self.cell_index)
-
-    def prepare(self):
-        self.solver.prepare_pfield_op(self.dt, self.cell_index)
+        assert not least_squares, "Least squares not implemented!"
+        return self.solver.apply_inverse_pfield_operator(self.solver.pfield_vector(self.cell_index), self.cell_index)
 
 
-class CellModelOfieldOperator(OperatorBase):
+class CellModelPfieldOperator(MutableStateCellModelOperator):
 
     def __init__(self, solver, cell_index, dt):
-        self.solver = solver
-        self.cell_index = cell_index
-        self.dt = dt
+        self.__auto_init(locals())
         self.linear = False
+        self.source = BlockVectorSpace([self.solver.pfield_solution_space,
+                                        BlockVectorSpace([self.solver.pfield_solution_space,
+                                                          self.solver.ofield_solution_space,
+                                                          self.solver.stokes_solution_space])])
+        self.range = self.solver.pfield_solution_space
+
+    def _set_state(self, U):
+        self.solver.set_pfield_vec(0, U._blocks[0]._list[0])
+        self.solver.set_ofield_vec(0, U._blocks[1]._list[0])
+        self.solver.set_stokes_vec(U._blocks[2]._list[0])
+        self.solver.prepare_pfield_operator(self.dt, self.cell_index)
+        return CellModelPfieldFixedOperator(self.solver, self.cell_index, self.dt)
+
+
+class CellModelOfieldFixedOperator(OperatorBase):
+
+    def __init__(self, solver, cell_index, dt):
+        self.__auto_init(locals())
+        self.linear = False
+        self.source = self.range = self.solver.ofield_solution_space
 
     def apply(self, U, mu=None):
         return self.solver.apply_ofield_operator(U, self.cell_index, self.dt)
 
     def apply_inverse(self, V, mu=None, least_squares=False):
         assert sum(V.norm()) == 0., "Not implemented for non-zero rhs!"
-        assert least_squares == False, "Least squares not implemented!"
-        return self.solver.apply_inverse_ofield_op(self.solver.ofield_vec(self.cell_index), self.cell_index)
-
-    def prepare(self):
-        self.solver.prepare_ofield_op(self.dt, self.cell_index)
+        assert not least_squares, "Least squares not implemented!"
+        return self.solver.apply_inverse_ofield_operator(self.solver.ofield_vector(self.cell_index), self.cell_index)
 
 
-class CellModelStokesOperator(OperatorBase):
+class CellModelOfieldOperator(MutableStateCellModelOperator):
+
+    def __init__(self, solver, cell_index, dt):
+        self.solver = solver
+        self.cell_index = cell_index
+        self.dt = dt
+        self.linear = False
+        self.source = BlockVectorSpace([self.solver.ofield_solution_space,
+                                        BlockVectorSpace([self.solver.pfield_solution_space,
+                                                          self.solver.ofield_solution_space,
+                                                          self.solver.stokes_solution_space])])
+        self.range = self.solver.ofield_solution_space
+
+    def _set_state(self, U):
+        self.solver.set_pfield_vec(0, U._blocks[0]._list[0])
+        self.solver.set_ofield_vec(0, U._blocks[1]._list[0])
+        self.solver.set_stokes_vec(U._blocks[2]._list[0])
+        self.solver.prepare_ofield_operator(self.dt, self.cell_index)
+        return CellModelOfieldFixedOperator(self.solver, self.cell_index, self.dt)
+
+
+class CellModelStokesFixedOperator(OperatorBase):
 
     def __init__(self, solver):
-        self.solver = solver
+        self.__auto_init(locals())
         self.linear = True
+        self.source = self.range = self.solver.stokes_solution_space
 
     def apply(self, U, mu=None):
         return self.solver.apply_stokes_operator(U)
 
     def apply_inverse(self, V, mu=None, least_squares=False):
         assert sum(V.norm()) == 0., "Not implemented for non-zero rhs!"
-        assert least_squares == False, "Least squares not implemented!"
-        return self.solver.apply_inverse_stokes_op()
+        assert not least_squares, "Least squares not implemented!"
+        return self.solver.apply_inverse_stokes_operator()
 
-    def prepare(self):
-        self.solver.prepare_stokes_op()
 
-class RestrictedCellModelPfieldOperator(RestrictedDuneOperatorBase):
+class CellModelStokesOperator(MutableStateCellModelOperator):
 
-    linear = False
-
-    def __init__(self, solver, cell_index, dt, dofs):
+    def __init__(self, solver):
         self.solver = solver
-        self.dofs = dofs
-        dofs_as_list = [int(i) for i in dofs]
-        self.solver.impl.prepare_restricted_pfield_op(dofs_as_list)
-        super(RestrictedCellModelPfieldOperator, self).__init__(solver, self.solver.impl.len_source_dofs(), len(dofs))
+        self.linear = False
+        self.source = BlockVectorSpace([self.solver.stokes_solution_space,
+                                        BlockVectorSpace([self.solver.pfield_solution_space,
+                                                          self.solver.ofield_solution_space])])
+        self.range = self.solver.stokes_solution_space
 
-    def apply(self, U, mu=None):
-        assert U in self.source
-        U = DuneXtLaListVectorSpace.from_numpy(U.to_numpy())
-        ret = [
-            DuneXtLaVector(self.solver.impl.apply_restricted_pfield_op(u.impl, self.cell_index, self.dt)).to_numpy(True) for u in U._list
-        ]
-        return self.range.make_array(ret)
+    def _set_state(self, U):
+        self.solver.set_pfield_vec(0, U._blocks[0]._list[0])
+        self.solver.set_ofield_vec(0, U._blocks[1]._list[0])
+        self.solver.prepare_stokes_operator()
+        return CellModelStokesFixedOperator(self.solver)
+
+
+# class RestrictedCellModelPfieldOperator(RestrictedDuneOperatorBase):
+
+#     linear = False
+
+#     def __init__(self, solver, cell_index, dt, dofs):
+#         self.solver = solver
+#         self.dofs = dofs
+#         dofs_as_list = [int(i) for i in dofs]
+#         self.solver.impl.prepare_restricted_pfield_op(dofs_as_list)
+#         super(RestrictedCellModelPfieldOperator, self).__init__(solver, self.solver.impl.len_source_dofs(), len(dofs))
+
+#     def apply(self, U, mu=None):
+#         assert U in self.source
+#         U = DuneXtLaListVectorSpace.from_numpy(U.to_numpy())
+#         ret = [
+#             DuneXtLaVector(self.solver.impl.apply_restricted_pfield_op(u.impl, self.cell_index, self.dt)).to_numpy(True) for u in U._list
+#         ]
+#         return self.range.make_array(ret)
 
 
 def create_and_scatter_cellmodel_parameters(comm,
