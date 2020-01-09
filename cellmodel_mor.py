@@ -8,12 +8,11 @@ import numpy as np
 from pymor.operators.constructions import Concatenation, VectorArrayOperator
 from pymor.operators.ei import EmpiricalInterpolatedOperator
 
-from cellmodel.wrapper import DuneModel, BoltzmannRBReductor
+from boltzmann.wrapper import DuneModel, BoltzmannRBReductor
 from cellmodel_binary_tree_hapod import cellmodel_binary_tree_hapod
-from cellmodelutility import solver_statistics
+from boltzmannutility import solver_statistics
 
 #from cvxopt import matrix as cvxmatrix
-
 
 def calculate_l2_error_for_random_samples(basis,
                                           mpi,
@@ -91,7 +90,7 @@ if __name__ == "__main__":
     filename = "cellmodel_binary_tree_hapod_grid_%dx%d_chunksize_%d_tol_%f_omega_%f" % (grid_size_x, grid_size_y,
                                                                                         chunk_size, tol, omega)
     logfile = open(filename, 'w')
-    ret, mu, mpi, solver = cellmodel_binary_tree_hapod(
+    bases, mu, mpi, solver = cellmodel_binary_tree_hapod(
         testcase,
         t_end,
         dt,
@@ -106,12 +105,16 @@ if __name__ == "__main__":
         orthonormalize=True,
         calc_eval_basis=False,
         linear=True)
-    rb_pfield, win_pfield = mpi.shared_memory_bcast_modes(ret[0][0].modes, True)
-    rb_ofield, win_ofield = mpi.shared_memory_bcast_modes(ret[1][0].modes, True)
-    rb_stokes, win_stokes = mpi.shared_memory_bcast_modes(ret[2][0].modes, True)
+
+    # Broadcast modes to all ranks, if possible via shared memory
+    retlistvecs = True
+    for r in bases:
+      r.wins = [None] * len(r.modes)
+      for k in range(len(r.modes)):
+        r.modes[k], r.wins[k] = mpi.shared_memory_bcast_modes(r.modes[k], returnlistvectorarray=retlistvecs)
 
     red_errs, proj_errs, elapsed_red, elapsed_high_dim = calculate_l2_error_for_random_samples(
-        rb_pfield, rb_ofield, rb_stokes, mpi, solver, grid_size, chunk_size)
+        bases, mpi, solver, grid_size, chunk_size)
 
     red_err = np.sqrt(np.sum(red_errs) / total_num_snaps) / grid_size if mpi.rank_world == 0 else None
     proj_err = np.sqrt(np.sum(proj_errs) / total_num_snaps) / grid_size if mpi.rank_world == 0 else None
@@ -124,7 +127,9 @@ if __name__ == "__main__":
         print('The mean l2 reduction error and mean l2 projection error were %g and %g, respectively.' % (red_err,
                                                                                                           proj_err))
 
-    win_pfield.Free()
-    win_ofield.Free()
-    win_stokes.Free()
+    # free MPI windows
+    for r in bases:
+        for win in r.wins:
+            win.Free()
+    mpi.comm_world.Barrier()
     logfile.close()

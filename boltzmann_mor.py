@@ -82,10 +82,11 @@ def calculate_l2_error_for_random_samples(basis,
 
 if __name__ == "__main__":
     '''Computes HAPOD to get reduced basis and then calculate projection and model reduction error for random samples'''
-    grid_size = int(sys.argv[1])
-    chunk_size = int(sys.argv[2])
-    tol = float(sys.argv[3])
-    omega = float(sys.argv[4])
+    argc = len(sys.argv)
+    grid_size = 20 if argc < 2 else int(sys.argv[1])
+    chunk_size = 6 if argc < 3 else int(sys.argv[2])
+    tol = 1e-3 if argc < 4 else float(sys.argv[3])
+    omega = 0.95 if argc < 5 else float(sys.argv[4])
     orthonormalize = True
     (basis, _, _, _, total_num_snaps, total_num_evals, _, mpi, _, _, _, _, solver) = \
             boltzmann_binary_tree_hapod(grid_size, chunk_size, tol * grid_size, omega=omega, orthonormalize=orthonormalize)

@@ -6,7 +6,7 @@ import numpy as np
 from pymor.algorithms.pod import pod
 
 from mpiwrapper import MPIWrapper
-from boltzmann.wrapper import CellModelSolver, CellModelPfieldProductOperator, CellModelOfieldProductOperator, CellModelStokesProductOperator, calculate_cellmodel_error, create_and_scatter_cellmodel_parameters, DuneXtLaListVectorSpace
+from boltzmann.wrapper import CellModelSolver, CellModelPfieldProductOperator, CellModelOfieldProductOperator, CellModelStokesProductOperator, calculate_cellmodel_errors, create_and_scatter_cellmodel_parameters, DuneXtLaListVectorSpace
 from pymor.operators.basic import OperatorBase
 from pymor.vectorarrays.numpy import NumpyVectorSpace, NumpyVectorArray
 

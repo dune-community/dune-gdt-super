@@ -17,5 +17,6 @@ def visualize_solutions(grid_size=50):
 
 
 if __name__ == "__main__":
-    grid_size = int(sys.argv[1])
+    argc = len(sys.argv)
+    grid_size = 20 if argc < 2 else int(sys.argv[1])
     visualize_solutions(grid_size)

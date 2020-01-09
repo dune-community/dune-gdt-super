@@ -105,7 +105,7 @@ def local_pod(inputs,
         for i in range(len(inputs)):
             modes.append(inputs[i][0])
         return pod(
-            modes, product=product, atol=0., rtol=0., l2_err=epsilon_alpha, orthonormalize=orthonormalize, check=True)
+            modes, product=product, atol=0., rtol=0., l2_err=epsilon_alpha, orth_tol=1e-10 if orthonormalize else np.inf)
 
 
 class MPICommunicator(object):

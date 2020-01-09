@@ -193,11 +193,12 @@ def boltzmann_binary_tree_hapod(grid_size,
 
 
 if __name__ == "__main__":
-    grid_size = int(sys.argv[1])
-    chunk_size = int(sys.argv[2])
-    tol = float(sys.argv[3])
-    omega = float(sys.argv[4])
-    inc_gramian = not (sys.argv[5] == "False" or sys.argv[5] == "0") if len(sys.argv) > 5 else True
+    argc = len(sys.argv)
+    grid_size = 20 if argc < 2 else int(sys.argv[1])
+    chunk_size = 6 if argc < 3 else int(sys.argv[2])
+    tol = 1e-3 if argc < 4 else float(sys.argv[3])
+    omega = 0.95 if argc < 5 else float(sys.argv[4])
+    inc_gramian = True if argc < 6 else not (sys.argv[5] == "False" or sys.argv[5] == "0")
     filename = "HAPOD_binary_tree_gridsize_%d_chunksize_%d_tol_%f_omega_%f" % (grid_size, chunk_size, tol, omega)
     logfile = open(filename, "a")
     final_modes, _, _, _, total_num_snapshots, _, mu, mpi, _, _, _, _, _ = boltzmann_binary_tree_hapod(
