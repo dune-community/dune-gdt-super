@@ -697,13 +697,11 @@ class RestrictedCellModelPfieldOperator(RestrictedDuneOperatorBase):
 
     def apply(self, U, mu=None):
         assert U in self.source
-        # hack to ensure realizability for hatfunction moment models
         U = DuneXtLaListVectorSpace.from_numpy(U.to_numpy())
         ret = [
             DuneXtLaVector(self.solver.impl.apply_restricted_pfield_op(u.impl, self.cell_index, self.dt)).to_numpy(True) for u in U._list
         ]
         return self.range.make_array(ret)
-
 
 
 def create_and_scatter_cellmodel_parameters(comm,
