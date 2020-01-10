@@ -560,21 +560,39 @@ class CellModelSolver(Parametric):
     def prepare_stokes_operator(self):
         return self.impl.prepare_stokes_op()
 
-    def apply_inverse_pfield_operator(self, vec, cell_index):
-        return self.pfield_solution_space.make_array([self.impl.apply_inverse_pfield_op(vec.impl, cell_index)])
+    def apply_inverse_pfield_operator(self, vec, cell_index, mu=None):
+        if mu is not None:
+            return self.pfield_solution_space.make_array(
+                [self.impl.apply_inverse_pfield_op_with_param(vec.impl, cell_index, float(mu['Be']), float(mu['Pa']),
+                                                              float(mu['Ca']))]
+            )
+        else:
+            return self.pfield_solution_space.make_array([self.impl.apply_inverse_pfield_op(vec.impl, cell_index)])
 
-    def apply_inverse_ofield_operator(self, vec, cell_index):
-        return self.ofield_solution_space.make_array([self.impl.apply_inverse_ofield_op(vec.impl, cell_index)])
+    def apply_inverse_ofield_operator(self, vec, cell_index, mu=None):
+        if mu is not None:
+            return self.ofield_solution_space.make_array(
+                [self.impl.apply_inverse_ofield_op_with_param(vec.impl, cell_index, float(mu['Pa']))]
+            )
+        else:
+            return self.ofield_solution_space.make_array([self.impl.apply_inverse_ofield_op(vec.impl, cell_index)])
 
     def apply_inverse_stokes_operator(self):
         return self.stokes_solution_space.make_array([self.impl.apply_inverse_stokes_op()])
 
     def apply_pfield_operator(self, U, cell_index, dt, mu=None):
-        U_out = [self.impl.apply_pfield_op(vec.impl, cell_index) for vec in U._list]
+        if mu is not None:
+            U_out = [self.impl.apply_pfield_op_with_param(vec.impl, cell_index, float(mu['Be']), float(mu['Pa']),
+                                                          float(mu['Ca'])) for vec in U._list]
+        else:
+            U_out = [self.impl.apply_pfield_op(vec.impl, cell_index) for vec in U._list]
         return self.pfield_solution_space.make_array(U_out)
 
     def apply_ofield_operator(self, U, cell_index, dt, mu=None):
-        U_out = [self.impl.apply_ofield_op(vec.impl, cell_index) for vec in U._list]
+        if mu is not None:
+            U_out = [self.impl.apply_ofield_op_with_param(vec.impl, cell_index, float(mu['Pa'])) for vec in U._list]
+        else:
+            U_out = [self.impl.apply_ofield_op(vec.impl, cell_index) for vec in U._list]
         return self.ofield_solution_space.make_array(U_out)
 
     def apply_stokes_operator(self, U, mu=None):
@@ -714,14 +732,16 @@ class CellModelPfieldFixedOperator(OperatorBase):
         self.__auto_init(locals())
         self.linear = False
         self.source = self.range = self.solver.pfield_solution_space
+        self.build_parameter_type(Be=(), Ca=(), Pa=())
 
     def apply(self, U, mu=None):
-        return self.solver.apply_pfield_operator(U, self.cell_index, self.dt)
+        return self.solver.apply_pfield_operator(U, self.cell_index, self.dt, mu=mu)
 
     def apply_inverse(self, V, mu=None, least_squares=False):
         assert sum(V.norm()) == 0., "Not implemented for non-zero rhs!"
         assert not least_squares, "Least squares not implemented!"
-        return self.solver.apply_inverse_pfield_operator(self.solver.pfield_vector(self.cell_index), self.cell_index)
+        return self.solver.apply_inverse_pfield_operator(self.solver.pfield_vector(self.cell_index), self.cell_index,
+                                                         mu=mu)
 
 
 class CellModelPfieldOperator(MutableStateCellModelOperator):
@@ -734,6 +754,7 @@ class CellModelPfieldOperator(MutableStateCellModelOperator):
                                                           self.solver.ofield_solution_space,
                                                           self.solver.stokes_solution_space])])
         self.range = self.solver.pfield_solution_space
+        self.build_parameter_type(Be=(), Ca=(), Pa=())
 
     def _set_state(self, U):
         self.solver.set_pfield_vec(0, U._blocks[0]._list[0])
@@ -749,14 +770,16 @@ class CellModelOfieldFixedOperator(OperatorBase):
         self.__auto_init(locals())
         self.linear = False
         self.source = self.range = self.solver.ofield_solution_space
+        self.build_parameter_type(Pa=())
 
     def apply(self, U, mu=None):
-        return self.solver.apply_ofield_operator(U, self.cell_index, self.dt)
+        return self.solver.apply_ofield_operator(U, self.cell_index, self.dt, mu=mu)
 
     def apply_inverse(self, V, mu=None, least_squares=False):
         assert sum(V.norm()) == 0., "Not implemented for non-zero rhs!"
         assert not least_squares, "Least squares not implemented!"
-        return self.solver.apply_inverse_ofield_operator(self.solver.ofield_vector(self.cell_index), self.cell_index)
+        return self.solver.apply_inverse_ofield_operator(self.solver.ofield_vector(self.cell_index), self.cell_index,
+                                                         mu=mu)
 
 
 class CellModelOfieldOperator(MutableStateCellModelOperator):
@@ -771,6 +794,7 @@ class CellModelOfieldOperator(MutableStateCellModelOperator):
                                                           self.solver.ofield_solution_space,
                                                           self.solver.stokes_solution_space])])
         self.range = self.solver.ofield_solution_space
+        self.build_parameter_type(Pa=())
 
     def _set_state(self, U):
         self.solver.set_pfield_vec(0, U._blocks[0]._list[0])
