@@ -5,8 +5,8 @@ from timeit import default_timer as timer
 import numpy as np
 from pymor.algorithms.pod import pod
 
-from mpiwrapper import MPIWrapper
-from boltzmann.wrapper import CellModelSolver, CellModelPfieldProductOperator, CellModelOfieldProductOperator, CellModelStokesProductOperator, calculate_cellmodel_errors, create_and_scatter_cellmodel_parameters, DuneXtLaListVectorSpace
+from hapod.mpi import MPIWrapper
+from hapod.cellmodel.wrapper import CellModelSolver, CellModelPfieldProductOperator, CellModelOfieldProductOperator, CellModelStokesProductOperator, calculate_cellmodel_errors, create_and_scatter_cellmodel_parameters
 from pymor.operators.basic import OperatorBase
 from pymor.vectorarrays.numpy import NumpyVectorSpace, NumpyVectorArray
 
@@ -42,7 +42,7 @@ def cellmodel_pod(testcase, t_end, dt, grid_size_x, grid_size_y, tol, logfile=No
 
     # calculate Boltzmann problem trajectory
     start = timer()
-    snapshots = solver.solve(dt, True, dt, "result_" + str(mu))
+    snapshots = solver.solve(dt, True, dt, "cellmodel_snapshot_" + str(mu))
     mpi.comm_world.Barrier()
     elapsed_data_gen = timer() - start
 
@@ -113,7 +113,7 @@ if __name__ == "__main__":
     grid_size_x = 20 if argc < 5 else int(sys.argv[4])
     grid_size_y = 5 if argc < 6 else int(sys.argv[5])
     tol = 1e-4 if argc < 7 else float(sys.argv[6])
-    filename = "cellmodel_POD_grid_%dx%d_tol_%f" % (grid_size_x, grid_size_y, tol)
+    filename = "cellmodel_POD_grid_%dx%d_tol_%f.log" % (grid_size_x, grid_size_y, tol)
     logfile = open(filename, "a")
     modes, _, total_num_snaps, mu, mpi = cellmodel_pod(
         testcase, t_end, dt, grid_size_x, grid_size_y, tol, logfile=logfile)

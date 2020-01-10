@@ -15,5 +15,8 @@ tags
 tags.lock
 tags.temp
 *.code-workspace
+*.log
+cellmodel_snapshot_*
+boltzmann_snapshot_*
 
 

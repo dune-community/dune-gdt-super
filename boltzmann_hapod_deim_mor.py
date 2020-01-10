@@ -10,9 +10,9 @@ from pymor.operators.constructions import Concatenation, VectorArrayOperator
 from pymor.operators.ei import EmpiricalInterpolatedOperator
 from pymor.vectorarrays.numpy import NumpyVectorSpace
 
-from boltzmann.wrapper import DuneModel, BoltzmannRBReductor, BoltzmannModelBase
+from hapod.boltzmann.wrapper import DuneModel, BoltzmannRBReductor, BoltzmannModelBase
 from boltzmann_binary_tree_hapod import boltzmann_binary_tree_hapod
-from boltzmannutility import solver_statistics, create_boltzmann_solver
+from hapod.boltzmann.utility import solver_statistics, create_boltzmann_solver
 
 #from cvxopt import matrix as cvxmatrix
 
@@ -126,7 +126,7 @@ if __name__ == "__main__":
     tol_scale_factor = (grid_size / 7)**(3 / 2)
     l2_tol = L2_tol * tol_scale_factor
     l2_deim_tol = L2_deim_tol * tol_scale_factor
-    filename = "boltzmann_hapod_deim_mor_gridsize_%d_chunksize_%d_tol_%f_deim_tol_%f_omega_%f" % (
+    filename = "boltzmann_hapod_deim_mor_gridsize_%d_chunksize_%d_tol_%f_deim_tol_%f_omega_%f.log" % (
         grid_size, chunk_size, L2_tol, L2_deim_tol, omega)
     logfile = open(filename, "a")
     start = timer()

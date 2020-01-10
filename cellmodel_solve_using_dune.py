@@ -1,7 +1,7 @@
 import sys
 import numpy as np
-from boltzmann.wrapper import CellModelSolver, CellModelPfieldOperator, CellModelOfieldOperator, CellModelStokesOperator
-from mpiwrapper import MPIWrapper
+from hapod.cellmodel.wrapper import CellModelSolver, CellModelPfieldOperator, CellModelOfieldOperator, CellModelStokesOperator
+from hapod.mpi import MPIWrapper
 
 if __name__ == "__main__":
     mpi = MPIWrapper()
@@ -13,7 +13,7 @@ if __name__ == "__main__":
     grid_size_y = 5 if argc < 6 else int(sys.argv[5])
     visualize = True if argc < 7 else bool(sys.argv[6])
     subsampling = True if argc < 8 else bool(sys.argv[7])
-    filename = "cellmodel_solve_grid_%dx%d" % (grid_size_x, grid_size_y)
+    filename = "cellmodel_solve_grid_%dx%d.log" % (grid_size_x, grid_size_y)
     mu = [5e-13, 1., 1.1]
     solver = CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, mu)
     num_cells = solver.num_cells
@@ -43,14 +43,14 @@ if __name__ == "__main__":
         print("Current time: {}".format(t))
         for kk in range(num_cells):
             solver.prepare_pfield_operator(dt, kk)
-            pfield_vecs[kk] = solver.solve_pfield(pfield_vecs[kk], kk)
+            pfield_vecs[kk] = solver.apply_inverse_pfield_operator(pfield_vecs[kk], kk)
             solver.set_pfield_vec(kk, pfield_vecs[kk])
             solver.prepare_ofield_operator(dt, kk)
-            ofield_vecs[kk] = solver.solve_ofield(ofield_vecs[kk], kk)
+            ofield_vecs[kk] = solver.apply_inverse_ofield_operator(ofield_vecs[kk], kk)
             solver.set_ofield_vec(kk, ofield_vecs[kk])
 
         solver.prepare_stokes_operator()
-        stokes_vec = solver.solve_stokes()
+        stokes_vec = solver.apply_inverse_stokes_operator()
         solver.set_stokes_vec(stokes_vec)
         i += 1
         t += actual_dt

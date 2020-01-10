@@ -4,10 +4,10 @@ from timeit import default_timer as timer
 
 import numpy as np
 
-from boltzmannutility import (calculate_error, create_and_scatter_boltzmann_parameters, create_boltzmann_solver,
+from hapod.boltzmann.utility import (calculate_error, create_and_scatter_boltzmann_parameters, create_boltzmann_solver,
                               solver_statistics)
-from hapod import local_pod, HapodParameters, binary_tree_hapod_over_ranks, binary_tree_depth
-from mpiwrapper import MPIWrapper
+from hapod.hapod import local_pod, HapodParameters, binary_tree_hapod_over_ranks, binary_tree_depth
+from hapod.mpi import MPIWrapper
 
 
 def boltzmann_binary_tree_hapod(grid_size,
@@ -199,7 +199,7 @@ if __name__ == "__main__":
     tol = 1e-3 if argc < 4 else float(sys.argv[3])
     omega = 0.95 if argc < 5 else float(sys.argv[4])
     inc_gramian = True if argc < 6 else not (sys.argv[5] == "False" or sys.argv[5] == "0")
-    filename = "HAPOD_binary_tree_gridsize_%d_chunksize_%d_tol_%f_omega_%f" % (grid_size, chunk_size, tol, omega)
+    filename = "HAPOD_binary_tree_gridsize_%d_chunksize_%d_tol_%f_omega_%f.log" % (grid_size, chunk_size, tol, omega)
     logfile = open(filename, "a")
     final_modes, _, _, _, total_num_snapshots, _, mu, mpi, _, _, _, _, _ = boltzmann_binary_tree_hapod(
         grid_size, chunk_size, tol * grid_size, None, omega=omega, logfile=logfile, incremental_gramian=inc_gramian)

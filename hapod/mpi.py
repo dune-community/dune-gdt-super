@@ -2,9 +2,9 @@ from pymor.vectorarrays.numpy import NumpyVectorSpace
 from mpi4py import MPI
 import numpy as np
 
-from hapod import MPICommunicator
-from boltzmann.wrapper import DuneXtLaListVectorSpace
+from pymor.core.interfaces import abstractmethod
 
+from hapod.xt import DuneXtLaListVectorSpace
 
 class MPIWrapper:
     '''Stores MPI communicators for all ranks (world), for all ranks on a single compute node (proc)
@@ -69,6 +69,18 @@ class MPIWrapper:
             modes = NumpyVectorSpace.from_numpy(modes_numpy)
             return modes, win
 
+class MPICommunicator(object):
+
+    rank = None
+    size = None
+
+    @abstractmethod
+    def send_modes(self, dest, modes, svals, num_snaps_in_leafs):
+        pass
+
+    @abstractmethod
+    def recv_modes(self, source):
+        pass
 
 class BoltzmannMPICommunicator(MPICommunicator, MPI.Intracomm):
 

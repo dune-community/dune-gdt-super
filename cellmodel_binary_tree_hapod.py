@@ -4,9 +4,9 @@ from timeit import default_timer as timer
 
 import numpy as np
 
-from hapod import local_pod, HapodParameters, binary_tree_hapod_over_ranks, binary_tree_depth
-from mpiwrapper import MPIWrapper
-from boltzmann.wrapper import CellModelSolver, CellModelPfieldProductOperator, CellModelOfieldProductOperator, CellModelStokesProductOperator, calculate_cellmodel_errors, create_and_scatter_cellmodel_parameters, get_num_chunks_and_num_timesteps
+from hapod.hapod import local_pod, HapodParameters, binary_tree_hapod_over_ranks, binary_tree_depth
+from hapod.mpi import MPIWrapper
+from hapod.cellmodel.wrapper import CellModelSolver, CellModelPfieldProductOperator, CellModelOfieldProductOperator, CellModelStokesProductOperator, calculate_cellmodel_errors, create_and_scatter_cellmodel_parameters, get_num_chunks_and_num_timesteps
 
 
 class HapodResult:
@@ -163,7 +163,7 @@ if __name__ == "__main__":
     chunk_size = 5 if argc < 8 else int(sys.argv[7])
     omega = 0.95 if argc < 9 else float(sys.argv[8])
     inc_gramian = True if argc < 10 else not (sys.argv[9] == "False" or sys.argv[9] == "0")
-    filename = "cellmodel_binary_tree_hapod_grid_%dx%d_chunksize_%d_tol_%f_omega_%f" % (grid_size_x, grid_size_y,
+    filename = "cellmodel_binary_tree_hapod_grid_%dx%d_chunksize_%d_tol_%f_omega_%f.log" % (grid_size_x, grid_size_y,
                                                                                         chunk_size, tol, omega)
     logfile = open(filename, 'w')
     ret, mu, mpi, _ = cellmodel_binary_tree_hapod(

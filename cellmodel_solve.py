@@ -1,7 +1,7 @@
 import sys
 import numpy as np
-from boltzmann.wrapper import CellModelSolver, CellModelPfieldOperator, CellModelOfieldOperator, CellModelStokesOperator
-from mpiwrapper import MPIWrapper
+from hapod.cellmodel.wrapper import CellModelSolver, CellModelPfieldOperator, CellModelOfieldOperator, CellModelStokesOperator
+from hapod.mpi import MPIWrapper
 
 from pymor.operators.basic import OperatorBase, ProjectedOperator
 from pymor.operators.constructions import VectorOperator
@@ -127,7 +127,7 @@ if __name__ == "__main__":
     grid_size_y = 5 if argc < 6 else int(sys.argv[5])
     visualize = True if argc < 7 else bool(sys.argv[6])
     subsampling = True if argc < 8 else bool(sys.argv[7])
-    filename = "cellmodel_solve_grid_%dx%d" % (grid_size_x, grid_size_y)
+    filename = "cellmodel_solve_grid_%dx%d.log" % (grid_size_x, grid_size_y)
     mu = [5e-13, 1., 1.1]
     solver = CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, mu)
     num_cells = solver.num_cells

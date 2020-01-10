@@ -5,8 +5,8 @@ from timeit import default_timer as timer
 import numpy as np
 from pymor.algorithms.pod import pod
 
-from boltzmannutility import calculate_error, create_and_scatter_boltzmann_parameters, create_boltzmann_solver
-from mpiwrapper import MPIWrapper
+from hapod.boltzmann.utility import calculate_error, create_and_scatter_boltzmann_parameters, create_boltzmann_solver
+from hapod.mpi import MPIWrapper
 
 
 def boltzmann_pod(grid_size, tol, logfile=None):
@@ -51,7 +51,7 @@ if __name__ == "__main__":
     argc = len(sys.argv)
     grid_size = 20 if argc < 2 else int(sys.argv[1])
     tol = 1e-3 if argc < 3 else float(sys.argv[2])
-    filename = "POD_gridsize_%d_tol_%f" % (grid_size, tol)
+    filename = "POD_gridsize_%d_tol_%f.log" % (grid_size, tol)
     logfile = open(filename, "a")
     final_modes, _, total_num_snapshots, mu, mpi, _, _, _ = boltzmann_pod(grid_size, tol * grid_size, logfile=logfile)
     final_modes, win = mpi.shared_memory_bcast_modes(final_modes)

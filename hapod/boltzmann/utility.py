@@ -5,7 +5,7 @@ from timeit import default_timer as timer
 import numpy as np
 from pymor.vectorarrays.numpy import NumpyVectorSpace
 
-from boltzmann import wrapper
+from hapod.boltzmann import wrapper
 from libhapodgdt import CellModelSolver
 
 

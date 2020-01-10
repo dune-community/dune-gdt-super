@@ -4,10 +4,9 @@ from timeit import default_timer as timer
 
 import numpy as np
 
-from boltzmannutility import (calculate_error, create_and_scatter_boltzmann_parameters, create_boltzmann_solver,
-                              solver_statistics)
-from hapod import local_pod, HapodParameters, incremental_hapod_over_ranks
-from mpiwrapper import MPIWrapper
+from hapod.boltzmann.utility import calculate_error, create_and_scatter_boltzmann_parameters, create_boltzmann_solver, solver_statistics
+from hapod.hapod import local_pod, HapodParameters, incremental_hapod_over_ranks
+from hapod.mpi import MPIWrapper
 
 
 def boltzmann_incremental_hapod(grid_size, chunk_size, tol, omega=0.95, logfile=None, incremental_gramian=True):
@@ -102,7 +101,7 @@ if __name__ == "__main__":
     tol = 1e-3 if argc < 4 else float(sys.argv[3])
     omega = 0.95 if argc < 5 else float(sys.argv[4])
     inc_gramian = True if argc < 6 else not (sys.argv[5] == "False" or sys.argv[5] == "0")
-    filename = "boltzmann_incremental_hapod_gridsize_%d_chunksize_%d_tol_%f_omega_%f" \
+    filename = "boltzmann_incremental_hapod_gridsize_%d_chunksize_%d_tol_%f_omega_%f.log" \
                % (grid_size, chunk_size, tol, omega)
     logfile = open(filename, "a")
     final_modes, _, total_num_snapshots, mu, mpi, _, _, _ = boltzmann_incremental_hapod(

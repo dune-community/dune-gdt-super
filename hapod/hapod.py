@@ -107,21 +107,6 @@ def local_pod(inputs,
         return pod(
             modes, product=product, atol=0., rtol=0., l2_err=epsilon_alpha, orth_tol=1e-10 if orthonormalize else np.inf)
 
-
-class MPICommunicator(object):
-
-    rank = None
-    size = None
-
-    @abstractmethod
-    def send_modes(self, dest, modes, svals, num_snaps_in_leafs):
-        pass
-
-    @abstractmethod
-    def recv_modes(self, source):
-        pass
-
-
 def incremental_hapod_over_ranks(comm,
                                  modes,
                                  num_snaps_in_leafs,
