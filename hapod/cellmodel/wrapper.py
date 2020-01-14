@@ -22,12 +22,14 @@ from hapod.xt import DuneXtLaVector, DuneXtLaListVectorSpace
 
 import libhapodgdt
 
+# Parameters are Be, Ca, Pa
 CELLMODEL_PARAMETER_TYPE = ParameterType({'s': (3,)})
 
 class CellModelSolver(Parametric):
 
     def __init__(self, testcase, t_end, grid_size_x, grid_size_y, mu):
-        self.impl = libhapodgdt.CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, False, *mu)
+        self.impl = libhapodgdt.CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, False, float(mu['Be']),
+                                                float(mu['Ca']), float(mu['Pa']))
         self.last_mu = mu
         self.pfield_solution_space = DuneXtLaListVectorSpace(self.impl.pfield_vec(0).dim)
         self.pfield_numpy_space = NumpyVectorSpace(self.impl.pfield_vec(0).dim)
@@ -111,8 +113,7 @@ class CellModelSolver(Parametric):
     def apply_inverse_pfield_operator(self, vec, cell_index, mu=None):
         if mu is not None:
             return self.pfield_solution_space.make_array(
-                [self.impl.apply_inverse_pfield_op_with_param(vec.impl, cell_index, float(mu['Be']), float(mu['Pa']),
-                                                              float(mu['Ca']))]
+                [self.impl.apply_inverse_pfield_op_with_param(vec.impl, cell_index, float(mu['Be']), float(mu['Ca']), float(mu['Pa']))]
             )
         else:
             return self.pfield_solution_space.make_array([self.impl.apply_inverse_pfield_op(vec.impl, cell_index)])
@@ -130,8 +131,7 @@ class CellModelSolver(Parametric):
 
     def apply_pfield_operator(self, U, cell_index, dt, mu=None):
         if mu is not None:
-            U_out = [self.impl.apply_pfield_op_with_param(vec.impl, cell_index, float(mu['Be']), float(mu['Pa']),
-                                                          float(mu['Ca'])) for vec in U._list]
+            U_out = [self.impl.apply_pfield_op_with_param(vec.impl, cell_index, float(mu['Be']), float(mu['Ca']), float(mu['Pa'])) for vec in U._list]
         else:
             U_out = [self.impl.apply_pfield_op(vec.impl, cell_index) for vec in U._list]
         return self.pfield_solution_space.make_array(U_out)

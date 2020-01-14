@@ -18,5 +18,7 @@ tags.temp
 *.log
 cellmodel_snapshot_*
 boltzmann_snapshot_*
+*.swp
+*.vtu
 
 

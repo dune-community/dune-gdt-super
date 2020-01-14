@@ -81,40 +81,42 @@ class CellModel(ModelBase):
         assert not return_output
 
         # initial values
-        pfield_vec = self.initial_pfield.as_vector()
-        ofield_vec = self.initial_ofield.as_vector()
-        stokes_vec = self.initial_stokes.as_vector()
+        pfield_vecarray = self.initial_pfield.as_vector()
+        ofield_vecarray = self.initial_ofield.as_vector()
+        stokes_vecarray = self.initial_stokes.as_vector()
 
-        U_all = self.solution_space.make_array([pfield_vec, ofield_vec, stokes_vec])
+        U_all = self.solution_space.make_array([pfield_vecarray, ofield_vecarray, stokes_vecarray])
 
         i = 0
         t = 0
         while t < self.t_end - 1e-14:
             # match saving times and t_end_ exactly
             actual_dt = min(dt, self.t_end - t)
-
             # do a timestep
             print("Current time: {}".format(t))
-            U = self.pfield_op.source.subspaces[1].make_array([pfield_vec, ofield_vec, stokes_vec])
-            pfield_vec = self.pfield_op.fix_component(1, U).apply_inverse(pfield_vec.zeros(), mu=mu)
-            U = self.ofield_op.source.subspaces[1].make_array([pfield_vec, ofield_vec, stokes_vec])
-            ofield_vec = self.ofield_op.fix_component(1, U).apply_inverse(ofield_vec.zeros(), mu=mu)
-            U = self.stokes_op.source.subspaces[1].make_array([pfield_vec, ofield_vec])
-            stokes_vec = self.stokes_op.fix_component(1, U).apply_inverse(stokes_vec.zeros(), mu=mu)
+            U = self.pfield_op.source.subspaces[1].make_array([pfield_vecarray, ofield_vecarray, stokes_vecarray])
+            pfield_vecarray = self.pfield_op.fix_component(1, U).apply_inverse(pfield_vecarray.zeros(), mu=mu)
+            # print(np.max(self.pfield_op.fix_component(1, U).apply(pfield_vecarray, mu=mu).to_numpy()))
+            U = self.ofield_op.source.subspaces[1].make_array([pfield_vecarray, ofield_vecarray, stokes_vecarray])
+            ofield_vecarray = self.ofield_op.fix_component(1, U).apply_inverse(ofield_vecarray.zeros(), mu=mu)
+            # print(np.max(self.ofield_op.fix_component(1, U).apply(ofield_vecarray, mu=mu).to_numpy()))
+            U = self.stokes_op.source.subspaces[1].make_array([pfield_vecarray, ofield_vecarray])
+            stokes_vecarray = self.stokes_op.fix_component(1, U).apply_inverse(stokes_vecarray.zeros(), mu=mu)
+            # print(np.max(self.stokes_op.fix_component(1, U).apply(stokes_vecarray, mu=mu).to_numpy()))
             i += 1
             t += actual_dt
-            U = self.pfield_op.source.subspaces[1].make_array([pfield_vec, ofield_vec, stokes_vec])
+            U = self.pfield_op.source.subspaces[1].make_array([pfield_vecarray, ofield_vecarray, stokes_vecarray])
             U_all.append(U)
 
         return U_all
 
-    def visualize(self, U, subsampling=True):
+    def visualize(self, U, prefix='cellmodel_result', subsampling=True):
         assert U in self.solution_space
         for i in range(len(U)):
             self.solver.set_pfield_vec(0, U._blocks[0]._list[i])
             self.solver.set_ofield_vec(0, U._blocks[1]._list[i])
             self.solver.set_stokes_vec(U._blocks[2]._list[i])
-            self.solver.visualize('solve_from_dune', i, i, subsampling)
+            self.solver.visualize(prefix, i, i, subsampling)
 
 
 if __name__ == "__main__":
@@ -128,15 +130,21 @@ if __name__ == "__main__":
     visualize = True if argc < 7 else bool(sys.argv[6])
     subsampling = True if argc < 8 else bool(sys.argv[7])
     filename = "cellmodel_solve_grid_%dx%d.log" % (grid_size_x, grid_size_y)
-    mu = [5e-13, 1., 1.1]
+    mu={'Pa': 1., 'Be': 0.3, 'Ca': 0.1}
     solver = CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, mu)
     num_cells = solver.num_cells
 
     t = 0
     save_step_counter = 1
 
-    # initial values
     m = CellModel(solver, dt, t_end)
-    U1 = m.solve(mu={'Pa': 1., 'Be': 0.3, 'Ca': 0.1})
-    U2 = m.solve(mu={'Pa': 1., 'Be': 0.3, 'Ca': 1.0})
-    m.visualize(U1 - U2)
+    for Pa in [0.1, 1]:
+        for Be in [0.3, 3]:
+            for Ca in [0.1, 1]:
+                print("Pa: {}, Be: {}, Ca: {}".format(Pa, Be, Ca))
+                U = m.solve(mu = {'Pa': Pa, 'Be': Be, 'Ca': Ca})
+                m.visualize(U, prefix="py_Be{}Ca{}Pa{}".format(Be, Ca, Pa), subsampling=True)
+    # U1 = m.solve(mu={'Pa': 1., 'Be': 0.3, 'Ca': 0.1})
+    # U2 = m.solve(mu={'Pa': 1., 'Be': 0.3, 'Ca': 1.0})
+    # m.visualize(U1, prefix="py_Be0.3Ca0.1Pa1.0", subsampling=True)
+    # m.visualize(U2, prefix="1.0Be0.3Ca1.0", subsampling=True)
