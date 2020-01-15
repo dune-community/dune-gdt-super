@@ -286,10 +286,15 @@ class CellModelPfieldFixedOperator(OperatorBase):
         return self.solver.apply_pfield_operator(U, self.cell_index, self.dt, mu=mu)
 
     def apply_inverse(self, V, mu=None, least_squares=False):
+        if True:
+            return super().apply_inverse(V, mu=mu, least_squares=least_squares)
         assert sum(V.norm()) == 0., "Not implemented for non-zero rhs!"
         assert not least_squares, "Least squares not implemented!"
         return self.solver.apply_inverse_pfield_operator(self.solver.pfield_vector(self.cell_index), self.cell_index,
                                                          mu=mu)
+
+    def jacobian(self, U, mu=None):
+        pass
 
 
 class CellModelPfieldOperator(MutableStateCellModelOperator):
@@ -384,6 +389,63 @@ class CellModelStokesOperator(MutableStateCellModelOperator):
         self.solver.prepare_stokes_operator()
         return CellModelStokesFixedOperator(self.solver)
 
+
+class CellModel(ModelBase):
+
+    def __init__(self, solver, dt, t_end):
+        self.__auto_init(locals())
+        self.linear = False
+        self.solution_space = BlockVectorSpace([solver.pfield_solution_space,
+                                                solver.ofield_solution_space,
+                                                solver.stokes_solution_space])
+        self.pfield_op = CellModelPfieldOperator(solver, 0, dt)
+        self.ofield_op = CellModelOfieldOperator(solver, 0, dt)
+        self.stokes_op = CellModelStokesOperator(solver)
+        self.initial_pfield = VectorOperator(self.solver.pfield_solution_space.make_array([solver.pfield_vector(0)]))
+        self.initial_ofield = VectorOperator(self.solver.ofield_solution_space.make_array([solver.ofield_vector(0)]))
+        self.initial_stokes = VectorOperator(self.solver.stokes_solution_space.make_array([solver.stokes_vector()]))
+        self.build_parameter_type(self.pfield_op, self.ofield_op, self.stokes_op)
+
+    def _solve(self, mu=None, return_output=False):
+        assert not return_output
+
+        # initial values
+        pfield_vecarray = self.initial_pfield.as_vector()
+        ofield_vecarray = self.initial_ofield.as_vector()
+        stokes_vecarray = self.initial_stokes.as_vector()
+
+        U_all = self.solution_space.make_array([pfield_vecarray, ofield_vecarray, stokes_vecarray])
+
+        i = 0
+        t = 0
+        while t < self.t_end - 1e-14:
+            # match saving times and t_end_ exactly
+            actual_dt = min(self.dt, self.t_end - t)
+            # do a timestep
+            print("Current time: {}".format(t))
+            U = self.pfield_op.source.subspaces[1].make_array([pfield_vecarray, ofield_vecarray, stokes_vecarray])
+            pfield_vecarray = self.pfield_op.fix_component(1, U).apply_inverse(pfield_vecarray.zeros(), mu=mu)
+            # print(np.max(self.pfield_op.fix_component(1, U).apply(pfield_vecarray, mu=mu).to_numpy()))
+            U = self.ofield_op.source.subspaces[1].make_array([pfield_vecarray, ofield_vecarray, stokes_vecarray])
+            ofield_vecarray = self.ofield_op.fix_component(1, U).apply_inverse(ofield_vecarray.zeros(), mu=mu)
+            # print(np.max(self.ofield_op.fix_component(1, U).apply(ofield_vecarray, mu=mu).to_numpy()))
+            U = self.stokes_op.source.subspaces[1].make_array([pfield_vecarray, ofield_vecarray])
+            stokes_vecarray = self.stokes_op.fix_component(1, U).apply_inverse(stokes_vecarray.zeros(), mu=mu)
+            # print(np.max(self.stokes_op.fix_component(1, U).apply(stokes_vecarray, mu=mu).to_numpy()))
+            i += 1
+            t += actual_dt
+            U = self.pfield_op.source.subspaces[1].make_array([pfield_vecarray, ofield_vecarray, stokes_vecarray])
+            U_all.append(U)
+
+        return U_all
+
+    def visualize(self, U, prefix='cellmodel_result', subsampling=True):
+        assert U in self.solution_space
+        for i in range(len(U)):
+            self.solver.set_pfield_vec(0, U._blocks[0]._list[i])
+            self.solver.set_ofield_vec(0, U._blocks[1]._list[i])
+            self.solver.set_stokes_vec(U._blocks[2]._list[i])
+            self.solver.visualize(prefix, i, i, subsampling)
 
 # class RestrictedCellModelPfieldOperator(RestrictedDuneOperatorBase):
 
