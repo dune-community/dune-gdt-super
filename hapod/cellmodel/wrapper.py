@@ -243,11 +243,9 @@ class MutableStateComponentOperator(OperatorBase):
         raise NotImplementedError
 
     def _set_state(self, component_value, mu):
-        if component_value == self._last_component_value:
-            component_value = None
-        if mu == self._last_mu:
-            mu = None
-        if component_value is not None or mu is not None:
+        new_component_value = None if component_value == self._last_component_value else component_value
+        new_mu = None if mu == self._last_mu else mu
+        if new_component_value is not None or new_mu is not None:
             self._change_state(component_value=component_value, mu=mu)
         self._last_component_value = component_value
         self._last_mu = mu.copy() if mu is not None else None
@@ -288,7 +286,10 @@ class MutableStateFixedComponentOperator(OperatorBase):
     def apply_inverse(self, V, mu=None, least_squares=False):
         assert V in self.range
         self.operator._set_state(self.component_value, mu)
-        return self.operator._fixed_component_apply_inverse(V, least_squares=least_squares)
+        try:
+            return self.operator._fixed_component_apply_inverse(V, least_squares=least_squares)
+        except NotImplementedError:
+            return super().apply_inverse(V, mu=mu, least_squares=least_squares)
 
     def jacobian(self, U, mu=None):
         assert U in self.source
@@ -390,8 +391,7 @@ class CellModelPfieldOperator(MutableStateComponentJacobianOperator):
         return self.solver.apply_pfield_operator(U, self.cell_index)
 
     def _fixed_component_apply_inverse(self, V, least_squares=False):
-        # if True:
-        #     return super().apply_inverse(V, mu=mu, least_squares=least_squares)
+        raise NotImplementedError
         assert sum(V.norm()) == 0., "Not implemented for non-zero rhs!"
         assert not least_squares, "Least squares not implemented!"
         return self.solver.apply_inverse_pfield_operator(self.solver.pfield_vector(self.cell_index), self.cell_index)

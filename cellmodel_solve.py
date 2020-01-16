@@ -8,6 +8,9 @@ from pymor.operators.constructions import VectorOperator
 from pymor.vectorarrays.block import BlockVectorSpace
 from pymor.vectorarrays.interfaces import VectorArrayInterface
 from pymor.vectorarrays.numpy import NumpyVectorSpace
+from pymor.core.defaults import set_defaults
+
+set_defaults({'pymor.algorithms.newton.newton.atol':1e-12, 'pymor.algorithms.newton.newton.rtol':1e-13})
 
 
 class ProjectedSystemOperator(OperatorBase):
