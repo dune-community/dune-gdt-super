@@ -118,6 +118,14 @@ class CellModelSolver(Parametric):
         else:
             return self.pfield_solution_space.make_array([self.impl.apply_inverse_pfield_op(vec.impl, cell_index)])
 
+    # def apply_inverse_pfield_jacobian(self, vec, cell_index, mu=None):
+    #     if mu is not None:
+    #         return self.pfield_solution_space.make_array(
+    #             [self.impl.apply_inverse_pfield_jacobian_with_param(vec.impl, cell_index, float(mu['Be']), float(mu['Ca']), float(mu['Pa']))]
+    #         )
+    #     else:
+    #         return self.pfield_solution_space.make_array([self.impl.apply_inverse_pfield_jac(vec.impl, cell_index)])
+
     def apply_inverse_ofield_operator(self, vec, cell_index, mu=None):
         if mu is not None:
             return self.ofield_solution_space.make_array(
@@ -197,45 +205,40 @@ class CellModelStokesProductOperator(OperatorBase):
         return self.solver.apply_stokes_product_operator(U)
 
 
-class FixedComponentWrapperOperator(OperatorBase):
-
-    def __init__(self, operator, idx, value):
-        value = value.copy()
-        self.__auto_init(locals())
-        self._fixed_component_operator = None
-        op = self._get_operator()
-        self.source = op.source
-        self.range = op.range
-        self.linear = op.linear
-
-    def _get_operator(self):
-        if self._fixed_component_operator is None:
-            op = None
-        else:
-            op = self._fixed_component_operator()
-
-        if op is None:
-            op = self.operator._fix_component(self.idx, self.value)
-            self._fixed_component_operator = weakref.ref(op)
-
-        return op
-
-    def apply(self, U, mu=None):
-        op = self._get_operator()
-        return op.apply(U, mu=mu)
-
-    def apply_inverse(self, V, mu=None, least_squares=False):
-        op = self._get_operator()
-        return op.apply_inverse(V, mu=mu, least_squares=least_squares)
-
-    def jacobian(self, U, mu=None):
-        op = self._get_operator()
-        return op.jacobian(U, mu=mu)
-
-
-class MutableStateOperator(OperatorBase):
+class MutableStateComponentOperator(OperatorBase):
 
     mutable_state_index = 1
+    _last_component_value = None
+    _last_mu = None
+
+    @abstractmethod
+    def _change_state(self, component_value=None, mu=None):
+        pass
+
+    @abstractmethod
+    def _fixed_component_apply(self, U):
+        pass
+
+    def _fixed_component_apply_inverse(self, V, least_squares=False):
+        raise NotImplementedError
+
+    def _fixed_component_jacobian(self, U):
+        raise NotImplementedError
+
+    def _set_state(self, component_value, mu):
+        if component_value == self._last_component_value:
+            component_value = None
+        if mu == self._last_mu:
+            mu = None
+        if component_value is not None or mu is not None:
+            self._change_state(component_value=component_value, mu=mu)
+        self._last_component_value = component_value
+        self._last_mu = mu.copy() if mu is not None else None
+
+    @property
+    def fixed_component_source(self):
+        return BlockVectorSpace(self.source.subspaces[:self.mutable_state_index]
+                                + self.source.subspaces[self.mutable_state_index+1:])
 
     def apply(self, U, mu):
         assert U in self.source
@@ -245,59 +248,96 @@ class MutableStateOperator(OperatorBase):
             U = op.source.make_array(U)
         return op.apply(U, mu=mu)
 
-    @abstractmethod
-    def _set_state(self, U):
-        pass
-
-    def _fix_component(self, idx, U):
-        if idx != self.mutable_state_index:
-            raise NotImplementedError
-        # store a strong ref to the current fixed component operator
-        # FixedComponentWrapperOperators storing a weakref to an older instance
-        # will loose their operators and will have to call this method again
-        operator = self._set_state(U)
-        self._last_fixed_component_operator = operator
-        return operator
-
     def fix_component(self, idx, U):
         assert len(U) == 1
-        return FixedComponentWrapperOperator(self, idx, U)
+        assert U in self.source.subspaces[idx]
+        return MutableStateFixedComponentOperator(self, U)
 
 
-class MutableStateCellModelOperator(MutableStateOperator):
+class MutableStateFixedComponentOperator(OperatorBase):
 
-    def _fix_component(self, idx, U):
-        if idx != self.mutable_state_index:
-            raise NotImplementedError
-        operator = self._set_state(U)
-        self.solver._last_fixed_component_operator = operator
-        return operator
-
-
-class CellModelPfieldFixedOperator(OperatorBase):
-
-    def __init__(self, solver, cell_index, dt):
+    def __init__(self, operator, component_value):
+        component_value = component_value.copy()
         self.__auto_init(locals())
-        self.linear = False
-        self.source = self.range = self.solver.pfield_solution_space
-        self.build_parameter_type(Be=(), Ca=(), Pa=())
+        self.source = operator.fixed_component_source
+        self.range = operator.range
+        self.linear = operator.linear
 
     def apply(self, U, mu=None):
-        return self.solver.apply_pfield_operator(U, self.cell_index, self.dt, mu=mu)
+        assert U in self.source
+        self.operator._set_state(self.component_value, mu)
+        return self.operator._fixed_component_apply(U)
 
     def apply_inverse(self, V, mu=None, least_squares=False):
-        if True:
-            return super().apply_inverse(V, mu=mu, least_squares=least_squares)
-        assert sum(V.norm()) == 0., "Not implemented for non-zero rhs!"
-        assert not least_squares, "Least squares not implemented!"
-        return self.solver.apply_inverse_pfield_operator(self.solver.pfield_vector(self.cell_index), self.cell_index,
-                                                         mu=mu)
+        assert V in self.range
+        self.operator._set_state(self.component_value, mu)
+        return self.operator._fixed_component_apply_inverse(V, least_squares=least_squares)
 
     def jacobian(self, U, mu=None):
+        assert U in self.source
+        assert len(U) == 1
+        self.operator._set_state(self.component_value, mu)
+        return self.operator._fixed_component_jacobian(U)
+
+
+class MutableStateComponentJacobianOperator(MutableStateComponentOperator):
+
+    _last_jacobian_value = None
+
+    @abstractmethod
+    def _change_jacobian_state(self, jacobian_value):
         pass
 
+    def _need_to_invalidate_jacobian_state(self, component_value_changed, mu_changed):
+        return component_value_changed or mu_changed
 
-class CellModelPfieldOperator(MutableStateCellModelOperator):
+    @abstractmethod
+    def _fixed_component_jacobian_apply(self, U):
+        pass
+
+    def _fixed_component_jacobian_apply_inverse(self, V, least_squares=False):
+        raise NotImplementedError
+
+    def _set_state(self, component_value, mu):
+        component_value_changed = component_value != self._last_component_value
+        mu_changed = mu != self._last_mu
+        if self._need_to_invalidate_jacobian_state(component_value_changed, mu_changed):
+            self._last_jacobian_value = None
+        super()._set_state(component_value, mu)
+
+    def _set_state_jacobian(self, component_value, mu, jacobian_value):
+        self._set_state(component_value, mu)
+        if jacobian_value != self._last_jacobian_value:
+            self._change_jacobian_state(jacobian_value)
+        self._last_jacobian_value = jacobian_value
+
+    def _fixed_component_jacobian(self, U, mu=None):
+        return MutableStateFixedComponentJacobianOperator(self, self._last_component_value, mu, U)
+
+
+class MutableStateFixedComponentJacobianOperator(OperatorBase):
+
+    def __init__(self, operator, component_value, mu, jacobian_value):
+        component_value = component_value.copy()
+        mu = mu.copy() if mu is not None else None
+        jacobian_value = jacobian_value.copy()
+        self.__auto_init(locals())
+        self.source = operator.fixed_component_source
+        self.range = operator.range
+        self.linear = True
+
+    def apply(self, U, mu=None):
+        assert U in self.source
+        self.operator._set_state_jacobian(self.component_value, self.mu, self.jacobian_value)
+        return self.operator._fixed_component_jacobian_apply(U)
+
+    def apply_inverse(self, V, mu=None, least_squares=False):
+        assert V in self.range
+        self.operator._set_state_jacobian(self.component_value, self.mu, self.jacobian_value)
+        return self.operator._fixed_component_jacobian_apply_inverse(V, least_squares=least_squares)
+
+
+class CellModelPfieldOperator(MutableStateComponentOperator):
 
     def __init__(self, solver, cell_index, dt):
         self.__auto_init(locals())
@@ -309,33 +349,26 @@ class CellModelPfieldOperator(MutableStateCellModelOperator):
         self.range = self.solver.pfield_solution_space
         self.build_parameter_type(Be=(), Ca=(), Pa=())
 
-    def _set_state(self, U):
-        self.solver.set_pfield_vec(0, U._blocks[0]._list[0])
-        self.solver.set_ofield_vec(0, U._blocks[1]._list[0])
-        self.solver.set_stokes_vec(U._blocks[2]._list[0])
-        self.solver.prepare_pfield_operator(self.dt, self.cell_index)
-        return CellModelPfieldFixedOperator(self.solver, self.cell_index, self.dt)
+    def _change_state(self, component_value=None, mu=None):
+        if component_value is not None:
+            self.solver.set_pfield_vec(0, component_value._blocks[0]._list[0])
+            self.solver.set_ofield_vec(0, component_value._blocks[1]._list[0])
+            self.solver.set_stokes_vec(component_value._blocks[2]._list[0])
+            self.solver.prepare_pfield_operator(self.dt, self.cell_index)
 
+    def _fixed_component_apply(self, U):
+        return self.solver.apply_pfield_operator(U, self.cell_index, self.dt, mu=self._last_mu)
 
-class CellModelOfieldFixedOperator(OperatorBase):
-
-    def __init__(self, solver, cell_index, dt):
-        self.__auto_init(locals())
-        self.linear = False
-        self.source = self.range = self.solver.ofield_solution_space
-        self.build_parameter_type(Pa=())
-
-    def apply(self, U, mu=None):
-        return self.solver.apply_ofield_operator(U, self.cell_index, self.dt, mu=mu)
-
-    def apply_inverse(self, V, mu=None, least_squares=False):
+    def _fixed_component_apply_inverse(self, V, least_squares=False):
+        # if True:
+        #     return super().apply_inverse(V, mu=mu, least_squares=least_squares)
         assert sum(V.norm()) == 0., "Not implemented for non-zero rhs!"
         assert not least_squares, "Least squares not implemented!"
-        return self.solver.apply_inverse_ofield_operator(self.solver.ofield_vector(self.cell_index), self.cell_index,
-                                                         mu=mu)
+        return self.solver.apply_inverse_pfield_operator(self.solver.pfield_vector(self.cell_index), self.cell_index,
+                                                         mu=self._last_mu)
 
 
-class CellModelOfieldOperator(MutableStateCellModelOperator):
+class CellModelOfieldOperator(MutableStateComponentOperator):
 
     def __init__(self, solver, cell_index, dt):
         self.solver = solver
@@ -349,31 +382,24 @@ class CellModelOfieldOperator(MutableStateCellModelOperator):
         self.range = self.solver.ofield_solution_space
         self.build_parameter_type(Pa=())
 
-    def _set_state(self, U):
-        self.solver.set_pfield_vec(0, U._blocks[0]._list[0])
-        self.solver.set_ofield_vec(0, U._blocks[1]._list[0])
-        self.solver.set_stokes_vec(U._blocks[2]._list[0])
-        self.solver.prepare_ofield_operator(self.dt, self.cell_index)
-        return CellModelOfieldFixedOperator(self.solver, self.cell_index, self.dt)
+    def _change_state(self, component_value=None, mu=None):
+        if component_value is not None:
+            self.solver.set_pfield_vec(0, component_value._blocks[0]._list[0])
+            self.solver.set_ofield_vec(0, component_value._blocks[1]._list[0])
+            self.solver.set_stokes_vec(component_value._blocks[2]._list[0])
+            self.solver.prepare_ofield_operator(self.dt, self.cell_index)
 
+    def _fixed_component_apply(self, U):
+        return self.solver.apply_ofield_operator(U, self.cell_index, self.dt, mu=self._last_mu)
 
-class CellModelStokesFixedOperator(OperatorBase):
-
-    def __init__(self, solver):
-        self.__auto_init(locals())
-        self.linear = True
-        self.source = self.range = self.solver.stokes_solution_space
-
-    def apply(self, U, mu=None):
-        return self.solver.apply_stokes_operator(U)
-
-    def apply_inverse(self, V, mu=None, least_squares=False):
+    def _fixed_component_apply_inverse(self, V, least_squares=False):
         assert sum(V.norm()) == 0., "Not implemented for non-zero rhs!"
         assert not least_squares, "Least squares not implemented!"
-        return self.solver.apply_inverse_stokes_operator()
+        return self.solver.apply_inverse_ofield_operator(self.solver.ofield_vector(self.cell_index), self.cell_index,
+                                                         mu=self._last_mu)
 
 
-class CellModelStokesOperator(MutableStateCellModelOperator):
+class CellModelStokesOperator(MutableStateComponentOperator):
 
     def __init__(self, solver):
         self.solver = solver
@@ -383,11 +409,19 @@ class CellModelStokesOperator(MutableStateCellModelOperator):
                                                           self.solver.ofield_solution_space])])
         self.range = self.solver.stokes_solution_space
 
-    def _set_state(self, U):
-        self.solver.set_pfield_vec(0, U._blocks[0]._list[0])
-        self.solver.set_ofield_vec(0, U._blocks[1]._list[0])
-        self.solver.prepare_stokes_operator()
-        return CellModelStokesFixedOperator(self.solver)
+    def _change_state(self, component_value=None, mu=None):
+        if component_value is not None:
+            self.solver.set_pfield_vec(0, component_value._blocks[0]._list[0])
+            self.solver.set_ofield_vec(0, component_value._blocks[1]._list[0])
+            self.solver.prepare_stokes_operator()
+
+    def _fixed_component_apply(self, U):
+        return self.solver.apply_stokes_operator(U)
+
+    def _fixed_component_apply_inverse(self, V, least_squares=False):
+        assert sum(V.norm()) == 0., "Not implemented for non-zero rhs!"
+        assert not least_squares, "Least squares not implemented!"
+        return self.solver.apply_inverse_stokes_operator()
 
 
 class CellModel(ModelBase):
