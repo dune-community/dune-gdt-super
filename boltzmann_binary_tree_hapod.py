@@ -5,7 +5,7 @@ from timeit import default_timer as timer
 import numpy as np
 
 from hapod.boltzmann.utility import (calculate_error, create_and_scatter_boltzmann_parameters, create_boltzmann_solver,
-                              solver_statistics)
+                                     solver_statistics)
 from hapod.hapod import local_pod, HapodParameters, binary_tree_hapod_over_ranks, binary_tree_depth
 from hapod.mpi import MPIWrapper
 

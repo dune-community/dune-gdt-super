@@ -57,7 +57,7 @@ class ProjectedSystemOperator(OperatorBase):
         op = self.operator.fix_component(idx, U)
         if self.blocked_range_basis or len(self.source_bases) != 2:
             raise NotImplementedError
-        return ProjectedOperator(op, self.range_bases, self.source_bases[1-idx])
+        return ProjectedOperator(op, self.range_bases, self.source_bases[1 - idx])
 
 
 if __name__ == "__main__":
@@ -71,7 +71,7 @@ if __name__ == "__main__":
     visualize = True if argc < 7 else bool(sys.argv[6])
     subsampling = True if argc < 8 else bool(sys.argv[7])
     filename = "cellmodel_solve_grid_%dx%d.log" % (grid_size_x, grid_size_y)
-    mu={'Pa': 1., 'Be': 0.3, 'Ca': 0.1}
+    mu = {'Pa': 1., 'Be': 0.3, 'Ca': 0.1}
     solver = CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, mu)
     num_cells = solver.num_cells
     m = CellModel(solver, dt, t_end)

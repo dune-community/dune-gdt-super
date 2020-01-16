@@ -56,7 +56,9 @@ def cellmodel_binary_tree_hapod(testcase,
     ]
 
     for r in ret:
-        r.modes, r.max_vectors_before_pod, r.max_local_modes, r.total_num_snapshots, r.svals = [[0] * (2 * nc + 1) for i in range(5)]
+        r.modes, r.max_vectors_before_pod, r.max_local_modes, r.total_num_snapshots, r.svals = [
+            [0] * (2 * nc + 1) for i in range(5)
+        ]
     for i in range(num_chunks):
         ret[0].next_vecs = solver.next_n_timesteps(desired_chunk_size, dt)
         actual_chunk_size = len(ret[0].next_vecs[0])
@@ -66,19 +68,20 @@ def cellmodel_binary_tree_hapod(testcase,
             ret[1].next_vecs = ret[0].next_vecs[1:] - r[0].next_vecs[:-1]
             chunk_sizes.append(len(ret[1].next_vecs[0]))
 
-         # calculate POD of timestep vectors on each core
-         # reuse storage of next_vecs to save memory
+        # calculate POD of timestep vectors on each core
+        # reuse storage of next_vecs to save memory
         for r, chunk_size, params in zip(ret, chunk_sizes, hapod_params):
             for k in range(2 * nc + 1):
                 product = products[0 if k < nc else 1 if k < 2 * nc else 2]
                 r.next_vecs[k], next_svals = local_pod([r.next_vecs[k]],
-                                                     chunk_size,
-                                                     params,
-                                                     incremental_gramian=False,
-                                                     product=product,
-                                                     orthonormalize=orthonormalize)
+                                                       chunk_size,
+                                                       params,
+                                                       incremental_gramian=False,
+                                                       product=product,
+                                                       orthonormalize=orthonormalize)
                 r.next_vecs[k].scal(next_svals)
-                r.next_vecs[k], _, num_snaps_in_this_chunk, _ = mpi.comm_proc.gather_on_rank_0(r.next_vecs[k], chunk_size, num_modes_equal=False)
+                r.next_vecs[k], _, num_snaps_in_this_chunk, _ = mpi.comm_proc.gather_on_rank_0(
+                    r.next_vecs[k], chunk_size, num_modes_equal=False)
 
                 # if there are already modes from the last chunk of vectors, perform another pod on rank 0
                 if mpi.rank_proc == 0:
@@ -86,23 +89,24 @@ def cellmodel_binary_tree_hapod(testcase,
                     if i == 0:
                         r.max_vectors_before_pod[k] = len(r.next_vecs[k])
                         r.modes[k], r.svals[k] = local_pod([r.next_vecs[k]],
-                                                     num_snaps_in_this_chunk,
-                                                     params,
-                                                     incremental_gramian=incremental_gramian,
-                                                     product=product,
-                                                     orthonormalize=orthonormalize)
+                                                           num_snaps_in_this_chunk,
+                                                           params,
+                                                           incremental_gramian=incremental_gramian,
+                                                           product=product,
+                                                           orthonormalize=orthonormalize)
                     else:
                         r.max_vectors_before_pod[k] = max(r.max_vectors_before_pod[k],
-                                                       len(r.modes[k]) + len(r.next_vecs[k]))
+                                                          len(r.modes[k]) + len(r.next_vecs[k]))
                         r.modes[k], r.svals[k] = local_pod([[r.modes[k], r.svals[k]], r.next_vecs[k]],
-                                                     r.total_num_snapshots[k],
-                                                     params,
-                                                     orthonormalize=orthonormalize,
-                                                     incremental_gramian=incremental_gramian,
-                                                     product=product,
-                                                     root_of_tree=(i == num_chunks - 1 and mpi.size_rank_0_group == 1))
+                                                           r.total_num_snapshots[k],
+                                                           params,
+                                                           orthonormalize=orthonormalize,
+                                                           incremental_gramian=incremental_gramian,
+                                                           product=product,
+                                                           root_of_tree=(i == num_chunks - 1
+                                                                         and mpi.size_rank_0_group == 1))
                     r.max_local_modes[k] = max(r.max_local_modes[k], len(r.modes[k]))
-                    r.next_vecs[k] = None # to save memory
+                    r.next_vecs[k] = None     # to save memory
 
     # Finally, perform a HAPOD over a binary tree of nodes
     start2 = timer()
@@ -164,7 +168,7 @@ if __name__ == "__main__":
     omega = 0.95 if argc < 9 else float(sys.argv[8])
     inc_gramian = True if argc < 10 else not (sys.argv[9] == "False" or sys.argv[9] == "0")
     filename = "cellmodel_binary_tree_hapod_grid_%dx%d_chunksize_%d_tol_%f_omega_%f.log" % (grid_size_x, grid_size_y,
-                                                                                        chunk_size, tol, omega)
+                                                                                            chunk_size, tol, omega)
     logfile = open(filename, 'w')
     ret, mu, mpi, _ = cellmodel_binary_tree_hapod(
         testcase,
@@ -185,12 +189,13 @@ if __name__ == "__main__":
     # Broadcast modes to all ranks, if possible via shared memory
     retlistvecs = True
     for r in ret:
-      r.wins = [None] * len(r.modes)
-      for k in range(len(r.modes)):
-        r.modes[k], r.wins[k] = mpi.shared_memory_bcast_modes(r.modes[k], returnlistvectorarray=retlistvecs)
+        r.wins = [None] * len(r.modes)
+        for k in range(len(r.modes)):
+            r.modes[k], r.wins[k] = mpi.shared_memory_bcast_modes(r.modes[k], returnlistvectorarray=retlistvecs)
 
     # calculate errors
-    errors = calculate_cellmodel_errors(ret[0].modes, testcase, t_end, dt, grid_size_x, grid_size_y, mu, mpi, logfile=logfile)
+    errors = calculate_cellmodel_errors(
+        ret[0].modes, testcase, t_end, dt, grid_size_x, grid_size_y, mu, mpi, logfile=logfile)
 
     # free MPI windows
     for r in ret:
