@@ -74,19 +74,9 @@ if __name__ == "__main__":
     mu={'Pa': 1., 'Be': 0.3, 'Ca': 0.1}
     solver = CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, mu)
     num_cells = solver.num_cells
-
-    t = 0
-    save_step_counter = 1
-
     m = CellModel(solver, dt, t_end)
     U = m.solve(mu={'Pa': 1, 'Be': 0.3, 'Ca': 0.1})
     m.visualize(U, subsampling=True)
-    # for Pa in [0.1, 1]:
-    #     for Be in [0.3, 3]:
-    #         for Ca in [0.1, 1]:
-    #             print("Pa: {}, Be: {}, Ca: {}".format(Pa, Be, Ca))
-    #             U = m.solve(mu = {'Pa': Pa, 'Be': Be, 'Ca': Ca})
-    #             m.visualize(U, prefix="py_Be{}Ca{}Pa{}".format(Be, Ca, Pa), subsampling=True)
     # U1 = m.solve(mu={'Pa': 1., 'Be': 0.3, 'Ca': 0.1})
     # U2 = m.solve(mu={'Pa': 1., 'Be': 0.3, 'Ca': 1.0})
     # m.visualize(U1, prefix="py_Be0.3Ca0.1Pa1.0", subsampling=True)
