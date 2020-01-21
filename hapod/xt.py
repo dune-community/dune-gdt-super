@@ -18,6 +18,9 @@ class DuneXtLaVector(VectorInterface):
         # else:
         #    return np.frombuffer(self.impl.buffer(), dtype=np.double)
 
+    def __eq__(self, other):
+        return type(self) == type(other) and self.impl == other.impl
+
     @classmethod
     def make_zeros(cls, subtype):
         impl = subtype[0](subtype[1], 0.)

@@ -246,8 +246,8 @@ class MutableStateComponentOperator(OperatorBase):
         new_component_value = None if component_value == self._last_component_value else component_value
         new_mu = None if mu == self._last_mu else mu
         if new_component_value is not None or new_mu is not None:
-            self._change_state(component_value=component_value, mu=mu)
-        self._last_component_value = component_value
+            self._change_state(component_value=new_component_value, mu=new_mu)
+        self._last_component_value = component_value.copy()
         self._last_mu = mu.copy() if mu is not None else None
 
     @property
@@ -295,7 +295,7 @@ class MutableStateFixedComponentOperator(OperatorBase):
         assert U in self.source
         assert len(U) == 1
         self.operator._set_state(self.component_value, mu)
-        return self.operator._fixed_component_jacobian(U)
+        return self.operator._fixed_component_jacobian(U, mu=mu)
 
 
 class MutableStateComponentJacobianOperator(MutableStateComponentOperator):
@@ -327,11 +327,12 @@ class MutableStateComponentJacobianOperator(MutableStateComponentOperator):
         self._set_state(component_value, mu)
         if jacobian_value != self._last_jacobian_value:
             self._change_jacobian_state(jacobian_value)
-        self._last_jacobian_value = jacobian_value
+        self._last_jacobian_value = jacobian_value.copy()
 
     def _fixed_component_jacobian(self, U, mu=None):
         assert len(U) == 1
-        return MutableStateFixedComponentJacobianOperator(self, self._last_component_value, mu, U._list[0])
+        assert mu == None or mu == self._last_mu
+        return MutableStateFixedComponentJacobianOperator(self, self._last_component_value, self._last_mu, U._list[0])
 
 
 class MutableStateFixedComponentJacobianOperator(OperatorBase):
@@ -352,6 +353,7 @@ class MutableStateFixedComponentJacobianOperator(OperatorBase):
 
     def apply_inverse(self, V, mu=None, least_squares=False):
         assert V in self.range
+        assert mu == None or mu == self.mu # mu has to be set in the constructor
         self.operator._set_state_jacobian(self.component_value, self.mu, self.jacobian_value)
         return self.operator._fixed_component_jacobian_apply_inverse(V, least_squares=least_squares)
 
@@ -377,7 +379,6 @@ class CellModelPfieldOperator(MutableStateComponentJacobianOperator):
             self.solver.set_pfield_vec(0, component_value._blocks[0]._list[0])
             self.solver.set_ofield_vec(0, component_value._blocks[1]._list[0])
             self.solver.set_stokes_vec(component_value._blocks[2]._list[0])
-            self.solver.prepare_pfield_operator(self.dt, self.cell_index)
         if mu is not None or component_value is not None:
             self.solver.prepare_pfield_operator(self.dt, self.cell_index)
 
@@ -440,6 +441,7 @@ class CellModelOfieldOperator(MutableStateComponentJacobianOperator):
         return self.solver.apply_ofield_operator(U, self.cell_index)
 
     def _fixed_component_apply_inverse(self, V, least_squares=False):
+        raise NotImplementedError
         assert sum(V.norm()) == 0., "Not implemented for non-zero rhs!"
         assert not least_squares, "Least squares not implemented!"
         return self.solver.apply_inverse_ofield_operator(self.solver.ofield_vector(self.cell_index), self.cell_index)
