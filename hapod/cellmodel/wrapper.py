@@ -1,3 +1,4 @@
+from numbers import Number
 import math
 import numpy as np
 import random
@@ -17,6 +18,7 @@ from pymor.reductors.basic import ProjectionBasedReductor
 from pymor.vectorarrays.block import BlockVectorSpace
 from pymor.vectorarrays.list import VectorInterface, ListVectorSpace, ListVectorArray
 from pymor.vectorarrays.numpy import NumpyVectorArray, NumpyVectorSpace
+from pymor.vectorarrays.interfaces import VectorArrayInterface
 
 from hapod.xt import DuneXtLaVector, DuneXtLaListVectorSpace
 
@@ -224,7 +226,7 @@ class CellModelStokesProductOperator(OperatorBase):
 
 class MutableStateComponentOperator(OperatorBase):
 
-    mutable_state_index = 1
+    mutable_state_index = (1,)
     _last_component_value = None
     _last_mu = None
 
@@ -247,12 +249,12 @@ class MutableStateComponentOperator(OperatorBase):
         new_mu = None if mu == self._last_mu else mu
         if new_component_value is not None or new_mu is not None:
             self._change_state(component_value=new_component_value, mu=new_mu)
-        self._last_component_value = component_value.copy()
+        self._last_component_value = component_value
         self._last_mu = mu.copy() if mu is not None else None
 
     @property
     def fixed_component_source(self):
-        subspaces = self.source.subspaces[:self.mutable_state_index] + self.source.subspaces[self.mutable_state_index + 1:]
+        subspaces = tuple(s for i, s in enumerate(self.source.subspaces) if i not in self.mutable_state_index)
         return subspaces[0] if len(subspaces) == 1 else BlockVectorSpace(subspaces)
 
     def apply(self, U, mu):
@@ -263,16 +265,23 @@ class MutableStateComponentOperator(OperatorBase):
             U = op.source.make_array(U)
         return op.apply(U, mu=mu)
 
-    def fix_component(self, idx, U):
-        assert len(U) == 1
-        assert U in self.source.subspaces[idx]
+    def fix_components(self, idx, U):
+        if isinstance(idx, Number):
+            idx = (idx,)
+        if isinstance(U, VectorArrayInterface):
+            U = (U,)
+        assert len(idx) == len(U)
+        assert all(len(u) == 1 for u in U)
+        if idx != self.mutable_state_index:
+            raise NotImplementedError
+        assert all(u in self.source.subspaces[i] for u, i in zip(U, idx))
         return MutableStateFixedComponentOperator(self, U)
 
 
 class MutableStateFixedComponentOperator(OperatorBase):
 
     def __init__(self, operator, component_value):
-        component_value = component_value.copy()
+        component_value = tuple(U.copy() for U in component_value)
         self.__auto_init(locals())
         self.source = operator.fixed_component_source
         self.range = operator.range
@@ -327,7 +336,7 @@ class MutableStateComponentJacobianOperator(MutableStateComponentOperator):
         self._set_state(component_value, mu)
         if jacobian_value != self._last_jacobian_value:
             self._change_jacobian_state(jacobian_value)
-        self._last_jacobian_value = jacobian_value.copy()
+        self._last_jacobian_value = jacobian_value
 
     def _fixed_component_jacobian(self, U, mu=None):
         assert len(U) == 1
@@ -338,7 +347,6 @@ class MutableStateComponentJacobianOperator(MutableStateComponentOperator):
 class MutableStateFixedComponentJacobianOperator(OperatorBase):
 
     def __init__(self, operator, component_value, mu, jacobian_value):
-        component_value = component_value.copy()
         mu = mu.copy() if mu is not None else None
         jacobian_value = jacobian_value.copy()
         self.__auto_init(locals())
@@ -353,21 +361,21 @@ class MutableStateFixedComponentJacobianOperator(OperatorBase):
 
     def apply_inverse(self, V, mu=None, least_squares=False):
         assert V in self.range
-        assert mu == None or mu == self.mu # mu has to be set in the constructor
+        # assert mu == None or mu == self.mu # mu has to be set in the constructor
         self.operator._set_state_jacobian(self.component_value, self.mu, self.jacobian_value)
         return self.operator._fixed_component_jacobian_apply_inverse(V, least_squares=least_squares)
 
 
 class CellModelPfieldOperator(MutableStateComponentJacobianOperator):
 
+    mutable_state_index = (1, 2, 3)
+
     def __init__(self, solver, cell_index, dt):
         self.__auto_init(locals())
         self.linear = False
         self.source = BlockVectorSpace([
             self.solver.pfield_solution_space,
-            BlockVectorSpace([
-                self.solver.pfield_solution_space, self.solver.ofield_solution_space, self.solver.stokes_solution_space
-            ])
+            self.solver.pfield_solution_space, self.solver.ofield_solution_space, self.solver.stokes_solution_space
         ])
         self.range = self.solver.pfield_solution_space
         self.build_parameter_type(Be=(), Ca=(), Pa=())
@@ -376,9 +384,9 @@ class CellModelPfieldOperator(MutableStateComponentJacobianOperator):
         if mu is not None:
             self.solver.update_pfield_parameters(mu)
         if component_value is not None:
-            self.solver.set_pfield_vec(0, component_value._blocks[0]._list[0])
-            self.solver.set_ofield_vec(0, component_value._blocks[1]._list[0])
-            self.solver.set_stokes_vec(component_value._blocks[2]._list[0])
+            self.solver.set_pfield_vec(0, component_value[0]._list[0])
+            self.solver.set_ofield_vec(0, component_value[1]._list[0])
+            self.solver.set_stokes_vec(component_value[2]._list[0])
         if mu is not None or component_value is not None:
             self.solver.prepare_pfield_operator(self.dt, self.cell_index)
 
@@ -407,6 +415,8 @@ class CellModelPfieldOperator(MutableStateComponentJacobianOperator):
 
 class CellModelOfieldOperator(MutableStateComponentJacobianOperator):
 
+    mutable_state_index = (1, 2, 3)
+
     def __init__(self, solver, cell_index, dt):
         self.solver = solver
         self.cell_index = cell_index
@@ -414,9 +424,7 @@ class CellModelOfieldOperator(MutableStateComponentJacobianOperator):
         self.linear = False
         self.source = BlockVectorSpace([
             self.solver.ofield_solution_space,
-            BlockVectorSpace([
-                self.solver.pfield_solution_space, self.solver.ofield_solution_space, self.solver.stokes_solution_space
-            ])
+            self.solver.pfield_solution_space, self.solver.ofield_solution_space, self.solver.stokes_solution_space
         ])
         self.range = self.solver.ofield_solution_space
         self.build_parameter_type(Pa=())
@@ -425,9 +433,9 @@ class CellModelOfieldOperator(MutableStateComponentJacobianOperator):
         if mu is not None:
             self.solver.update_ofield_parameters(mu)
         if component_value is not None:
-            self.solver.set_pfield_vec(0, component_value._blocks[0]._list[0])
-            self.solver.set_ofield_vec(0, component_value._blocks[1]._list[0])
-            self.solver.set_stokes_vec(component_value._blocks[2]._list[0])
+            self.solver.set_pfield_vec(0, component_value[0]._list[0])
+            self.solver.set_ofield_vec(0, component_value[1]._list[0])
+            self.solver.set_stokes_vec(component_value[2]._list[0])
         if mu is not None or component_value is not None:
             self.solver.prepare_ofield_operator(self.dt, self.cell_index)
 
@@ -456,19 +464,21 @@ class CellModelOfieldOperator(MutableStateComponentJacobianOperator):
 
 class CellModelStokesOperator(MutableStateComponentJacobianOperator):
 
+    mutable_state_index = (1, 2)
+
     def __init__(self, solver):
         self.solver = solver
         self.linear = False
         self.source = BlockVectorSpace([
             self.solver.stokes_solution_space,
-            BlockVectorSpace([self.solver.pfield_solution_space, self.solver.ofield_solution_space])
+            self.solver.pfield_solution_space, self.solver.ofield_solution_space
         ])
         self.range = self.solver.stokes_solution_space
 
     def _change_state(self, component_value=None, mu=None):
         if component_value is not None:
-            self.solver.set_pfield_vec(0, component_value._blocks[0]._list[0])
-            self.solver.set_ofield_vec(0, component_value._blocks[1]._list[0])
+            self.solver.set_pfield_vec(0, component_value[0]._list[0])
+            self.solver.set_ofield_vec(0, component_value[1]._list[0])
             self.solver.prepare_stokes_operator()
 
     def _change_jacobian_state(self, jacobian_value):
@@ -525,15 +535,18 @@ class CellModel(ModelBase):
             actual_dt = min(self.dt, self.t_end - t)
             # do a timestep
             print("Current time: {}".format(t))
-            U = self.pfield_op.source.subspaces[1].make_array([pfield_vecarray, ofield_vecarray, stokes_vecarray])
-            pfield_vecarray = self.pfield_op.fix_component(1, U).apply_inverse(pfield_vecarray.zeros(), mu=mu)
-            U = self.ofield_op.source.subspaces[1].make_array([pfield_vecarray, ofield_vecarray, stokes_vecarray])
-            ofield_vecarray = self.ofield_op.fix_component(1, U).apply_inverse(ofield_vecarray.zeros(), mu=mu)
-            U = self.stokes_op.source.subspaces[1].make_array([pfield_vecarray, ofield_vecarray])
-            stokes_vecarray = self.stokes_op.fix_component(1, U).apply_inverse(stokes_vecarray.zeros(), mu=mu)
+            pfield_vecarray = \
+                    self.pfield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]) \
+                                  .apply_inverse(pfield_vecarray.zeros(), mu=mu)
+            ofield_vecarray = \
+                    self.ofield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]) \
+                                  .apply_inverse(ofield_vecarray.zeros(), mu=mu)
+            stokes_vecarray = \
+                    self.stokes_op.fix_components((1, 2), [pfield_vecarray, ofield_vecarray]) \
+                                  .apply_inverse(stokes_vecarray.zeros(), mu=mu)
             i += 1
             t += actual_dt
-            U = self.pfield_op.source.subspaces[1].make_array([pfield_vecarray, ofield_vecarray, stokes_vecarray])
+            U = self.solution_space.make_array([pfield_vecarray, ofield_vecarray, stokes_vecarray])
             U_all.append(U)
 
         return U_all
@@ -553,8 +566,7 @@ class CellModel(ModelBase):
             actual_dt = min(self.dt, self.t_end - t)
             # do a timestep
             #print("Current time: {}".format(t))
-            U = self.pfield_op.source.subspaces[1].make_array([pfield_vecarray, ofield_vecarray, stokes_vecarray])
-            pfield_fixed_op = self.pfield_op.fix_component(1, U)
+            pfield_fixed_op = self.pfield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray])
             pfield_vecarray = pfield_fixed_op.apply_inverse(pfield_vecarray.zeros(), mu=mu)
             residual = np.max(pfield_fixed_op.apply(pfield_vecarray, mu=mu).to_numpy())
             if residual > 1e-10:
@@ -564,8 +576,7 @@ class CellModel(ModelBase):
                                pfield_vecarray).to_numpy())
             if residual > 1e-10:
                 print("Pfield jacobian residual is ", residual)
-            U = self.ofield_op.source.subspaces[1].make_array([pfield_vecarray, ofield_vecarray, stokes_vecarray])
-            ofield_fixed_op = self.ofield_op.fix_component(1, U)
+            ofield_fixed_op = self.ofield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray])
             ofield_vecarray = ofield_fixed_op.apply_inverse(ofield_vecarray.zeros(), mu=mu)
             residual = np.max(ofield_fixed_op.apply(ofield_vecarray, mu=mu).to_numpy())
             if residual > 1e-10:
@@ -575,8 +586,7 @@ class CellModel(ModelBase):
                                ofield_vecarray).to_numpy())
             if residual > 1e-10:
                 print("Ofield jacobian residual is ", residual)
-            U = self.stokes_op.source.subspaces[1].make_array([pfield_vecarray, ofield_vecarray])
-            stokes_fixed_op = self.stokes_op.fix_component(1, U)
+            stokes_fixed_op = self.stokes_op.fix_components((1, 2), [pfield_vecarray, ofield_vecarray])
             stokes_vecarray = stokes_fixed_op.apply_inverse(stokes_vecarray.zeros(), mu=mu)
             residual = np.max(stokes_fixed_op.apply(stokes_vecarray, mu=mu).to_numpy())
             if residual > 1e-10:
@@ -588,7 +598,7 @@ class CellModel(ModelBase):
                 print("Stokes jacobian residual is ", residual)
             i += 1
             t += actual_dt
-            U = self.pfield_op.source.subspaces[1].make_array([pfield_vecarray, ofield_vecarray, stokes_vecarray])
+            U = self.solution_space.make_array([pfield_vecarray, ofield_vecarray, stokes_vecarray])
             U_all.append(U)
 
         return U_all

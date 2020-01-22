@@ -1,3 +1,4 @@
+from numbers import Number
 import sys
 import numpy as np
 from hapod.cellmodel.wrapper import CellModelSolver, CellModel
@@ -9,8 +10,10 @@ from pymor.vectorarrays.block import BlockVectorSpace
 from pymor.vectorarrays.interfaces import VectorArrayInterface
 from pymor.vectorarrays.numpy import NumpyVectorSpace
 from pymor.core.defaults import set_defaults
+from pymor.core.logger import set_log_levels
 
 set_defaults({'pymor.algorithms.newton.newton.atol':1e-12, 'pymor.algorithms.newton.newton.rtol':1e-13})
+# set_log_levels({'pymor.algorithms.newton': 'WARN'})
 
 
 class ProjectedSystemOperator(OperatorBase):
@@ -53,14 +56,24 @@ class ProjectedSystemOperator(OperatorBase):
     def apply(self, U, mu=None):
         raise NotImplementedError
 
-    def fix_component(self, idx, U):
+    def fix_components(self, idx, U):
+        if isinstance(idx, Number):
+            idx = (idx,)
+        if isinstance(U, VectorArrayInterface):
+            U = (U,)
+        assert len(idx) == len(U)
+        assert all(len(u) == 1 for u in U)
         if not self.blocked_source_basis:
             raise NotImplementedError
-        U = self.source_bases[idx].lincomb(U.to_numpy())
-        op = self.operator.fix_component(idx, U)
-        if self.blocked_range_basis or len(self.source_bases) != 2:
+        U = tuple(self.source_bases[i].lincomb(u.to_numpy()) if self.source_bases[i] is not None else u
+                  for i, u in zip(idx, U))
+        op = self.operator.fix_components(idx, U)
+        if self.blocked_range_basis:
             raise NotImplementedError
-        return ProjectedOperator(op, self.range_bases, self.source_bases[1 - idx])
+        remaining_source_bases = [sb for i, sb in enumerate(self.source_bases) if i not in idx]
+        if len(remaining_source_bases) != 1:
+            raise NotImplementedError
+        return ProjectedOperator(op, self.range_bases, remaining_source_bases[0])
 
 
 if __name__ == "__main__":
