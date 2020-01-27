@@ -2,7 +2,7 @@ from abc import abstractmethod
 import numpy as np
 from pymor.algorithms.pod import pod
 from pymor.basic import gram_schmidt
-from pymor.vectorarrays.interfaces import VectorArrayInterface
+from pymor.vectorarrays.interface import VectorArray
 from scipy.linalg import eigh
 
 
@@ -49,11 +49,11 @@ def local_pod(inputs,
     epsilon_alpha = parameters.get_epsilon_alpha(num_snaps_in_leafs, root_of_tree=root_of_tree)
     for i, modes in enumerate(inputs):
         if type(modes) is list:
-            assert (issubclass(type(modes[0]), VectorArrayInterface))
+            assert (issubclass(type(modes[0]), VectorArray))
             assert (issubclass(type(modes[1]), np.ndarray) and modes[1].ndim == 1)
             modes[0].scal(modes[1])
             svals_provided.append(True)
-        elif issubclass(type(modes), VectorArrayInterface):
+        elif issubclass(type(modes), VectorArray):
             inputs[i] = [modes]
             svals_provided.append(False)
         else:

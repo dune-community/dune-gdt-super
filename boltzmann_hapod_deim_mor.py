@@ -10,7 +10,7 @@ from pymor.operators.constructions import Concatenation, VectorArrayOperator
 from pymor.operators.ei import EmpiricalInterpolatedOperator
 from pymor.vectorarrays.numpy import NumpyVectorSpace
 
-from hapod.boltzmann.wrapper import DuneModel, BoltzmannRBReductor, BoltzmannModelBase
+from hapod.boltzmann.wrapper import DuneModel, BoltzmannRBReductor, BoltzmannModel
 from boltzmann_binary_tree_hapod import boltzmann_binary_tree_hapod
 from hapod.boltzmann.utility import solver_statistics, create_boltzmann_solver
 
@@ -116,7 +116,7 @@ def calculate_l2_error_for_random_samples(basis,
 if __name__ == "__main__":
     '''Computes HAPOD to get reduced basis and then calculate projection and model reduction error for random samples'''
     argc = len(sys.argv)
-    grid_size = 20 if argc < 2 else int(sys.argv[1])
+    grid_size = 10 if argc < 2 else int(sys.argv[1])
     chunk_size = 10 if argc < 3 else int(sys.argv[2])
     L2_tol = 1e-3 if argc < 4 else float(sys.argv[3])
     L2_deim_tol = 1e-3 if argc < 5 else float(sys.argv[4])

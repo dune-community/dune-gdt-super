@@ -5,9 +5,9 @@ from timeit import default_timer as timer
 import weakref
 
 from pymor.algorithms.projection import project
-from pymor.core.interfaces import abstractmethod
-from pymor.models.basic import ModelBase
-from pymor.operators.basic import OperatorBase
+from pymor.core.base import abstractmethod
+from pymor.models.interface import Model
+from pymor.operators.interface import Operator
 from pymor.operators.constructions import (VectorOperator, ConstantOperator, LincombOperator, LinearOperator,
                                            FixedParameterOperator)
 from pymor.parameters.base import Parameter, ParameterType, Parametric
@@ -93,7 +93,7 @@ class Solver(Parametric):
             self.impl.set_rhs_timestepper_parameters(*mu)
 
 
-class BoltzmannModelBase(ModelBase):
+class BoltzmannModel(Model):
 
     def __init__(self,
                  lf,
@@ -168,7 +168,7 @@ class BoltzmannModelBase(ModelBase):
             return U
 
 
-class DuneModel(BoltzmannModelBase):
+class DuneModel(BoltzmannModel):
 
     def __init__(self, nt=60, dt=0.056, *args):
         self.solver = solver = Solver(*args)
@@ -209,11 +209,11 @@ class DuneModel(BoltzmannModelBase):
 
     def _solve(self, mu=None, return_output=False, return_half_steps=False):
         assert not return_output
-        return (self.with_(new_type=BoltzmannModelBase,
+        return (self.with_(new_type=BoltzmannModel,
                            rhs=self.non_decomp_rhs_operator).solve(mu=mu, return_half_steps=return_half_steps))
 
 
-class DuneOperatorBase(OperatorBase):
+class DuneOperator(Operator):
 
     def __init__(self, solver):
         self.solver = solver
@@ -222,7 +222,7 @@ class DuneOperatorBase(OperatorBase):
         self.dt = solver.time_step_length()
 
 
-class RestrictedDuneOperatorBase(OperatorBase):
+class RestrictedDuneOperator(Operator):
 
     def __init__(self, solver, source_dim, range_dim):
         self.solver = solver
@@ -231,7 +231,7 @@ class RestrictedDuneOperatorBase(OperatorBase):
         self.dt = solver.time_step_length()
 
 
-class LFOperator(DuneOperatorBase):
+class LFOperator(DuneOperator):
 
     linear = True
 
@@ -243,7 +243,7 @@ class LFOperator(DuneOperatorBase):
         ])
 
 
-class RestrictedKineticOperator(RestrictedDuneOperatorBase):
+class RestrictedKineticOperator(RestrictedDuneOperator):
 
     linear = False
 
@@ -266,7 +266,7 @@ class RestrictedKineticOperator(RestrictedDuneOperatorBase):
         return self.range.make_array(ret)
 
 
-class KineticOperator(DuneOperatorBase):
+class KineticOperator(DuneOperator):
 
     def apply(self, U, mu=None):
         assert U in self.source
@@ -285,7 +285,7 @@ class KineticOperator(DuneOperatorBase):
         return RestrictedKineticOperator(self.solver, dofs), np.array(self.solver.impl.source_dofs())
 
 
-class GodunovOperator(DuneOperatorBase):
+class GodunovOperator(DuneOperator):
 
     linear = True
 
@@ -294,7 +294,7 @@ class GodunovOperator(DuneOperatorBase):
         return self.range.make_array([self.solver.impl.apply_godunov_operator(u.impl, 0.) for u in U._list])
 
 
-class RHSOperator(DuneOperatorBase):
+class RHSOperator(DuneOperator):
 
     linear = True
 
@@ -314,7 +314,7 @@ class RHSOperator(DuneOperatorBase):
 class BoltzmannRBReductor(ProjectionBasedReductor):
 
     def __init__(self, fom, RB=None, check_orthonormality=None, check_tol=None):
-        assert isinstance(fom, BoltzmannModelBase)
+        assert isinstance(fom, BoltzmannModel)
         RB = fom.solution_space.empty() if RB is None else RB
         assert RB in fom.solution_space, (RB.space, fom.solution_space)
         super().__init__(fom, {'RB': RB}, check_orthonormality=check_orthonormality, check_tol=check_tol)
@@ -342,5 +342,5 @@ class BoltzmannRBReductor(ProjectionBasedReductor):
         return projected_operators
 
     def build_rom(self, projected_operators, estimator):
-        return self.fom.with_(new_type=BoltzmannModelBase, **projected_operators)
+        return self.fom.with_(new_type=BoltzmannModel, **projected_operators)
 

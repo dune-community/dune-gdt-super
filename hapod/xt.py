@@ -1,11 +1,11 @@
 import numpy as np
 
-from pymor.core.interfaces import abstractmethod
-from pymor.vectorarrays.list import VectorInterface, ListVectorSpace, ListVectorArray
+from pymor.core.base import abstractmethod
+from pymor.vectorarrays.list import Vector, ListVectorSpace, ListVectorArray
 
 from gdt.vectors import CommonDenseVector
 
-class DuneXtLaVector(VectorInterface):
+class DuneXtLaVector(Vector):
 
     def __init__(self, impl):
         self.impl = impl

@@ -2,7 +2,7 @@ from pymor.vectorarrays.numpy import NumpyVectorSpace
 from mpi4py import MPI
 import numpy as np
 
-from pymor.core.interfaces import abstractmethod
+from pymor.core.base import abstractmethod
 
 from hapod.xt import DuneXtLaListVectorSpace
 

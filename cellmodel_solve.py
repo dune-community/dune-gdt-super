@@ -4,10 +4,10 @@ import numpy as np
 from hapod.cellmodel.wrapper import CellModelSolver, CellModel
 from hapod.mpi import MPIWrapper
 
-from pymor.operators.basic import OperatorBase, ProjectedOperator
-from pymor.operators.constructions import VectorOperator
+from pymor.operators.constructions import ProjectedOperator
+from pymor.operators.interface import Operator
 from pymor.vectorarrays.block import BlockVectorSpace
-from pymor.vectorarrays.interfaces import VectorArrayInterface
+from pymor.vectorarrays.interface import VectorArray
 from pymor.vectorarrays.numpy import NumpyVectorSpace
 from pymor.core.defaults import set_defaults
 from pymor.core.logger import set_log_levels
@@ -16,13 +16,13 @@ set_defaults({'pymor.algorithms.newton.newton.atol':1e-12, 'pymor.algorithms.new
 # set_log_levels({'pymor.algorithms.newton': 'WARN'})
 
 
-class ProjectedSystemOperator(OperatorBase):
+class ProjectedSystemOperator(Operator):
 
     def __init__(self, operator, range_bases, source_bases):
         if range_bases is None:
             self.blocked_range_basis = False
             self.range = operator.range
-        elif isinstance(range_bases, VectorArrayInterface):
+        elif isinstance(range_bases, VectorArray):
             assert range_bases in operator.range
             range_bases = range_bases.copy()
             self.blocked_range_basis = False
@@ -37,7 +37,7 @@ class ProjectedSystemOperator(OperatorBase):
         if source_bases is None:
             self.blocked_source_basis = False
             self.source = operator.source
-        elif isinstance(source_bases, VectorArrayInterface):
+        elif isinstance(source_bases, VectorArray):
             assert source_bases in operator.source
             source_bases = source_bases.copy()
             self.blocked_source_basis = False
@@ -59,7 +59,7 @@ class ProjectedSystemOperator(OperatorBase):
     def fix_components(self, idx, U):
         if isinstance(idx, Number):
             idx = (idx,)
-        if isinstance(U, VectorArrayInterface):
+        if isinstance(U, VectorArray):
             U = (U,)
         assert len(idx) == len(U)
         assert all(len(u) == 1 for u in U)

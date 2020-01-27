@@ -6,9 +6,9 @@ from timeit import default_timer as timer
 import weakref
 
 from pymor.algorithms.projection import project
-from pymor.core.interfaces import abstractmethod
-from pymor.models.basic import ModelBase
-from pymor.operators.basic import OperatorBase
+from pymor.core.base import abstractmethod
+from pymor.models.interface import Model
+from pymor.operators.interface import Operator
 from pymor.operators.constructions import (VectorOperator, ConstantOperator, LincombOperator, LinearOperator,
                                            FixedParameterOperator)
 from pymor.parameters.base import Parameter, ParameterType, Parametric
@@ -16,9 +16,9 @@ from pymor.parameters.functionals import ExpressionParameterFunctional
 from pymor.parameters.spaces import CubicParameterSpace
 from pymor.reductors.basic import ProjectionBasedReductor
 from pymor.vectorarrays.block import BlockVectorSpace
-from pymor.vectorarrays.list import VectorInterface, ListVectorSpace, ListVectorArray
+from pymor.vectorarrays.list import Vector, ListVectorSpace, ListVectorArray
 from pymor.vectorarrays.numpy import NumpyVectorArray, NumpyVectorSpace
-from pymor.vectorarrays.interfaces import VectorArrayInterface
+from pymor.vectorarrays.interface import VectorArray
 
 from hapod.xt import DuneXtLaVector, DuneXtLaListVectorSpace
 
@@ -194,7 +194,7 @@ class CellModelSolver(Parametric):
     #      return self.solution_space.make_array([self.impl.get_initial_values()])
 
 
-class CellModelPfieldProductOperator(OperatorBase):
+class CellModelPfieldProductOperator(Operator):
 
     def __init__(self, solver):
         self.solver = solver
@@ -204,7 +204,7 @@ class CellModelPfieldProductOperator(OperatorBase):
         return self.solver.apply_pfield_product_operator(U, numpy=numpy)
 
 
-class CellModelOfieldProductOperator(OperatorBase):
+class CellModelOfieldProductOperator(Operator):
 
     def __init__(self, solver):
         self.solver = solver
@@ -214,7 +214,7 @@ class CellModelOfieldProductOperator(OperatorBase):
         return self.solver.apply_ofield_product_operator(U)
 
 
-class CellModelStokesProductOperator(OperatorBase):
+class CellModelStokesProductOperator(Operator):
 
     def __init__(self, solver):
         self.solver = solver
@@ -224,7 +224,7 @@ class CellModelStokesProductOperator(OperatorBase):
         return self.solver.apply_stokes_product_operator(U)
 
 
-class MutableStateComponentOperator(OperatorBase):
+class MutableStateComponentOperator(Operator):
 
     mutable_state_index = (1,)
     _last_component_value = None
@@ -268,7 +268,7 @@ class MutableStateComponentOperator(OperatorBase):
     def fix_components(self, idx, U):
         if isinstance(idx, Number):
             idx = (idx,)
-        if isinstance(U, VectorArrayInterface):
+        if isinstance(U, VectorArray):
             U = (U,)
         assert len(idx) == len(U)
         assert all(len(u) == 1 for u in U)
@@ -278,7 +278,7 @@ class MutableStateComponentOperator(OperatorBase):
         return MutableStateFixedComponentOperator(self, U)
 
 
-class MutableStateFixedComponentOperator(OperatorBase):
+class MutableStateFixedComponentOperator(Operator):
 
     def __init__(self, operator, component_value):
         component_value = tuple(U.copy() for U in component_value)
@@ -344,7 +344,7 @@ class MutableStateComponentJacobianOperator(MutableStateComponentOperator):
         return MutableStateFixedComponentJacobianOperator(self, self._last_component_value, self._last_mu, U._list[0])
 
 
-class MutableStateFixedComponentJacobianOperator(OperatorBase):
+class MutableStateFixedComponentJacobianOperator(Operator):
 
     def __init__(self, operator, component_value, mu, jacobian_value):
         mu = mu.copy() if mu is not None else None
@@ -503,7 +503,7 @@ class CellModelStokesOperator(MutableStateComponentJacobianOperator):
         return self.solver.apply_inverse_stokes_jacobian(V)
 
 
-class CellModel(ModelBase):
+class CellModel(Model):
 
     def __init__(self, solver, dt, t_end):
         self.__auto_init(locals())
