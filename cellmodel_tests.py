@@ -2,9 +2,13 @@ import sys
 import numpy as np
 from hapod.cellmodel.wrapper import CellModelSolver, CellModel
 
+from pymor.core.defaults import set_defaults
+from pymor.core.logger import set_log_levels
+
+set_defaults({'pymor.algorithms.newton.newton.atol':1e-12, 'pymor.algorithms.newton.newton.rtol':1e-13})
+# set_log_levels({'pymor.algorithms.newton': 'WARN'})
+
 # Checks if python results for several mu still match c++ results
-
-
 def solve_test():
     mu = {'Pa': 1., 'Be': 0.3, 'Ca': 0.1}
     solver = CellModelSolver('single_cell', 2e-3, 20, 5, mu)
@@ -29,7 +33,8 @@ def solve_test():
     for Pa in [0.1, 1]:
         for Be in [0.3, 3]:
             for Ca in [0.1, 1]:
-                U = m.solve_and_check(mu={'Pa': Pa, 'Be': Be, 'Ca': Ca})
+                # U = m.solve_and_check(mu={'Pa': Pa, 'Be': Be, 'Ca': Ca})
+                U = m.solve(mu={'Pa': Pa, 'Be': Be, 'Ca': Ca})
                 norms = [list(U.l1_norm()), list(U.l2_norm()), list(U.sup_norm())]
                 if not np.allclose(norms, expected_norms[i]):
                     print("Results changed for parameter ({}, {}, {})".format(Be, Ca, Pa))

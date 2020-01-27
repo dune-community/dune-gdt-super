@@ -22,7 +22,7 @@ from pymor.vectorarrays.interfaces import VectorArrayInterface
 
 from hapod.xt import DuneXtLaVector, DuneXtLaListVectorSpace
 
-import libhapodgdt
+import gdt.cellmodel
 
 # Parameters are Be, Ca, Pa
 CELLMODEL_PARAMETER_TYPE = ParameterType({'s': (3,)})
@@ -31,7 +31,7 @@ CELLMODEL_PARAMETER_TYPE = ParameterType({'s': (3,)})
 class CellModelSolver(Parametric):
 
     def __init__(self, testcase, t_end, grid_size_x, grid_size_y, mu):
-        self.impl = libhapodgdt.CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, False, float(mu['Be']),
+        self.impl = gdt.cellmodel.CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, False, float(mu['Be']),
                                                 float(mu['Ca']), float(mu['Pa']))
         self.last_mu = mu
         self.pfield_solution_space = DuneXtLaListVectorSpace(self.impl.pfield_vec(0).dim)

@@ -17,8 +17,8 @@ from pymor.reductors.basic import ProjectionBasedReductor
 from pymor.vectorarrays.block import BlockVectorSpace
 from pymor.vectorarrays.numpy import NumpyVectorArray, NumpyVectorSpace
 
-import libhapodgdt
-from libhapodgdt import CommonDenseVector
+from gdt.vectors import CommonDenseVector
+import gdt.boltzmann
 
 from hapod.xt import DuneXtLaListVectorSpace
 
@@ -33,8 +33,8 @@ PARAMETER_TYPE = ParameterType({'s': (4,)})
 class Solver(Parametric):
 
     def __init__(self, *args):
-        self.impl = libhapodgdt.BoltzmannSolver2d(*args)
-        #self.impl = libhapodgdt.BoltzmannSolver3d(*args)
+        self.impl = gdt.boltzmann.BoltzmannSolver2d(*args)
+        #self.impl = gdt.boltzmann.BoltzmannSolver3d(*args)
         self.last_mu = None
         self.solution_space = DuneXtLaListVectorSpace(self.impl.get_initial_values().dim)
         self.build_parameter_type(PARAMETER_TYPE)

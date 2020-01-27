@@ -6,8 +6,6 @@ import numpy as np
 from pymor.vectorarrays.numpy import NumpyVectorSpace
 
 from hapod.boltzmann import wrapper
-from libhapodgdt import CellModelSolver
-
 
 def create_and_scatter_boltzmann_parameters(comm, min_param=0., max_param=8.):
     ''' Samples all 3 parameters uniformly with the same width and adds random parameter combinations until

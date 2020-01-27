@@ -3,8 +3,7 @@ import numpy as np
 from pymor.core.interfaces import abstractmethod
 from pymor.vectorarrays.list import VectorInterface, ListVectorSpace, ListVectorArray
 
-import libhapodgdt
-from libhapodgdt import CommonDenseVector
+from gdt.vectors import CommonDenseVector
 
 class DuneXtLaVector(VectorInterface):
 
