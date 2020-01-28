@@ -5,7 +5,7 @@ import random
 from timeit import default_timer as timer
 import weakref
 
-from pymor.algorithms.projection import project
+from pymor.algorithms.newton import newton
 from pymor.core.interfaces import abstractmethod
 from pymor.models.basic import ModelBase
 from pymor.operators.basic import OperatorBase
@@ -504,27 +504,30 @@ class CellModelStokesOperator(MutableStateComponentJacobianOperator):
 
 
 class CellModel(ModelBase):
-
-    def __init__(self, solver, dt, t_end):
+    def __init__(self, pfield_op, ofield_op, stokes_op,
+                 initial_pfield, initial_ofield, initial_stokes,
+                 dt, t_end,
+                 newton_params_pfield={}, newton_params_ofield={}, newton_params_stokes={},
+                 least_squares_pfield=False, least_squares_ofield=False, least_squares_stokes=False,
+                 name=None):
         self.__auto_init(locals())
-        self.linear = False
         self.solution_space = BlockVectorSpace(
-            [solver.pfield_solution_space, solver.ofield_solution_space, solver.stokes_solution_space])
-        self.pfield_op = CellModelPfieldOperator(solver, 0, dt)
-        self.ofield_op = CellModelOfieldOperator(solver, 0, dt)
-        self.stokes_op = CellModelStokesOperator(solver)
-        self.initial_pfield = VectorOperator(self.solver.pfield_solution_space.make_array([solver.pfield_vector(0)]))
-        self.initial_ofield = VectorOperator(self.solver.ofield_solution_space.make_array([solver.ofield_vector(0)]))
-        self.initial_stokes = VectorOperator(self.solver.stokes_solution_space.make_array([solver.stokes_vector()]))
-        self.build_parameter_type(self.pfield_op, self.ofield_op, self.stokes_op)
+            [pfield_op.source.subspaces[0], ofield_op.source.subspaces[0], stokes_op.source.subspaces[0]])
+        self.linear = False
+        self.build_parameter_type(pfield_op, ofield_op, stokes_op)
 
-    def _solve(self, mu=None, return_output=False):
+    def _solve(self, mu=None, return_output=False, return_stages=False):
         assert not return_output
 
         # initial values
         pfield_vecarray = self.initial_pfield.as_vector()
         ofield_vecarray = self.initial_ofield.as_vector()
         stokes_vecarray = self.initial_stokes.as_vector()
+
+        if return_stages:
+            pfield_stages = pfield_vecarray.empty()
+            ofield_stages = ofield_vecarray.empty()
+            stokes_stages = stokes_vecarray.empty()
 
         U_all = self.solution_space.make_array([pfield_vecarray, ofield_vecarray, stokes_vecarray])
 
@@ -535,21 +538,44 @@ class CellModel(ModelBase):
             actual_dt = min(self.dt, self.t_end - t)
             # do a timestep
             print("Current time: {}".format(t))
-            pfield_vecarray = \
-                    self.pfield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]) \
-                                  .apply_inverse(pfield_vecarray.zeros(), mu=mu)
-            ofield_vecarray = \
-                    self.ofield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]) \
-                                  .apply_inverse(ofield_vecarray.zeros(), mu=mu)
-            stokes_vecarray = \
-                    self.stokes_op.fix_components((1, 2), [pfield_vecarray, ofield_vecarray]) \
-                                  .apply_inverse(stokes_vecarray.zeros(), mu=mu)
+            pfield_vecarray, pfield_data = newton(
+                self.pfield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]),
+                self.pfield_op.range.zeros(),
+                mu=mu,
+                least_squares=self.least_squares_pfield,
+                return_stages=return_stages,
+                **self.newton_params_pfield
+            )
+            ofield_vecarray, ofield_data = newton(
+                self.ofield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]),
+                self.ofield_op.range.zeros(),
+                mu=mu,
+                least_squares=self.least_squares_ofield,
+                return_stages=return_stages,
+                **self.newton_params_ofield
+            )
+            stokes_vecarray, stokes_data = newton(
+                self.stokes_op.fix_components((1, 2), [pfield_vecarray, ofield_vecarray]),
+                self.stokes_op.range.zeros(),
+                mu=mu,
+                least_squares=self.least_squares_stokes,
+                return_stages=return_stages,
+                **self.newton_params_stokes
+            )
             i += 1
             t += actual_dt
             U = self.solution_space.make_array([pfield_vecarray, ofield_vecarray, stokes_vecarray])
             U_all.append(U)
 
-        return U_all
+            if return_stages:
+                pfield_stages.append(pfield_data['stages'])
+                ofield_stages.append(ofield_data['stages'])
+                stokes_stages.append(stokes_data['stages'])
+
+        if return_stages:
+            return U_all, (pfield_stages, ofield_stages, stokes_stages)
+        else:
+            return U_all
 
     def solve_and_check(self, mu=None):
         # initial values
@@ -567,7 +593,8 @@ class CellModel(ModelBase):
             # do a timestep
             #print("Current time: {}".format(t))
             pfield_fixed_op = self.pfield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray])
-            pfield_vecarray = pfield_fixed_op.apply_inverse(pfield_vecarray.zeros(), mu=mu)
+            pfield_vecarray, pfield_data = newton(pfield_fixed_op, pfield_vecarray.zeros(), mu=mu,
+                                                  **self.newton_params_pfield)
             residual = np.max(pfield_fixed_op.apply(pfield_vecarray, mu=mu).to_numpy())
             if residual > 1e-10:
                 print("Pfield residual is ", residual)
@@ -577,7 +604,8 @@ class CellModel(ModelBase):
             if residual > 1e-10:
                 print("Pfield jacobian residual is ", residual)
             ofield_fixed_op = self.ofield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray])
-            ofield_vecarray = ofield_fixed_op.apply_inverse(ofield_vecarray.zeros(), mu=mu)
+            ofield_vecarray, ofield_data = newton(ofield_fixed_op, ofield_vecarray.zeros(), mu=mu,
+                                                  **self.newton_params_ofield)
             residual = np.max(ofield_fixed_op.apply(ofield_vecarray, mu=mu).to_numpy())
             if residual > 1e-10:
                 print("Ofield residual is ", residual)
@@ -587,7 +615,8 @@ class CellModel(ModelBase):
             if residual > 1e-10:
                 print("Ofield jacobian residual is ", residual)
             stokes_fixed_op = self.stokes_op.fix_components((1, 2), [pfield_vecarray, ofield_vecarray])
-            stokes_vecarray = stokes_fixed_op.apply_inverse(stokes_vecarray.zeros(), mu=mu)
+            stokes_vecarray, stokes_data = newton(stokes_fixed_op, stokes_vecarray.zeros(), mu=mu,
+                                                  **self.newton_params_stokes)
             residual = np.max(stokes_fixed_op.apply(stokes_vecarray, mu=mu).to_numpy())
             if residual > 1e-10:
                 print("Stokes residual is ", residual)
@@ -602,6 +631,25 @@ class CellModel(ModelBase):
             U_all.append(U)
 
         return U_all
+
+
+
+class DuneCellModel(CellModel):
+
+    def __init__(self, solver, dt, t_end, name=None):
+        pfield_op = CellModelPfieldOperator(solver, 0, dt)
+        ofield_op = CellModelOfieldOperator(solver, 0, dt)
+        stokes_op = CellModelStokesOperator(solver)
+        initial_pfield = VectorOperator(solver.pfield_solution_space.make_array([solver.pfield_vector(0)]))
+        initial_ofield = VectorOperator(solver.ofield_solution_space.make_array([solver.ofield_vector(0)]))
+        initial_stokes = VectorOperator(solver.stokes_solution_space.make_array([solver.stokes_vector()]))
+        super().__init__(pfield_op, ofield_op, stokes_op, initial_pfield, initial_ofield, initial_stokes,
+                         dt, t_end,
+                         newton_params_pfield={'atol': 1e-12, 'rtol': 1e-13},
+                         newton_params_ofield={'atol': 1e-12, 'rtol': 1e-13},
+                         newton_params_stokes={'atol': 1e-12, 'rtol': 1e-13},
+                         name=name)
+        self.solver = solver
 
     def visualize(self, U, prefix='cellmodel_result', subsampling=True):
         assert U in self.solution_space
