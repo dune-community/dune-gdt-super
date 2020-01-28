@@ -503,7 +503,11 @@ class CellModelStokesOperator(MutableStateComponentJacobianOperator):
         return self.solver.apply_inverse_stokes_jacobian(V)
 
 
+<<<<<<< HEAD
 class CellModel(Model):
+=======
+class CellModel(ModelBase):
+>>>>>>> a9793a7d2abe280663dcbcf8a361867dcae7084b
     def __init__(self, pfield_op, ofield_op, stokes_op,
                  initial_pfield, initial_ofield, initial_stokes,
                  dt, t_end,
