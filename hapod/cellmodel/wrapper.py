@@ -503,11 +503,7 @@ class CellModelStokesOperator(MutableStateComponentJacobianOperator):
         return self.solver.apply_inverse_stokes_jacobian(V)
 
 
-<<<<<<< HEAD
 class CellModel(Model):
-=======
-class CellModel(ModelBase):
->>>>>>> a9793a7d2abe280663dcbcf8a361867dcae7084b
     def __init__(self, pfield_op, ofield_op, stokes_op,
                  initial_pfield, initial_ofield, initial_stokes,
                  dt, t_end,
@@ -545,6 +541,7 @@ class CellModel(ModelBase):
             pfield_vecarray, pfield_data = newton(
                 self.pfield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]),
                 self.pfield_op.range.zeros(),
+                initial_guess=pfield_vecarray,
                 mu=mu,
                 least_squares=self.least_squares_pfield,
                 return_stages=return_stages,
@@ -649,9 +646,9 @@ class DuneCellModel(CellModel):
         initial_stokes = VectorOperator(solver.stokes_solution_space.make_array([solver.stokes_vector()]))
         super().__init__(pfield_op, ofield_op, stokes_op, initial_pfield, initial_ofield, initial_stokes,
                          dt, t_end,
-                         newton_params_pfield={'atol': 1e-12, 'rtol': 1e-13},
-                         newton_params_ofield={'atol': 1e-12, 'rtol': 1e-13},
-                         newton_params_stokes={'atol': 1e-12, 'rtol': 1e-13},
+                         newton_params_pfield={'atol': 1e-12, 'rtol': 1e-11},
+                         newton_params_ofield={'atol': 1e-12, 'rtol': 1e-11},
+                         newton_params_stokes={'atol': 1e-12, 'rtol': 1e-11},
                          name=name)
         self.solver = solver
 
