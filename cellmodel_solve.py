@@ -118,7 +118,7 @@ class CellModelReductor(ProjectionBasedReductor):
         raise NotImplementedError
 
     def build_rom(self, projected_operators, estimator):
-        params = {'stagnation_threshold': 0.9, 'stagnation_window': 10}
+        params = {'stagnation_threshold': 0.99, 'stagnation_window': 10, 'maxiter' : 10000, 'relax': 1, 'rtol': 1e-13, 'atol': 1e-13}
         return self.fom.with_(new_type=CellModel,
                               least_squares_pfield=self.least_squares_pfield, least_squares_ofield=self.least_squares_ofield,
                               least_squares_stokes=self.least_squares_stokes,
@@ -154,11 +154,12 @@ if __name__ == "__main__":
     pfield, ofield, stokes = U._blocks
     pfield = pfield.copy()
     pfield.append(stages[0])
-    pfield.axpy(-1, m.initial_pfield.as_vector())
-    pfield_pod, pfield_svals = pod(pfield[1:])
-    pfield_basis = m.initial_pfield.as_vector()
-    pfield_basis.append(pfield_pod)
-    gram_schmidt(pfield_basis, copy=False)
+    # pfield.axpy(-1, m.initial_pfield.as_vector())
+    # pfield_basis, pfield_svals = pod(pfield[1:])
+    pfield_basis, pfield_svals = pod(pfield)
+    # pfield_basis = m.initial_pfield.as_vector()
+    # pfield_basis.append(pfield_pod)
+    # gram_schmidt(pfield_basis, copy=False)
     # pfield_basis = gram_schmidt(pfield)
 
     ofield = ofield.copy()
@@ -172,15 +173,20 @@ if __name__ == "__main__":
     # from matplotlib import pyplot as plt
     # plt.semilogy(ofield_svals)
     # plt.show()
-    pfield_basis = pfield_basis[:8]
-    ofield_basis = ofield_basis[:8]
-    stokes_basis = stokes_basis[:8]
+    # print(len(pfield_basis))
+    pfield_basis = pfield_basis[:10]
+    # ofield_basis = ofield_basis[:len(ofield_basis)-5]
+    # stokes_basis = stokes_basis[:len(stokes_basis)-5]
+    # pfield_basis = pfield_basis[:4]
+    # ofield_basis = ofield_basis[:4]
+    # stokes_basis = stokes_basis[:4]
     reductor = CellModelReductor(m, pfield_basis, None, None,
                                  least_squares_pfield=False,
                                  least_squares_ofield=False,
                                  least_squares_stokes=False,)
     rom = reductor.reduce()
     u, rom_stages = rom.solve(mu, return_stages=True)
+    # m.visualize(rom_stages[0], subsampling=True)
     ROM_P_STAGES = reductor.reconstruct(rom.solution_space.make_array([rom_stages[0],
                                                                        u.space.subspaces[1].zeros(len(rom_stages[0])),
                                                                        u.space.subspaces[2].zeros(len(rom_stages[0]))]))

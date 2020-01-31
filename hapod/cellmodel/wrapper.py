@@ -550,6 +550,7 @@ class CellModel(Model):
             ofield_vecarray, ofield_data = newton(
                 self.ofield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]),
                 self.ofield_op.range.zeros(),
+                initial_guess=ofield_vecarray,
                 mu=mu,
                 least_squares=self.least_squares_ofield,
                 return_stages=return_stages,
@@ -558,6 +559,7 @@ class CellModel(Model):
             stokes_vecarray, stokes_data = newton(
                 self.stokes_op.fix_components((1, 2), [pfield_vecarray, ofield_vecarray]),
                 self.stokes_op.range.zeros(),
+                initial_guess=stokes_vecarray,
                 mu=mu,
                 least_squares=self.least_squares_stokes,
                 return_stages=return_stages,
