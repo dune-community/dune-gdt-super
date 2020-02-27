@@ -646,11 +646,12 @@ class DuneCellModel(CellModel):
         initial_pfield = VectorOperator(solver.pfield_solution_space.make_array([solver.pfield_vector(0)]))
         initial_ofield = VectorOperator(solver.ofield_solution_space.make_array([solver.ofield_vector(0)]))
         initial_stokes = VectorOperator(solver.stokes_solution_space.make_array([solver.stokes_vector()]))
+        newton_params= {'atol': 1e-11, 'rtol': 1e-14, 'stagnation_threshold': 0.99, 'stagnation_window': 3}
         super().__init__(pfield_op, ofield_op, stokes_op, initial_pfield, initial_ofield, initial_stokes,
                          dt, t_end,
-                         newton_params_pfield={'atol': 1e-12, 'rtol': 1e-11},
-                         newton_params_ofield={'atol': 1e-12, 'rtol': 1e-11},
-                         newton_params_stokes={'atol': 1e-12, 'rtol': 1e-11},
+                         newton_params_pfield=newton_params,
+                         newton_params_ofield=newton_params,
+                         newton_params_stokes=newton_params,
                          name=name)
         self.solver = solver
 
