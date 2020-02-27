@@ -245,6 +245,10 @@ if __name__ == "__main__":
 
     # solve full-order model for new params
     U_new_mus, stages_new_mus = m.solve(mu=new_mus[0], return_stages=True)
+    Be = new_mus[0]['Be']
+    Ca = new_mus[0]['Ca']
+    Pa = new_mus[0]['Pa']
+    m.visualize(U_new_mus, prefix=f"fullorder_Be{Be}_Ca{Ca}_Pa{Pa}", subsampling=subsampling)
     for i in range(1, len(new_mus)):
         U_new, stages_new = m.solve(mu=new_mus[i], return_stages=True)
         for j in range(3):
@@ -311,6 +315,11 @@ if __name__ == "__main__":
         ################## test new parameters #######################
         # solve reduced model for new params
         u_new_mus, rom_stages_new_mus = rom.solve(new_mus[0], return_stages=True)
+        Be = new_mus[0]['Be']
+        Ca = new_mus[0]['Ca']
+        Pa = new_mus[0]['Pa']
+        u_new_reconstructed = reductor.reconstruct(u_new)
+        m.visualize(u_new_reconstructed, prefix=f"{reduced_prefix}_Be{Be}_Ca{Ca}_Pa{Pa}", subsampling=subsampling)
         for i in range(1, len(new_mus)):
             u_new, rom_stages_new = rom.solve(mu=new_mus[i], return_stages=True)
             for j in range(3):
