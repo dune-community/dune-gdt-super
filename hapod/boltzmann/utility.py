@@ -38,7 +38,7 @@ def create_boltzmann_solver(gridsize, mu, linear=True):
 
 
 def solver_statistics(solver, chunk_size, with_half_steps=True):
-    num_time_steps = math.ceil(solver.t_end() / solver.time_step_length()) + 1.
+    num_time_steps = math.ceil(solver.t_end / solver.dt) + 1.
     if with_half_steps:
         num_time_steps += num_time_steps - 1
     num_chunks = int(math.ceil(num_time_steps / chunk_size))

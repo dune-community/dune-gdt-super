@@ -38,6 +38,8 @@ class Solver(Parametric):
         self.last_mu = None
         self.solution_space = DuneXtLaListVectorSpace(self.impl.get_initial_values().dim)
         self.build_parameter_type(PARAMETER_TYPE)
+        self.t_end = self.impl.t_end()
+        self.dt = self.impl.time_step_length()
 
     def linear(self):
         return self.impl.linear()
@@ -57,17 +59,11 @@ class Solver(Parametric):
     def current_time(self):
         return self.impl.current_time()
 
-    def t_end(self):
-        return self.impl.t_end()
-
     def set_current_time(self, time):
         return self.impl.set_current_time(time)
 
     def set_current_solution(self, vec):
         return self.impl.set_current_solution(vec)
-
-    def time_step_length(self):
-        return self.impl.time_step_length()
 
     def get_initial_values(self):
         return self.solution_space.make_array([self.impl.get_initial_values()])
@@ -219,7 +215,7 @@ class DuneOperator(Operator):
         self.solver = solver
         self.linear = solver.linear()
         self.source = self.range = solver.solution_space
-        self.dt = solver.time_step_length()
+        self.dt = solver.dt
 
 
 class RestrictedDuneOperator(Operator):
@@ -228,7 +224,7 @@ class RestrictedDuneOperator(Operator):
         self.solver = solver
         self.source = NumpyVectorSpace(source_dim)
         self.range = NumpyVectorSpace(range_dim)
-        self.dt = solver.time_step_length()
+        self.dt = solver.dt
 
 
 class LFOperator(DuneOperator):

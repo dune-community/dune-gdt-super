@@ -30,7 +30,7 @@ def boltzmann_binary_tree_hapod(grid_size,
     mu = create_and_scatter_boltzmann_parameters(mpi.comm_world)
     solver = create_boltzmann_solver(grid_size, mu, linear=linear)
     num_chunks, num_timesteps = solver_statistics(solver, chunk_size)
-    dt = solver.impl.time_step_length()
+    dt = solver.dt
 
     # calculate rooted tree depth
     node_binary_tree_depth = binary_tree_depth(mpi.comm_rank_0_group)

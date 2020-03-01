@@ -1,160 +1,163 @@
 from numbers import Number
+from timeit import default_timer as timer
+import random
+import resource
 import sys
 import numpy as np
 from statistics import mean
 
-from hapod.cellmodel.wrapper import CellModelSolver, DuneCellModel, CellModel
+from hapod.cellmodel.wrapper import CellModelSolver, DuneCellModel, CellModel, CellModel, ProjectedSystemOperator, CellModelReductor
 from hapod.mpi import MPIWrapper
-
-from pymor.algorithms.gram_schmidt import gram_schmidt
-from pymor.algorithms.projection import project
-from pymor.algorithms.pod import pod
-from pymor.operators.constructions import VectorOperator, ProjectedOperator
-from pymor.operators.interface import Operator
-from pymor.reductors.basic import ProjectionBasedReductor
-from pymor.vectorarrays.block import BlockVectorSpace
-from pymor.vectorarrays.interface import VectorArray
-from pymor.vectorarrays.numpy import NumpyVectorSpace
-from pymor.core.defaults import set_defaults
-from pymor.core.logger import set_log_levels
+from hapod.boltzmann.utility import solver_statistics
+from hapod.hapod import local_pod, HapodParameters, binary_tree_hapod_over_ranks, binary_tree_depth
 
 # set_log_levels({'pymor.algorithms.newton': 'WARN'})
 
 
-class ProjectedSystemOperator(Operator):
+def binary_tree_hapod(cellmodel,
+                      chunk_size,
+                      tol,
+                      mpi,
+                      reduce_pfield,
+                      reduce_ofield,
+                      reduce_stokes,
+                      include_newton_stages,
+                      omega=0.95,
+                      incremental_gramian=True,
+                      orthonormalize=True):
 
-    def __init__(self, operator, range_bases, source_bases):
-        if range_bases is None:
-            self.blocked_range_basis = False
-            self.range = operator.range
-        elif isinstance(range_bases, VectorArray):
-            assert range_bases in operator.range
-            range_bases = range_bases.copy()
-            self.blocked_range_basis = False
-            self.range = NumpyVectorSpace(len(range_bases))
+    start = timer()
+
+    # get MPI communicators
+    mpi = MPIWrapper()
+
+    # get boltzmann solver to create snapshots
+    num_chunks, num_timesteps = solver_statistics(cellmodel, chunk_size, with_half_steps=False)
+    dt = cellmodel.dt
+
+    # calculate rooted tree depth
+    node_binary_tree_depth = binary_tree_depth(mpi.comm_rank_0_group)
+    node_binary_tree_depth = mpi.comm_proc.bcast(node_binary_tree_depth, root=0)
+    rooted_tree_depth = num_chunks + node_binary_tree_depth
+
+    # store HAPOD parameters for easier handling
+    hapod_params = HapodParameters(rooted_tree_depth, epsilon_ast=tol, omega=omega)
+
+    indices = []
+    if reduce_pfield:
+        indices.append(0)
+    if reduce_ofield:
+        indices.append(1)
+    if reduce_stokes:
+        indices.append(2)
+    U = cellmodel.solution_space.empty()
+    modes = [None] * 3
+    svals = [None] * 3
+    max_vectors_before_pod, max_local_modes, total_num_snapshots, svals = [[0] * 3, [0] * 3, [0] * 3, [[]] * 3]
+    timestep_vec = cellmodel.initial_values
+    U.append(timestep_vec)
+    t = 0.
+    for i in range(num_chunks):
+        new_vecs = [U._blocks[0].empty(), U._blocks[1].empty(), U._blocks[2].empty()]
+        if i == 0:     # add initial values
+            for k in indices:
+                new_vecs[k].append(timestep_vec._blocks[k])
+        for j in range(chunk_size - 1 if i == 0 else chunk_size):     # if i == 0, initial values are already in chunk
+            if include_newton_stages:
+                timestep_vec, t, timestep_stages, = cellmodel.next_time_step(
+                    timestep_vec, t, mu=mu, return_stages=True)
+            else:
+                timestep_vec, t = cellmodel.next_time_step(timestep_vec, t, mu=mu, return_stages=False)
+            if timestep_vec is None:
+                assert i == num_chunks - 1
+                assert j != 0
+                break
+            U.append(timestep_vec)
+            for k in indices:
+                new_vecs[k].append(timestep_vec._blocks[k])
+                if include_newton_stages:
+                    new_vecs[k].append(timestep_stages._blocks[k])
+
+        #      num_snapshots = (len(new_pfield_vecs), len(new_ofield_vecs), len(new_stokes_vecs))
+        #      if not include_newton_stages:
+        #          assert num_snapshots > 0 and (num_snapshots == chunk_size or i == num_chunks - 1)
+        #      else
+        #          assert num_snapshots > 0
+
+        # calculate POD of timestep vectors on each core
+        num_snapshots_in_this_chunk = [None] * 3
+        gathered_modes = [None] * 3
+        for k in indices:
+            local_vecs = new_vecs[k]
+            local_vecs, local_svals = local_pod([local_vecs],
+                                                len(local_vecs),
+                                                hapod_params,
+                                                incremental_gramian=False,
+                                                orthonormalize=orthonormalize)
+            local_vecs.scal(local_svals)
+            gathered_modes[k], _, num_snapshots_in_this_chunk[k], _ = mpi.comm_proc.gather_on_rank_0(
+                local_vecs, len(local_vecs), num_modes_equal=False)
+        del local_vecs, new_vecs
+
+        # if there are already modes from the last chunk of vectors, perform another pod on rank 0
+        if mpi.rank_proc == 0:
+            for k in indices:
+                total_num_snapshots[k] += num_snapshots_in_this_chunk[k]
+                if i == 0:
+                    modes[k], svals[k] = local_pod([gathered_modes[k]],
+                                                   num_snapshots_in_this_chunk[k],
+                                                   hapod_params,
+                                                   orthonormalize=orthonormalize)
+                else:
+                    max_vectors_before_pod[k] = max(max_vectors_before_pod[k], len(modes[k]) + len(gathered_modes[k]))
+                    modes[k], svals[k] = local_pod([[modes[k], svals[k]], gathered_modes[k]],
+                                                   total_num_snapshots[k],
+                                                   hapod_params,
+                                                   orthonormalize=orthonormalize,
+                                                   incremental_gramian=incremental_gramian,
+                                                   root_of_tree=(i == num_chunks - 1 and mpi.size_rank_0_group == 1))
+                max_local_modes[k] = max(max_local_modes[k], len(modes[k]))
+            del gathered_modes
+
+    # Finally, perform a HAPOD over a binary tree of nodes
+    start2 = timer()
+    for k in indices:
+        if mpi.rank_proc == 0:
+            modes[k], svals[k], total_num_snapshots[k], max_vectors_before_pod_in_hapod, max_local_modes_in_hapod \
+                = binary_tree_hapod_over_ranks(mpi.comm_rank_0_group,
+                                               modes[k],
+                                               total_num_snapshots[k],
+                                               hapod_params,
+                                               svals=svals[k],
+                                               last_hapod=True,
+                                               incremental_gramian=incremental_gramian,
+                                               orthonormalize=orthonormalize)
+            max_vectors_before_pod[k] = max(max_vectors_before_pod[k], max_vectors_before_pod_in_hapod)
+            max_local_modes[k] = max(max_local_modes[k], max_local_modes_in_hapod)
         else:
-            assert len(range_bases) == len(operator.range.subspaces)
-            assert all(rb in rs for rb, rs in zip(range_bases, operator.range.subspaces))
-            range_bases = tuple(rb.copy() for rb in range_bases)
-            self.blocked_range_basis = True
-            self.range = BlockVectorSpace([NumpyVectorSpace(len(rb)) for rb in range_bases])
+            modes[k], svals[k], total_num_snapshots[k] = (np.empty(shape=(0, 0)), None, None)
 
-        if source_bases is None:
-            self.blocked_source_basis = False
-            self.source = operator.source
-        elif isinstance(source_bases, VectorArray):
-            assert source_bases in operator.source
-            source_bases = source_bases.copy()
-            self.blocked_source_basis = False
-            self.source = NumpyVectorSpace(len(source_bases))
-        else:
-            assert len(source_bases) == len(operator.source.subspaces)
-            assert all(sb is None or sb in ss for sb, ss in zip(source_bases, operator.source.subspaces))
-            source_bases = tuple(None if sb is None else sb.copy() for sb in source_bases)
-            self.blocked_source_basis = True
-            self.source = BlockVectorSpace([
-                ss if sb is None else NumpyVectorSpace(len(sb))
-                for ss, sb in zip(operator.source.subspaces, source_bases)
-            ])
+        # calculate max number of local modes
+        max_vectors_before_pod[k] = mpi.comm_world.gather(max_vectors_before_pod[k], root=0)
+        max_local_modes[k] = mpi.comm_world.gather(max_local_modes[k], root=0)
+        if mpi.rank_world == 0:
+            max_vectors_before_pod[k] = max(max_vectors_before_pod[k])
+            max_local_modes[k] = max(max_local_modes[k])
 
-        self.__auto_init(locals())
-        self.build_parameter_type(operator)
-        self.linear = operator.linear
+    # write statistics to file
+    if mpi.rank_world == 0:
+        for k in indices:
+            print(f"Hapod for index {k}")
+            print("The HAPOD resulted in %d final modes taken from a total of %d snapshots!" % (len(
+                modes[k]), total_num_snapshots[k]))
+            print("The maximal number of local modes was: " + str(max_local_modes[k]))
+            print("The maximal number of input vectors to a local POD was: " + str(max_vectors_before_pod[k]))
+        print("The maximum amount of memory used on rank 0 was: " +
+              str(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1000.**2) + " GB")
+        print("Time for final HAPOD over nodes:" + str(timer() - start2))
+        print("Time for all:" + str(timer() - start))
 
-    def apply(self, U, mu=None):
-        raise NotImplementedError
-
-    def fix_components(self, idx, U):
-        if isinstance(idx, Number):
-            idx = (idx,)
-        if isinstance(U, VectorArray):
-            U = (U,)
-        assert len(idx) == len(U)
-        assert all(len(u) == 1 for u in U)
-        if not self.blocked_source_basis:
-            raise NotImplementedError
-        U = tuple(self.source_bases[i].lincomb(u.to_numpy()) if self.source_bases[i] is not None else u
-                  for i, u in zip(idx, U))
-        op = self.operator.fix_components(idx, U)
-        if self.blocked_range_basis:
-            raise NotImplementedError
-        remaining_source_bases = [sb for i, sb in enumerate(self.source_bases) if i not in idx]
-        if len(remaining_source_bases) != 1:
-            raise NotImplementedError
-        return ProjectedOperator(op, self.range_bases, remaining_source_bases[0])
-
-
-class CellModelReductor(ProjectionBasedReductor):
-
-    def __init__(self,
-                 fom,
-                 pfield_basis,
-                 ofield_basis,
-                 stokes_basis,
-                 check_orthonormality=None,
-                 check_tol=None,
-                 least_squares_pfield=False,
-                 least_squares_ofield=False,
-                 least_squares_stokes=False):
-        bases = {'pfield': pfield_basis, 'ofield': ofield_basis, 'stokes': stokes_basis}
-        # products = {'pfield': None,
-        #             'ofield': None,
-        #             'stokes': None}
-        super().__init__(fom, bases, {}, check_orthonormality=check_orthonormality, check_tol=check_tol)
-        self.__auto_init(locals())
-
-    reduce = ProjectionBasedReductor._reduce     # hack to allow bases which are None
-
-    def project_operators(self):
-        fom = self.fom
-        pfield_basis, ofield_basis, stokes_basis = self.bases['pfield'], self.bases['ofield'], self.bases['stokes']
-        projected_operators = {
-            'pfield_op':
-            ProjectedSystemOperator(fom.pfield_op, pfield_basis if not self.least_squares_pfield else None,
-                                    [pfield_basis, pfield_basis, ofield_basis, stokes_basis]),
-            'ofield_op':
-            ProjectedSystemOperator(fom.ofield_op, ofield_basis if not self.least_squares_ofield else None,
-                                    [ofield_basis, pfield_basis, ofield_basis, stokes_basis]),
-            'stokes_op':
-            ProjectedSystemOperator(fom.stokes_op, stokes_basis if not self.least_squares_stokes else None,
-                                    [stokes_basis, pfield_basis, ofield_basis]),
-            'initial_pfield':
-            project(fom.initial_pfield, pfield_basis, None),
-            'initial_ofield':
-            project(fom.initial_ofield, ofield_basis, None),
-            'initial_stokes':
-            project(fom.initial_stokes, stokes_basis, None)
-        }
-        return projected_operators
-
-    def project_operators_to_subbasis(self, dims):
-        raise NotImplementedError
-
-    def build_rom(self, projected_operators, estimator):
-        params = {
-            'stagnation_threshold': 0.99,
-            'stagnation_window': 3,
-            'maxiter': 10000,
-            'relax': 1,
-            'rtol': 1e-14,
-            'atol': 1e-11
-        }
-        return self.fom.with_(
-            new_type=CellModel,
-            least_squares_pfield=self.least_squares_pfield,
-            least_squares_ofield=self.least_squares_ofield,
-            least_squares_stokes=self.least_squares_stokes,
-            newton_params_pfield=params,
-            newton_params_ofield=params,
-            newton_params_stokes=params,
-            **projected_operators)
-
-    def reconstruct(self, u):     # , basis='RB'):
-        pfield_basis, ofield_basis, stokes_basis = self.bases['pfield'], self.bases['ofield'], self.bases['stokes']
-        pfield = pfield_basis.lincomb(u._blocks[0].to_numpy()) if pfield_basis is not None else u._blocks[0]
-        ofield = ofield_basis.lincomb(u._blocks[1].to_numpy()) if ofield_basis is not None else u._blocks[1]
-        stokes = stokes_basis.lincomb(u._blocks[2].to_numpy()) if stokes_basis is not None else u._blocks[2]
-        return self.fom.solution_space.make_array([pfield, ofield, stokes])
+    return U, modes, svals, total_num_snapshots, max_vectors_before_pod, max_local_modes
 
 
 if __name__ == "__main__":
@@ -166,100 +169,73 @@ if __name__ == "__main__":
     grid_size_x = 30 if argc < 5 else int(sys.argv[4])
     grid_size_y = 30 if argc < 6 else int(sys.argv[5])
     visualize = True if argc < 7 else bool(sys.argv[6])
-    subsampling = False if argc < 8 else bool(sys.argv[7])
+    subsampling = True if argc < 8 else bool(sys.argv[7])
+    pol_order = 2
+    chunk_size = 10
     pod_rtol = 1e-13
-    include_newton_stages = True
-    reduce_pfield = True
-    reduce_ofield = True
+    basis_size_step = 50
+    visualize_step = 50
+    include_newton_stages = False
+    reduce_pfield = False
+    reduce_ofield = False
     reduce_stokes = True
-
+    tested_param = 'Be'
+    Ca0 = 0.1
+    Be0 = 0.3
+    Pa0 = 1.0
     mus = []
-    Ca = 0.1
-    Be = 0.3
-    for Pa in (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.):
-        # for Be in (0.3, 3.):
-        #for Ca in (0.1, 1.):
-        mus.append({'Pa': Pa, 'Be': Be, 'Ca': Ca})
-    # mus.append({'Pa': Pa, 'Be': 0.3, 'Ca': 0.1})
-    # mu = {'Pa': 1., 'Be': 0.3, 'Ca': 0.1}
-    mu = mus[0]
-    mu_test_indices = (0, len(mus) // 2, len(mus) - 1)
-    solver = CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, mu)
+    num_train_params = mpi.size_world
+    rf = np.sqrt(10)
+    factors = np.array([(rf**2)**(i / (num_train_params - 1)) / rf for i in range(num_train_params)])
+    if tested_param == 'Ca':
+        for Ca in factors * Ca0:
+            mus.append({'Pa': Pa0, 'Be': Be0, 'Ca': Ca})
+    elif tested_param == 'Be':
+        for Be in factors * Be0:
+            mus.append({'Pa': Pa0, 'Be': Be, 'Ca': Ca0})
+    elif tested_param == 'Pa':
+        for Pa in factors * Pa0:
+            mus.append({'Pa': Pa, 'Be': Be0, 'Ca': Ca0})
+    else:
+        raise NotImplementedError(f"Wrong value of tested_param: {tested_param}")
+    new_mus = []
+    for i in range(len(mus)):
+        new_mu = {'Pa': Pa0, 'Be': Be0, 'Ca': Ca0}
+        new_mu[tested_param] = random.uniform(new_mu[tested_param] / rf, new_mu[tested_param] * rf)
+        new_mus.append(new_mu)
+    print(mus)
+    print(new_mus)
+    mu = mpi.comm_world.scatter(mus, root=0)
+    new_mu = mpi.comm_world.scatter(new_mus, root=0)
+    solver = CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, pol_order, mu)
     num_cells = solver.num_cells
     m = DuneCellModel(solver, dt, t_end)
-    U, stages = m.solve(mu=mu, return_stages=True)
-    U_full_test = U.copy()
-    for i in range(1, len(mus)):
-        U_new, stages_new = m.solve(mu=mus[i], return_stages=True)
-        for j in range(3):
-            U._blocks[j].append(U_new._blocks[j])
-            stages[j].append(stages_new[j])
-        if i in mu_test_indices:
-            for j in range(3):
-                U_full_test._blocks[j].append(U_new._blocks[j])
-        Be = mus[i]['Be']
-        Ca = mus[i]['Ca']
-        Pa = mus[i]['Pa']
-        m.visualize(U_new, prefix=f"fullorder_Be{Be}_Ca{Ca}_Pa{Pa}", subsampling=subsampling)
-    pfield, ofield, stokes = U._blocks
+    U, modes, svals, _, _, _ = binary_tree_hapod(
+        m, chunk_size, pod_rtol, mpi, reduce_pfield, reduce_ofield, reduce_stokes, include_newton_stages, omega=0.95)
+    full_pfield_basis, full_ofield_basis, full_stokes_basis = modes
     if reduce_pfield:
-        pfield = pfield.copy()
-        if include_newton_stages:
-            pfield.append(stages[0])
-        full_pfield_basis, pfield_svals = pod(pfield, rtol=pod_rtol)
-    # pfield.axpy(-1, m.initial_pfield.as_vector())
-    # pfield_basis, pfield_svals = pod(pfield[1:])
-    # pfield_basis = m.initial_pfield.as_vector()
-    # pfield_basis.append(pfield_pod)
-    # gram_schmidt(pfield_basis, copy=False)
-    # pfield_basis = gram_schmidt(pfield)
-
+        full_pfield_basis, win_pfield = mpi.shared_memory_bcast_modes(full_pfield_basis, returnlistvectorarray=True)
     if reduce_ofield:
-        ofield = ofield.copy()
-        if include_newton_stages:
-            ofield.append(stages[1])
-        full_ofield_basis, ofield_svals = pod(ofield, rtol=pod_rtol)
-    #ofield_basis = gram_schmidt(ofield)
-
+        full_ofield_basis, win_ofield = mpi.shared_memory_bcast_modes(full_ofield_basis, returnlistvectorarray=True)
     if reduce_stokes:
-        stokes = stokes.copy()
-        if include_newton_stages:
-            stokes.append(stages[2])
-        full_stokes_basis, stokes_svals = pod(stokes, rtol=pod_rtol)
-    # stokes_basis = gram_schmidt(stokes)
+        full_stokes_basis, win_stokes = mpi.shared_memory_bcast_modes(full_stokes_basis, returnlistvectorarray=True)
 
-    filename = "rom_results_least_squares_grid{}x{}_tend{}_{}_pfield_{}_ofield_{}_stokes_{}.txt".format(
-        grid_size_x, grid_size_y, t_end, 'snapsandstages' if include_newton_stages else 'snaps',
+    filename = "rom_results_least_squares_grid{}x{}_tend{}_{}_param{}_pfield_{}_ofield_{}_stokes_{}.txt".format(
+        grid_size_x, grid_size_y, t_end, 'snapsandstages' if include_newton_stages else 'snaps', tested_param,
         'pod' if reduce_pfield else 'none', 'pod' if reduce_ofield else 'none', 'pod' if reduce_stokes else 'none')
 
-    new_mus = []
-    Ca = 0.1
-    Be = 0.3
-    for Pa in (0.15, 0.55, 0.95):
-        new_mus.append({'Pa': Pa, 'Be': Be, 'Ca': Ca})
+    if mpi.rank_world == 0:
+        with open(filename, 'w') as ff:
+            ff.write(
+                f"{filename}\nTrained with {len(mus)} Parameters for {tested_param}: {[param[tested_param] for param in mus]}\n"
+                f"Tested with {len(new_mus)} new Parameters: {[param[tested_param] for param in new_mus]}\n")
+            ff.write("num_basis_vecs pfield_trained ofield_trained stokes_trained pfield_new ofield_new stokes_new\n")
 
-    with open(filename, 'w') as ff:
-        ff.write(f"{filename}\nTrained with {len(mus)} Parameters for Pa: {[param['Pa'] for param in mus]}\n"
-                 f"Tested with {len(new_mus)} new Parameters: {[param['Pa'] for param in new_mus]}\n")
-        ff.write("num_basis_vecs pfield_trained ofield_trained stokes_trained pfield_new ofield_new stokes_new\n")
+    # solve full-order model for new param
+    U_new_mu = m.solve(mu=new_mu, return_stages=False)
+    Be, Ca, Pa = (float(new_mu['Be']), float(new_mu['Ca']), float(new_mu['Pa']))
+    m.visualize(U_new_mu, prefix=f"fullorder_Be{Be}_Ca{Ca}_Pa{Pa}", subsampling=subsampling, every_nth=visualize_step)
 
-    # solve full-order model for new params
-    U_new_mus, stages_new_mus = m.solve(mu=new_mus[0], return_stages=True)
-    Be = new_mus[0]['Be']
-    Ca = new_mus[0]['Ca']
-    Pa = new_mus[0]['Pa']
-    m.visualize(U_new_mus, prefix=f"fullorder_Be{Be}_Ca{Ca}_Pa{Pa}", subsampling=subsampling)
-    for i in range(1, len(new_mus)):
-        U_new, stages_new = m.solve(mu=new_mus[i], return_stages=True)
-        for j in range(3):
-            U_new_mus._blocks[j].append(U_new._blocks[j])
-            stages_new_mus[j].append(stages_new[j])
-        Be = new_mus[i]['Be']
-        Ca = new_mus[i]['Ca']
-        Pa = new_mus[i]['Pa']
-        m.visualize(U_new, prefix=f"fullorder_Be{Be}_Ca{Ca}_Pa{Pa}", subsampling=subsampling)
-
-    basis_size_step = 5
     min_basis_len = basis_size_step
     pfield_basis_max_len = len(full_pfield_basis) if reduce_pfield else np.inf
     ofield_basis_max_len = len(full_ofield_basis) if reduce_ofield else np.inf
@@ -272,8 +248,8 @@ if __name__ == "__main__":
         ofield_basis = full_ofield_basis[:basis_len] if reduce_ofield else None
         stokes_basis = full_stokes_basis[:basis_len] if reduce_stokes else None
 
-        reduced_prefix = "{}_pfield_{}_ofield_{}_stokes_{}".format(
-            'snapsandstages' if include_newton_stages else 'snaps',
+        reduced_prefix = "param{}_{}_pfield_{}_ofield_{}_stokes_{}".format(
+            tested_param, 'snapsandstages' if include_newton_stages else 'snaps',
             f'pod{len(pfield_basis)}' if reduce_pfield else 'none',
             f'pod{len(ofield_basis)}' if reduce_ofield else 'none',
             f'pod{len(stokes_basis)}' if reduce_stokes else 'none')
@@ -289,64 +265,46 @@ if __name__ == "__main__":
         rom = reductor.reduce()
 
         ################## solve reduced model for trained parameters ####################
-        u, rom_stages = rom.solve(mu, return_stages=True)
-        #visualize
-        u_reconstructed = reductor.reconstruct(u)
-        m.visualize(
-            u_reconstructed,
-            prefix=f"{reduced_prefix}_Be{mu['Be']}_Ca{mu['Ca']}_Pa{mu['Pa']}",
-            subsampling=subsampling)
-
-        for i in mu_test_indices[1:]:
-            u_new, rom_stages_new = rom.solve(mu=mus[i], return_stages=True)
-            for j in range(3):
-                u._blocks[j].append(u_new._blocks[j])
-                rom_stages[j].append(rom_stages_new[j])
-            Be = mus[i]['Be']
-            Ca = mus[i]['Ca']
-            Pa = mus[i]['Pa']
-            u_new_reconstructed = reductor.reconstruct(u_new)
-            m.visualize(u_new_reconstructed, prefix=f"{reduced_prefix}_Be{Be}_Ca{Ca}_Pa{Pa}", subsampling=subsampling)
-        # ROM_P_STAGES = reductor.reconstruct(rom.solution_space.make_array([rom_stages[0],
-        #                                                                    u.space.subspaces[1].zeros(len(rom_stages[0])),
-        #                                                                    u.space.subspaces[2].zeros(len(rom_stages[0]))]))
+        u = rom.solve(mu, return_stages=False)
         U_rom = reductor.reconstruct(u)
 
         ################## test new parameters #######################
         # solve reduced model for new params
-        u_new_mus, rom_stages_new_mus = rom.solve(new_mus[0], return_stages=True)
-        Be = new_mus[0]['Be']
-        Ca = new_mus[0]['Ca']
-        Pa = new_mus[0]['Pa']
-        u_new_reconstructed = reductor.reconstruct(u_new)
-        m.visualize(u_new_reconstructed, prefix=f"{reduced_prefix}_Be{Be}_Ca{Ca}_Pa{Pa}", subsampling=subsampling)
-        for i in range(1, len(new_mus)):
-            u_new, rom_stages_new = rom.solve(mu=new_mus[i], return_stages=True)
-            for j in range(3):
-                u_new_mus._blocks[j].append(u_new._blocks[j])
-                rom_stages_new_mus[j].append(rom_stages_new[j])
-            Be = new_mus[i]['Be']
-            Ca = new_mus[i]['Ca']
-            Pa = new_mus[i]['Pa']
-            u_new_reconstructed = reductor.reconstruct(u_new)
-            m.visualize(u_new_reconstructed, prefix=f"{reduced_prefix}_Be{Be}_Ca{Ca}_Pa{Pa}", subsampling=subsampling)
+        u_new_mu = rom.solve(new_mu, return_stages=False)
+        U_rom_new_mu = reductor.reconstruct(u_new_mu)
+        Be, Ca, Pa = (float(new_mu['Be']), float(new_mu['Ca']), float(new_mu['Pa']))
+        m.visualize(
+            U_rom_new_mu,
+            prefix=f"{reduced_prefix}_Be{Be}_Ca{Ca}_Pa{Pa}",
+            subsampling=subsampling,
+            every_nth=visualize_step)
 
-        U_rom_new_mus = reductor.reconstruct(u_new_mus)
+        # calculate_errors
+        pfield_rel_errors = (U._blocks[0] - U_rom._blocks[0]).norm() / U._blocks[0].norm()
+        ofield_rel_errors = (U._blocks[1] - U_rom._blocks[1]).norm() / U._blocks[1].norm()
+        stokes_rel_errors = (U._blocks[2] - U_rom._blocks[2]).norm() / U._blocks[2].norm()
+        pfield_rel_errors_new_mu = (U_new_mu._blocks[0] - U_rom_new_mu._blocks[0]).norm() / U_new_mu._blocks[0].norm()
+        ofield_rel_errors_new_mu = (U_new_mu._blocks[1] - U_rom_new_mu._blocks[1]).norm() / U_new_mu._blocks[1].norm()
+        stokes_rel_errors_new_mu = (U_new_mu._blocks[2] - U_rom_new_mu._blocks[2]).norm() / U_new_mu._blocks[2].norm()
+        pfield_rel_errors = mpi.comm_world.gather(pfield_rel_errors, root=0)
+        ofield_rel_errors = mpi.comm_world.gather(ofield_rel_errors, root=0)
+        stokes_rel_errors = mpi.comm_world.gather(stokes_rel_errors, root=0)
+        pfield_rel_errors_new_mus = mpi.comm_world.gather(pfield_rel_errors_new_mu, root=0)
+        ofield_rel_errors_new_mus = mpi.comm_world.gather(ofield_rel_errors_new_mu, root=0)
+        stokes_rel_errors_new_mus = mpi.comm_world.gather(stokes_rel_errors_new_mu, root=0)
 
-        with open(filename, 'a') as ff:
-            pfield_rel_errors = (U_full_test._blocks[0] - U_rom._blocks[0]).norm() / U_full_test._blocks[0].norm()
-            ofield_rel_errors = (U_full_test._blocks[1] - U_rom._blocks[1]).norm() / U_full_test._blocks[1].norm()
-            stokes_rel_errors = (U_full_test._blocks[2] - U_rom._blocks[2]).norm() / U_full_test._blocks[2].norm()
-            pfield_rel_errors_new_mus = (
-                U_new_mus._blocks[0] - U_rom_new_mus._blocks[0]).norm() / U_new_mus._blocks[0].norm()
-            ofield_rel_errors_new_mus = (
-                U_new_mus._blocks[1] - U_rom_new_mus._blocks[1]).norm() / U_new_mus._blocks[1].norm()
-            stokes_rel_errors_new_mus = (
-                U_new_mus._blocks[2] - U_rom_new_mus._blocks[2]).norm() / U_new_mus._blocks[2].norm()
-            ff.write("{} {} {} {} {} {} {}\n".format(
-                basis_len, mean([err for err in pfield_rel_errors if not np.isnan(err)]),
-                mean([err for err in ofield_rel_errors if not np.isnan(err)]),
-                mean([err for err in stokes_rel_errors if not np.isnan(err)]),
-                mean([err for err in pfield_rel_errors_new_mus if not np.isnan(err)]),
-                mean([err for err in ofield_rel_errors_new_mus if not np.isnan(err)]),
-                mean([err for err in stokes_rel_errors_new_mus if not np.isnan(err)])))
+        if mpi.rank_world == 0:
+            pfield_rel_errors = np.concatenate(pfield_rel_errors)
+            ofield_rel_errors = np.concatenate(ofield_rel_errors)
+            stokes_rel_errors = np.concatenate(stokes_rel_errors)
+            pfield_rel_errors_new_mus = np.concatenate(pfield_rel_errors_new_mus)
+            ofield_rel_errors_new_mus = np.concatenate(ofield_rel_errors_new_mus)
+            stokes_rel_errors_new_mus = np.concatenate(stokes_rel_errors_new_mus)
+            with open(filename, 'a') as ff:
+                ff.write("{} {} {} {} {} {} {}\n".format(
+                    basis_len, mean([err for err in pfield_rel_errors if not np.isnan(err)]),
+                    mean([err for err in ofield_rel_errors if not np.isnan(err)]),
+                    mean([err for err in stokes_rel_errors if not np.isnan(err)]),
+                    mean([err for err in pfield_rel_errors_new_mus if not np.isnan(err)]),
+                    mean([err for err in ofield_rel_errors_new_mus if not np.isnan(err)]),
+                    mean([err for err in stokes_rel_errors_new_mus if not np.isnan(err)])))

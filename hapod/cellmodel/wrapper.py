@@ -6,11 +6,12 @@ from timeit import default_timer as timer
 import weakref
 
 from pymor.algorithms.newton import newton
+from pymor.algorithms.projection import project
 from pymor.core.base import abstractmethod
 from pymor.models.interface import Model
 from pymor.operators.interface import Operator
 from pymor.operators.constructions import (VectorOperator, ConstantOperator, LincombOperator, LinearOperator,
-                                           FixedParameterOperator)
+                                           FixedParameterOperator, ProjectedOperator)
 from pymor.parameters.base import Parameter, ParameterType, Parametric
 from pymor.parameters.functionals import ExpressionParameterFunctional
 from pymor.parameters.spaces import CubicParameterSpace
@@ -30,8 +31,8 @@ CELLMODEL_PARAMETER_TYPE = ParameterType({'s': (3,)})
 
 class CellModelSolver(Parametric):
 
-    def __init__(self, testcase, t_end, grid_size_x, grid_size_y, mu):
-        self.impl = gdt.cellmodel.CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, False, float(mu['Be']),
+    def __init__(self, testcase, t_end, grid_size_x, grid_size_y, pol_order, mu):
+        self.impl = gdt.cellmodel.CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, pol_order, False, float(mu['Be']),
                                                 float(mu['Ca']), float(mu['Pa']))
         self.last_mu = mu
         self.pfield_solution_space = DuneXtLaListVectorSpace(self.impl.pfield_vec(0).dim)
@@ -174,25 +175,6 @@ class CellModelSolver(Parametric):
 
     def update_ofield_parameters(self, mu):
         self.impl.update_ofield_parameters(float(mu['Pa']))
-
-    # def current_time(self):
-    #     return self.impl.current_time()
-
-    # def t_end(self):
-    #     return self.impl.t_end()
-
-    # def set_current_time(self, time):
-    #     return self.impl.set_current_time(time)
-
-    # def set_current_solution(self, vec):
-    #     return self.impl.set_current_solution(vec)
-
-    # def time_step_length(self):
-    #     return self.impl.time_step_length()
-
-    # def get_initial_values(self):
-    #      return self.solution_space.make_array([self.impl.get_initial_values()])
-
 
 class CellModelPfieldProductOperator(Operator):
 
@@ -515,6 +497,7 @@ class CellModel(Model):
             [pfield_op.source.subspaces[0], ofield_op.source.subspaces[0], stokes_op.source.subspaces[0]])
         self.linear = False
         self.build_parameter_type(pfield_op, ofield_op, stokes_op)
+        self.initial_values = self.solution_space.make_array([self.initial_pfield.as_vector(), self.initial_ofield.as_vector(), self.initial_stokes.as_vector()])
 
     def _solve(self, mu=None, return_output=False, return_stages=False):
         assert not return_output
@@ -580,61 +563,65 @@ class CellModel(Model):
         else:
             return U_all
 
-    def solve_and_check(self, mu=None):
-        # initial values
-        pfield_vecarray = self.initial_pfield.as_vector()
-        ofield_vecarray = self.initial_ofield.as_vector()
-        stokes_vecarray = self.initial_stokes.as_vector()
+    def next_time_step(self, U_last, t, mu=None, return_output=False, return_stages=False):
+        assert not return_output
 
-        U_all = self.solution_space.make_array([pfield_vecarray, ofield_vecarray, stokes_vecarray])
+        pfield_vecs, ofield_vecs, stokes_vecs = U_last._blocks
 
-        i = 0
-        t = 0
-        while t < self.t_end - 1e-14:
-            # match saving times and t_end_ exactly
-            actual_dt = min(self.dt, self.t_end - t)
-            # do a timestep
-            #print("Current time: {}".format(t))
-            pfield_fixed_op = self.pfield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray])
-            pfield_vecarray, pfield_data = newton(pfield_fixed_op, pfield_vecarray.zeros(), mu=mu,
-                                                  **self.newton_params_pfield)
-            residual = np.max(pfield_fixed_op.apply(pfield_vecarray, mu=mu).to_numpy())
-            if residual > 1e-10:
-                print("Pfield residual is ", residual)
-            pfield_jacobian = pfield_fixed_op.jacobian(pfield_vecarray)
-            residual = np.max((pfield_jacobian.apply_inverse(pfield_jacobian.apply(pfield_vecarray, mu=mu), mu=mu) -
-                               pfield_vecarray).to_numpy())
-            if residual > 1e-10:
-                print("Pfield jacobian residual is ", residual)
-            ofield_fixed_op = self.ofield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray])
-            ofield_vecarray, ofield_data = newton(ofield_fixed_op, ofield_vecarray.zeros(), mu=mu,
-                                                  **self.newton_params_ofield)
-            residual = np.max(ofield_fixed_op.apply(ofield_vecarray, mu=mu).to_numpy())
-            if residual > 1e-10:
-                print("Ofield residual is ", residual)
-            ofield_jacobian = ofield_fixed_op.jacobian(ofield_vecarray)
-            residual = np.max((ofield_jacobian.apply_inverse(ofield_jacobian.apply(ofield_vecarray, mu=mu), mu=mu) -
-                               ofield_vecarray).to_numpy())
-            if residual > 1e-10:
-                print("Ofield jacobian residual is ", residual)
-            stokes_fixed_op = self.stokes_op.fix_components((1, 2), [pfield_vecarray, ofield_vecarray])
-            stokes_vecarray, stokes_data = newton(stokes_fixed_op, stokes_vecarray.zeros(), mu=mu,
-                                                  **self.newton_params_stokes)
-            residual = np.max(stokes_fixed_op.apply(stokes_vecarray, mu=mu).to_numpy())
-            if residual > 1e-10:
-                print("Stokes residual is ", residual)
-            stokes_jacobian = stokes_fixed_op.jacobian(stokes_vecarray)
-            residual = np.max((stokes_jacobian.apply_inverse(stokes_jacobian.apply(stokes_vecarray, mu=mu), mu=mu) -
-                               stokes_vecarray).to_numpy())
-            if residual > 1e-10:
-                print("Stokes jacobian residual is ", residual)
-            i += 1
-            t += actual_dt
-            U = self.solution_space.make_array([pfield_vecarray, ofield_vecarray, stokes_vecarray])
-            U_all.append(U)
+        if return_stages:
+            pfield_stages = pfield_vecs.empty()
+            ofield_stages = ofield_vecs.empty()
+            stokes_stages = stokes_vecs.empty()
 
-        return U_all
+        if t > self.t_end - 1e-14:
+            if return_stages:
+                return None, self.t_end, (None, None, None)
+            else:
+                return None, self.t_end
 
+        # do not go past t_end
+        actual_dt = min(self.dt, self.t_end - t)
+        # do a timestep
+        print("Current time: {}".format(t))
+        pfield_vecs, pfield_data = newton(
+            self.pfield_op.fix_components((1, 2, 3), [pfield_vecs, ofield_vecs, stokes_vecs]),
+            self.pfield_op.range.zeros(),
+            initial_guess=pfield_vecs,
+            mu=mu,
+            least_squares=self.least_squares_pfield,
+            return_stages=return_stages,
+            **self.newton_params_pfield
+        )
+        ofield_vecs, ofield_data = newton(
+            self.ofield_op.fix_components((1, 2, 3), [pfield_vecs, ofield_vecs, stokes_vecs]),
+            self.ofield_op.range.zeros(),
+            initial_guess=ofield_vecs,
+            mu=mu,
+            least_squares=self.least_squares_ofield,
+            return_stages=return_stages,
+            **self.newton_params_ofield
+        )
+        stokes_vecs, stokes_data = newton(
+            self.stokes_op.fix_components((1, 2), [pfield_vecs, ofield_vecs]),
+            self.stokes_op.range.zeros(),
+            initial_guess=stokes_vecs,
+            mu=mu,
+            least_squares=self.least_squares_stokes,
+            return_stages=return_stages,
+            **self.newton_params_stokes
+        )
+        t += actual_dt
+        U = self.solution_space.make_array([pfield_vecs, ofield_vecs, stokes_vecs])
+
+        if return_stages:
+            pfield_stages.append(pfield_data['stages'])
+            ofield_stages.append(ofield_data['stages'])
+            stokes_stages.append(stokes_data['stages'])
+
+        if return_stages:
+            return U, t, (pfield_stages, ofield_stages, stokes_stages)
+        else:
+            return U, t
 
 
 class DuneCellModel(CellModel):
@@ -655,33 +642,151 @@ class DuneCellModel(CellModel):
                          name=name)
         self.solver = solver
 
-    def visualize(self, U, prefix='cellmodel_result', subsampling=True):
+    def visualize(self, U, prefix='cellmodel_result', subsampling=True, every_nth=None):
         assert U in self.solution_space
         for i in range(len(U)):
-            self.solver.set_pfield_vec(0, U._blocks[0]._list[i])
-            self.solver.set_ofield_vec(0, U._blocks[1]._list[i])
-            self.solver.set_stokes_vec(U._blocks[2]._list[i])
-            self.solver.visualize(prefix, i, i, subsampling)
+            if every_nth is None or i % every_nth == 0:
+                self.solver.set_pfield_vec(0, U._blocks[0]._list[i])
+                self.solver.set_ofield_vec(0, U._blocks[1]._list[i])
+                self.solver.set_stokes_vec(U._blocks[2]._list[i])
+                step = i if every_nth is None else i // every_nth
+                self.solver.visualize(prefix, step, step, subsampling)
 
 
-# class RestrictedCellModelPfieldOperator(RestrictedDuneOperatorBase):
+class ProjectedSystemOperator(Operator):
 
-#     linear = False
+    def __init__(self, operator, range_bases, source_bases):
+        if range_bases is None:
+            self.blocked_range_basis = False
+            self.range = operator.range
+        elif isinstance(range_bases, VectorArray):
+            assert range_bases in operator.range
+            range_bases = range_bases.copy()
+            self.blocked_range_basis = False
+            self.range = NumpyVectorSpace(len(range_bases))
+        else:
+            assert len(range_bases) == len(operator.range.subspaces)
+            assert all(rb in rs for rb, rs in zip(range_bases, operator.range.subspaces))
+            range_bases = tuple(rb.copy() for rb in range_bases)
+            self.blocked_range_basis = True
+            self.range = BlockVectorSpace([NumpyVectorSpace(len(rb)) for rb in range_bases])
 
-#     def __init__(self, solver, cell_index, dt, dofs):
-#         self.solver = solver
-#         self.dofs = dofs
-#         dofs_as_list = [int(i) for i in dofs]
-#         self.solver.impl.prepare_restricted_pfield_operator(dofs_as_list)
-#         super(RestrictedCellModelPfieldOperator, self).__init__(solver, self.solver.impl.len_source_dofs(), len(dofs))
+        if source_bases is None:
+            self.blocked_source_basis = False
+            self.source = operator.source
+        elif isinstance(source_bases, VectorArray):
+            assert source_bases in operator.source
+            source_bases = source_bases.copy()
+            self.blocked_source_basis = False
+            self.source = NumpyVectorSpace(len(source_bases))
+        else:
+            assert len(source_bases) == len(operator.source.subspaces)
+            assert all(sb is None or sb in ss for sb, ss in zip(source_bases, operator.source.subspaces))
+            source_bases = tuple(None if sb is None else sb.copy() for sb in source_bases)
+            self.blocked_source_basis = True
+            self.source = BlockVectorSpace([
+                ss if sb is None else NumpyVectorSpace(len(sb))
+                for ss, sb in zip(operator.source.subspaces, source_bases)
+            ])
 
-#     def apply(self, U, mu=None):
-#         assert U in self.source
-#         U = DuneXtLaListVectorSpace.from_numpy(U.to_numpy())
-#         ret = [
-#             DuneXtLaVector(self.solver.impl.apply_restricted_pfield_operator(u.impl, self.cell_index, self.dt)).to_numpy(True) for u in U._list
-#         ]
-#         return self.range.make_array(ret)
+        self.__auto_init(locals())
+        self.build_parameter_type(operator)
+        self.linear = operator.linear
+
+    def apply(self, U, mu=None):
+        raise NotImplementedError
+
+    def fix_components(self, idx, U):
+        if isinstance(idx, Number):
+            idx = (idx,)
+        if isinstance(U, VectorArray):
+            U = (U,)
+        assert len(idx) == len(U)
+        assert all(len(u) == 1 for u in U)
+        if not self.blocked_source_basis:
+            raise NotImplementedError
+        U = tuple(self.source_bases[i].lincomb(u.to_numpy()) if self.source_bases[i] is not None else u
+                  for i, u in zip(idx, U))
+        op = self.operator.fix_components(idx, U)
+        if self.blocked_range_basis:
+            raise NotImplementedError
+        remaining_source_bases = [sb for i, sb in enumerate(self.source_bases) if i not in idx]
+        if len(remaining_source_bases) != 1:
+            raise NotImplementedError
+        return ProjectedOperator(op, self.range_bases, remaining_source_bases[0])
+
+
+class CellModelReductor(ProjectionBasedReductor):
+
+    def __init__(self,
+                 fom,
+                 pfield_basis,
+                 ofield_basis,
+                 stokes_basis,
+                 check_orthonormality=None,
+                 check_tol=None,
+                 least_squares_pfield=False,
+                 least_squares_ofield=False,
+                 least_squares_stokes=False):
+        bases = {'pfield': pfield_basis, 'ofield': ofield_basis, 'stokes': stokes_basis}
+        # products = {'pfield': None,
+        #             'ofield': None,
+        #             'stokes': None}
+        super().__init__(fom, bases, {}, check_orthonormality=check_orthonormality, check_tol=check_tol)
+        self.__auto_init(locals())
+
+    reduce = ProjectionBasedReductor._reduce     # hack to allow bases which are None
+
+    def project_operators(self):
+        fom = self.fom
+        pfield_basis, ofield_basis, stokes_basis = self.bases['pfield'], self.bases['ofield'], self.bases['stokes']
+        projected_operators = {
+            'pfield_op':
+            ProjectedSystemOperator(fom.pfield_op, pfield_basis if not self.least_squares_pfield else None,
+                                    [pfield_basis, pfield_basis, ofield_basis, stokes_basis]),
+            'ofield_op':
+            ProjectedSystemOperator(fom.ofield_op, ofield_basis if not self.least_squares_ofield else None,
+                                    [ofield_basis, pfield_basis, ofield_basis, stokes_basis]),
+            'stokes_op':
+            ProjectedSystemOperator(fom.stokes_op, stokes_basis if not self.least_squares_stokes else None,
+                                    [stokes_basis, pfield_basis, ofield_basis]),
+            'initial_pfield':
+            project(fom.initial_pfield, pfield_basis, None),
+            'initial_ofield':
+            project(fom.initial_ofield, ofield_basis, None),
+            'initial_stokes':
+            project(fom.initial_stokes, stokes_basis, None)
+        }
+        return projected_operators
+
+    def project_operators_to_subbasis(self, dims):
+        raise NotImplementedError
+
+    def build_rom(self, projected_operators, estimator):
+        params = {
+            'stagnation_threshold': 0.99,
+            'stagnation_window': 3,
+            'maxiter': 10000,
+            'relax': 1,
+            'rtol': 1e-14,
+            'atol': 1e-11
+        }
+        return self.fom.with_(
+            new_type=CellModel,
+            least_squares_pfield=self.least_squares_pfield,
+            least_squares_ofield=self.least_squares_ofield,
+            least_squares_stokes=self.least_squares_stokes,
+            newton_params_pfield=params,
+            newton_params_ofield=params,
+            newton_params_stokes=params,
+            **projected_operators)
+
+    def reconstruct(self, u):     # , basis='RB'):
+        pfield_basis, ofield_basis, stokes_basis = self.bases['pfield'], self.bases['ofield'], self.bases['stokes']
+        pfield = pfield_basis.lincomb(u._blocks[0].to_numpy()) if pfield_basis is not None else u._blocks[0]
+        ofield = ofield_basis.lincomb(u._blocks[1].to_numpy()) if ofield_basis is not None else u._blocks[1]
+        stokes = stokes_basis.lincomb(u._blocks[2].to_numpy()) if stokes_basis is not None else u._blocks[2]
+        return self.fom.solution_space.make_array([pfield, ofield, stokes])
 
 
 def create_and_scatter_cellmodel_parameters(comm,

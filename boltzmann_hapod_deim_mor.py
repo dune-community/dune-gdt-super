@@ -51,14 +51,14 @@ def calculate_l2_error_for_random_samples(basis,
         mu = [random.uniform(0., 8.), random.uniform(0., 8.), 0., random.uniform(0., 8.)]
 
         # solve without saving solution to measure time
-        fom = DuneModel(nt, solver.time_step_length(), '', 0, grid_size, False, True, *mu, linear)
+        fom = DuneModel(nt, solver.dt, '', 0, grid_size, False, True, *mu, linear)
         parsed_mu = fom.parse_parameter(mu)
         start = timer()
         fom.solve(parsed_mu, return_half_steps=False)
         elapsed_high_dim += timer() - start
 
         # now create Model that saves time steps to calculate error
-        fom = DuneModel(nt, solver.time_step_length(), '', 2000000, grid_size, False, False, *mu, linear)
+        fom = DuneModel(nt, solver.dt, '', 2000000, grid_size, False, False, *mu, linear)
         assert hyper_reduction in ('none', 'projection', 'deim')
         if hyper_reduction == 'projection':
             lf = Concatenation([VectorArrayOperator(deim_cb), VectorArrayOperator(deim_cb, adjoint=True), fom.lf])

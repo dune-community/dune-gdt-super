@@ -44,7 +44,7 @@ def calculate_l2_error_for_random_samples(basis,
     for _ in range(params_per_rank):
         mu = [random.uniform(0., 8.), random.uniform(0., 8.), 0., random.uniform(0., 8.)]
 
-        fom = DuneModel(nt, solver.time_step_length(), '', 2000000, grid_size, False, True, *mu)
+        fom = DuneModel(nt, solver.dt, '', 2000000, grid_size, False, True, *mu)
 
         mu = fom.parse_parameter(mu)
 
