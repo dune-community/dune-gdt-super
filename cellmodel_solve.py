@@ -64,7 +64,7 @@ def binary_tree_hapod(cellmodel,
                 new_vecs[k].append(timestep_vec._blocks[k])
         for j in range(chunk_size - 1 if i == 0 else chunk_size):     # if i == 0, initial values are already in chunk
             if include_newton_stages:
-                timestep_vec, t, timestep_stages, = cellmodel.next_time_step(
+                timestep_vec, t, timestep_stages = cellmodel.next_time_step(
                     timestep_vec, t, mu=mu, return_stages=True)
             else:
                 timestep_vec, t = cellmodel.next_time_step(timestep_vec, t, mu=mu, return_stages=False)
@@ -76,7 +76,7 @@ def binary_tree_hapod(cellmodel,
             for k in indices:
                 new_vecs[k].append(timestep_vec._blocks[k])
                 if include_newton_stages:
-                    new_vecs[k].append(timestep_stages._blocks[k])
+                    new_vecs[k].append(timestep_stages[k])
 
         #      num_snapshots = (len(new_pfield_vecs), len(new_ofield_vecs), len(new_stokes_vecs))
         #      if not include_newton_stages:
@@ -176,10 +176,10 @@ if __name__ == "__main__":
     basis_size_step = 50
     visualize_step = 50
     include_newton_stages = False
-    reduce_pfield = False
-    reduce_ofield = False
+    reduce_pfield = True
+    reduce_ofield = True
     reduce_stokes = True
-    tested_param = 'Be'
+    tested_param = 'Ca'
     Ca0 = 0.1
     Be0 = 0.3
     Pa0 = 1.0
