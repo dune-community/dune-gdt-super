@@ -16,12 +16,14 @@ from hapod.hapod import local_pod, HapodParameters, binary_tree_hapod_over_ranks
 
 def binary_tree_hapod(cellmodel,
                       chunk_size,
-                      tol,
                       mpi,
-                      reduce_pfield,
-                      reduce_ofield,
-                      reduce_stokes,
-                      include_newton_stages,
+                      pfield_tol,
+                      ofield_tol,
+                      stokes_tol,
+                      reduce_pfield = True,
+                      reduce_ofield = True,
+                      reduce_stokes = True,
+                      include_newton_stages = False,
                       omega=0.95,
                       incremental_gramian=True,
                       orthonormalize=True):
@@ -40,9 +42,6 @@ def binary_tree_hapod(cellmodel,
     node_binary_tree_depth = mpi.comm_proc.bcast(node_binary_tree_depth, root=0)
     rooted_tree_depth = num_chunks + node_binary_tree_depth
 
-    # store HAPOD parameters for easier handling
-    hapod_params = HapodParameters(rooted_tree_depth, epsilon_ast=tol, omega=omega)
-
     indices = []
     if reduce_pfield:
         indices.append(0)
@@ -51,8 +50,15 @@ def binary_tree_hapod(cellmodel,
     if reduce_stokes:
         indices.append(2)
     U = cellmodel.solution_space.empty()
+    print(indices)
     modes = [None] * 3
     svals = [None] * 3
+
+    # store HAPOD parameters for easier handling
+    hapod_params = [HapodParameters(rooted_tree_depth, epsilon_ast=pfield_tol, omega=omega), 
+                    HapodParameters(rooted_tree_depth, epsilon_ast=ofield_tol, omega=omega), 
+                    HapodParameters(rooted_tree_depth, epsilon_ast=stokes_tol, omega=omega)]
+
     max_vectors_before_pod, max_local_modes, total_num_snapshots, svals = [[0] * 3, [0] * 3, [0] * 3, [[]] * 3]
     timestep_vec = cellmodel.initial_values
     U.append(timestep_vec)
@@ -91,7 +97,7 @@ def binary_tree_hapod(cellmodel,
             local_vecs = new_vecs[k]
             local_vecs, local_svals = local_pod([local_vecs],
                                                 len(local_vecs),
-                                                hapod_params,
+                                                hapod_params[k],
                                                 incremental_gramian=False,
                                                 orthonormalize=orthonormalize)
             local_vecs.scal(local_svals)
@@ -106,13 +112,13 @@ def binary_tree_hapod(cellmodel,
                 if i == 0:
                     modes[k], svals[k] = local_pod([gathered_modes[k]],
                                                    num_snapshots_in_this_chunk[k],
-                                                   hapod_params,
+                                                   hapod_params[k],
                                                    orthonormalize=orthonormalize)
                 else:
                     max_vectors_before_pod[k] = max(max_vectors_before_pod[k], len(modes[k]) + len(gathered_modes[k]))
                     modes[k], svals[k] = local_pod([[modes[k], svals[k]], gathered_modes[k]],
                                                    total_num_snapshots[k],
-                                                   hapod_params,
+                                                   hapod_params[k],
                                                    orthonormalize=orthonormalize,
                                                    incremental_gramian=incremental_gramian,
                                                    root_of_tree=(i == num_chunks - 1 and mpi.size_rank_0_group == 1))
@@ -127,7 +133,7 @@ def binary_tree_hapod(cellmodel,
                 = binary_tree_hapod_over_ranks(mpi.comm_rank_0_group,
                                                modes[k],
                                                total_num_snapshots[k],
-                                               hapod_params,
+                                               hapod_params[k],
                                                svals=svals[k],
                                                last_hapod=True,
                                                incremental_gramian=incremental_gramian,
@@ -156,6 +162,7 @@ def binary_tree_hapod(cellmodel,
               str(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1000.**2) + " GB")
         print("Time for final HAPOD over nodes:" + str(timer() - start2))
         print("Time for all:" + str(timer() - start))
+    mpi.comm_world.Barrier()
 
     return U, modes, svals, total_num_snapshots, max_vectors_before_pod, max_local_modes
 
@@ -172,8 +179,10 @@ if __name__ == "__main__":
     subsampling = True if argc < 8 else bool(sys.argv[7])
     pol_order = 2
     chunk_size = 10
-    pod_rtol = 1e-13
-    basis_size_step = 50
+    pfield_atol = 1e-3
+    ofield_atol = 1e-3
+    stokes_atol = 1e-3
+    # basis_size_step = 50
     visualize_step = 50
     include_newton_stages = False
     reduce_pfield = True
@@ -211,7 +220,7 @@ if __name__ == "__main__":
     num_cells = solver.num_cells
     m = DuneCellModel(solver, dt, t_end)
     U, modes, svals, _, _, _ = binary_tree_hapod(
-        m, chunk_size, pod_rtol, mpi, reduce_pfield, reduce_ofield, reduce_stokes, include_newton_stages, omega=0.95)
+        m, chunk_size, mpi, pfield_atol, ofield_atol, stokes_atol, reduce_pfield, reduce_ofield, reduce_stokes, include_newton_stages, omega=0.95)
     full_pfield_basis, full_ofield_basis, full_stokes_basis = modes
     if reduce_pfield:
         full_pfield_basis, win_pfield = mpi.shared_memory_bcast_modes(full_pfield_basis, returnlistvectorarray=True)
@@ -220,91 +229,99 @@ if __name__ == "__main__":
     if reduce_stokes:
         full_stokes_basis, win_stokes = mpi.shared_memory_bcast_modes(full_stokes_basis, returnlistvectorarray=True)
 
-    filename = "rom_results_least_squares_grid{}x{}_tend{}_{}_param{}_pfield_{}_ofield_{}_stokes_{}.txt".format(
+    filename = "rom_results_grid{}x{}_tend{}_{}_param{}_pfield_{}_ofield_{}_stokes_{}.txt".format(
         grid_size_x, grid_size_y, t_end, 'snapsandstages' if include_newton_stages else 'snaps', tested_param,
-        'pod' if reduce_pfield else 'none', 'pod' if reduce_ofield else 'none', 'pod' if reduce_stokes else 'none')
+        f'pod{pfield_atol}' if reduce_pfield else 'none', f'pod{ofield_atol}' if reduce_ofield else 'none', f'pod{stokes_atol}' if reduce_stokes else 'none')
 
     if mpi.rank_world == 0:
         with open(filename, 'w') as ff:
             ff.write(
-                f"{filename}\nTrained with {len(mus)} Parameters for {tested_param}: {[param[tested_param] for param in mus]}\n"
-                f"Tested with {len(new_mus)} new Parameters: {[param[tested_param] for param in new_mus]}\n")
-            ff.write("num_basis_vecs pfield_trained ofield_trained stokes_trained pfield_new ofield_new stokes_new\n")
+                f"{filename}\nTrained with {len(mus)} Parameters for {tested_param}: {[param[tested_param] for param in mus]}\n")
+            #    f"Tested with {len(new_mus)} new Parameters: {[param[tested_param] for param in new_mus]}\n")
+            # ff.write("num_basis_vecs pfield_trained ofield_trained stokes_trained pfield_new ofield_new stokes_new\n")
+            ff.write("tol_pfield tol_ofield tol_stokes n_pfield n_ofield n_stokes err_pfield err_ofield err_stokes\n")
 
     # solve full-order model for new param
-    U_new_mu = m.solve(mu=new_mu, return_stages=False)
-    Be, Ca, Pa = (float(new_mu['Be']), float(new_mu['Ca']), float(new_mu['Pa']))
-    m.visualize(U_new_mu, prefix=f"fullorder_Be{Be}_Ca{Ca}_Pa{Pa}", subsampling=subsampling, every_nth=visualize_step)
+    # U_new_mu = m.solve(mu=new_mu, return_stages=False)
+    # Be, Ca, Pa = (float(new_mu['Be']), float(new_mu['Ca']), float(new_mu['Pa']))
+    # m.visualize(U_new_mu, prefix=f"fullorder_Be{Be}_Ca{Ca}_Pa{Pa}", subsampling=subsampling, every_nth=visualize_step)
 
-    min_basis_len = basis_size_step
-    pfield_basis_max_len = len(full_pfield_basis) if reduce_pfield else np.inf
-    ofield_basis_max_len = len(full_ofield_basis) if reduce_ofield else np.inf
-    stokes_basis_max_len = len(full_stokes_basis) if reduce_stokes else np.inf
-    max_basis_len = min(pfield_basis_max_len, ofield_basis_max_len, stokes_basis_max_len)
+    # min_basis_len = basis_size_step
+    # pfield_basis_max_len = len(full_pfield_basis) if reduce_pfield else np.inf
+    # ofield_basis_max_len = len(full_ofield_basis) if reduce_ofield else np.inf
+    # stokes_basis_max_len = len(full_stokes_basis) if reduce_stokes else np.inf
+    # max_basis_len = min(pfield_basis_max_len, ofield_basis_max_len, stokes_basis_max_len)
 
-    for basis_len in range(min_basis_len, max_basis_len, basis_size_step):
+    # for basis_len in range(min_basis_len, max_basis_len, basis_size_step):
 
-        pfield_basis = full_pfield_basis[:basis_len] if reduce_pfield else None
-        ofield_basis = full_ofield_basis[:basis_len] if reduce_ofield else None
-        stokes_basis = full_stokes_basis[:basis_len] if reduce_stokes else None
+    #    pfield_basis = full_pfield_basis[:basis_len] if reduce_pfield else None
+    #    ofield_basis = full_ofield_basis[:basis_len] if reduce_ofield else None
+    #    stokes_basis = full_stokes_basis[:basis_len] if reduce_stokes else None
 
-        reduced_prefix = "param{}_{}_pfield_{}_ofield_{}_stokes_{}".format(
-            tested_param, 'snapsandstages' if include_newton_stages else 'snaps',
-            f'pod{len(pfield_basis)}' if reduce_pfield else 'none',
-            f'pod{len(ofield_basis)}' if reduce_ofield else 'none',
-            f'pod{len(stokes_basis)}' if reduce_stokes else 'none')
+    pfield_basis = full_pfield_basis if reduce_pfield else None
+    ofield_basis = full_ofield_basis if reduce_ofield else None
+    stokes_basis = full_stokes_basis if reduce_stokes else None
 
-        reductor = CellModelReductor(
-            m,
-            pfield_basis,
-            ofield_basis,
-            stokes_basis,
-            least_squares_pfield=True if reduce_pfield else False,
-            least_squares_ofield=True if reduce_ofield else False,
-            least_squares_stokes=True if reduce_stokes else False)
-        rom = reductor.reduce()
+    reduced_prefix = "param{}_{}_pfield_{}_ofield_{}_stokes_{}".format(
+        tested_param, 'snapsandstages' if include_newton_stages else 'snaps',
+        f'pod{len(pfield_basis)}' if reduce_pfield else 'none',
+        f'pod{len(ofield_basis)}' if reduce_ofield else 'none',
+        f'pod{len(stokes_basis)}' if reduce_stokes else 'none')
 
-        ################## solve reduced model for trained parameters ####################
-        u = rom.solve(mu, return_stages=False)
-        U_rom = reductor.reconstruct(u)
+    reductor = CellModelReductor(
+        m,
+        pfield_basis,
+        ofield_basis,
+        stokes_basis,
+        least_squares_pfield=True if reduce_pfield else False,
+        least_squares_ofield=True if reduce_ofield else False,
+        least_squares_stokes=True if reduce_stokes else False)
+    rom = reductor.reduce()
 
-        ################## test new parameters #######################
-        # solve reduced model for new params
-        u_new_mu = rom.solve(new_mu, return_stages=False)
-        U_rom_new_mu = reductor.reconstruct(u_new_mu)
-        Be, Ca, Pa = (float(new_mu['Be']), float(new_mu['Ca']), float(new_mu['Pa']))
-        m.visualize(
-            U_rom_new_mu,
-            prefix=f"{reduced_prefix}_Be{Be}_Ca{Ca}_Pa{Pa}",
-            subsampling=subsampling,
-            every_nth=visualize_step)
+    ################## solve reduced model for trained parameters ####################
+    u = rom.solve(mu, return_stages=False)
+    U_rom = reductor.reconstruct(u)
 
-        # calculate_errors
-        pfield_rel_errors = (U._blocks[0] - U_rom._blocks[0]).norm() / U._blocks[0].norm()
-        ofield_rel_errors = (U._blocks[1] - U_rom._blocks[1]).norm() / U._blocks[1].norm()
-        stokes_rel_errors = (U._blocks[2] - U_rom._blocks[2]).norm() / U._blocks[2].norm()
-        pfield_rel_errors_new_mu = (U_new_mu._blocks[0] - U_rom_new_mu._blocks[0]).norm() / U_new_mu._blocks[0].norm()
-        ofield_rel_errors_new_mu = (U_new_mu._blocks[1] - U_rom_new_mu._blocks[1]).norm() / U_new_mu._blocks[1].norm()
-        stokes_rel_errors_new_mu = (U_new_mu._blocks[2] - U_rom_new_mu._blocks[2]).norm() / U_new_mu._blocks[2].norm()
-        pfield_rel_errors = mpi.comm_world.gather(pfield_rel_errors, root=0)
-        ofield_rel_errors = mpi.comm_world.gather(ofield_rel_errors, root=0)
-        stokes_rel_errors = mpi.comm_world.gather(stokes_rel_errors, root=0)
-        pfield_rel_errors_new_mus = mpi.comm_world.gather(pfield_rel_errors_new_mu, root=0)
-        ofield_rel_errors_new_mus = mpi.comm_world.gather(ofield_rel_errors_new_mu, root=0)
-        stokes_rel_errors_new_mus = mpi.comm_world.gather(stokes_rel_errors_new_mu, root=0)
+    ################## test new parameters #######################
+    # solve reduced model for new params
+    # u_new_mu = rom.solve(new_mu, return_stages=False)
+    # U_rom_new_mu = reductor.reconstruct(u_new_mu)
+    # Be, Ca, Pa = (float(new_mu['Be']), float(new_mu['Ca']), float(new_mu['Pa']))
+    # m.visualize(
+    #     U_rom_new_mu,
+    #     prefix=f"{reduced_prefix}_Be{Be}_Ca{Ca}_Pa{Pa}",
+    #     subsampling=subsampling,
+    #     every_nth=visualize_step)
 
-        if mpi.rank_world == 0:
-            pfield_rel_errors = np.concatenate(pfield_rel_errors)
-            ofield_rel_errors = np.concatenate(ofield_rel_errors)
-            stokes_rel_errors = np.concatenate(stokes_rel_errors)
-            pfield_rel_errors_new_mus = np.concatenate(pfield_rel_errors_new_mus)
-            ofield_rel_errors_new_mus = np.concatenate(ofield_rel_errors_new_mus)
-            stokes_rel_errors_new_mus = np.concatenate(stokes_rel_errors_new_mus)
-            with open(filename, 'a') as ff:
-                ff.write("{} {} {} {} {} {} {}\n".format(
-                    basis_len, mean([err for err in pfield_rel_errors if not np.isnan(err)]),
-                    mean([err for err in ofield_rel_errors if not np.isnan(err)]),
-                    mean([err for err in stokes_rel_errors if not np.isnan(err)]),
-                    mean([err for err in pfield_rel_errors_new_mus if not np.isnan(err)]),
-                    mean([err for err in ofield_rel_errors_new_mus if not np.isnan(err)]),
-                    mean([err for err in stokes_rel_errors_new_mus if not np.isnan(err)])))
+    # calculate_errors
+    pfield_rel_errors = (U._blocks[0] - U_rom._blocks[0]).norm() / U._blocks[0].norm()
+    ofield_rel_errors = (U._blocks[1] - U_rom._blocks[1]).norm() / U._blocks[1].norm()
+    stokes_rel_errors = (U._blocks[2] - U_rom._blocks[2]).norm() / U._blocks[2].norm()
+    # pfield_rel_errors_new_mu = (U_new_mu._blocks[0] - U_rom_new_mu._blocks[0]).norm() / U_new_mu._blocks[0].norm()
+    # ofield_rel_errors_new_mu = (U_new_mu._blocks[1] - U_rom_new_mu._blocks[1]).norm() / U_new_mu._blocks[1].norm()
+    # stokes_rel_errors_new_mu = (U_new_mu._blocks[2] - U_rom_new_mu._blocks[2]).norm() / U_new_mu._blocks[2].norm()
+    pfield_rel_errors = mpi.comm_world.gather(pfield_rel_errors, root=0)
+    ofield_rel_errors = mpi.comm_world.gather(ofield_rel_errors, root=0)
+    stokes_rel_errors = mpi.comm_world.gather(stokes_rel_errors, root=0)
+    # pfield_rel_errors_new_mus = mpi.comm_world.gather(pfield_rel_errors_new_mu, root=0)
+    # ofield_rel_errors_new_mus = mpi.comm_world.gather(ofield_rel_errors_new_mu, root=0)
+    # stokes_rel_errors_new_mus = mpi.comm_world.gather(stokes_rel_errors_new_mu, root=0)
+
+    if mpi.rank_world == 0:
+        pfield_rel_errors = np.concatenate(pfield_rel_errors)
+        ofield_rel_errors = np.concatenate(ofield_rel_errors)
+        stokes_rel_errors = np.concatenate(stokes_rel_errors)
+        # pfield_rel_errors_new_mus = np.concatenate(pfield_rel_errors_new_mus)
+        # ofield_rel_errors_new_mus = np.concatenate(ofield_rel_errors_new_mus)
+        # stokes_rel_errors_new_mus = np.concatenate(stokes_rel_errors_new_mus)
+        with open(filename, 'a') as ff:
+            ff.write("{} {} {} {} {} {} {} {} {}\n".format(
+                pfield_atol, ofield_atol, stokes_atol,
+                len(pfield_basis), len(ofield_basis), len(stokes_basis),
+                mean([err for err in pfield_rel_errors if not np.isnan(err)]),
+                mean([err for err in ofield_rel_errors if not np.isnan(err)]),
+                mean([err for err in stokes_rel_errors if not np.isnan(err)]),
+                ))
+                # mean([err for err in pfield_rel_errors_new_mus if not np.isnan(err)]),
+                # mean([err for err in ofield_rel_errors_new_mus if not np.isnan(err)]),
+                # mean([err for err in stokes_rel_errors_new_mus if not np.isnan(err)])))
