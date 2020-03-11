@@ -239,7 +239,7 @@ if __name__ == "__main__":
                 f"{filename}\nTrained with {len(mus)} Parameters for {tested_param}: {[param[tested_param] for param in mus]}\n")
             #    f"Tested with {len(new_mus)} new Parameters: {[param[tested_param] for param in new_mus]}\n")
             # ff.write("num_basis_vecs pfield_trained ofield_trained stokes_trained pfield_new ofield_new stokes_new\n")
-            ff.write("tol_pfield tol_ofield tol_stokes n_pfield n_ofield n_stokes err_pfield err_ofield err_stokes\n")
+            ff.write("tol_pfield tol_ofield tol_stokes n_pfield n_ofield n_stokes err_pfield err_ofield err_stokes norm_pfield norm_ofield norm_stokes\n")
 
     # solve full-order model for new param
     # U_new_mu = m.solve(mu=new_mu, return_stages=False)
@@ -297,12 +297,18 @@ if __name__ == "__main__":
     pfield_rel_errors = (U._blocks[0] - U_rom._blocks[0]).norm() / U._blocks[0].norm()
     ofield_rel_errors = (U._blocks[1] - U_rom._blocks[1]).norm() / U._blocks[1].norm()
     stokes_rel_errors = (U._blocks[2] - U_rom._blocks[2]).norm() / U._blocks[2].norm()
+    pfield_norms = U._blocks[0].norm()
+    ofield_norms = U._blocks[1].norm()
+    stokes_norms = U._blocks[2].norm()
     # pfield_rel_errors_new_mu = (U_new_mu._blocks[0] - U_rom_new_mu._blocks[0]).norm() / U_new_mu._blocks[0].norm()
     # ofield_rel_errors_new_mu = (U_new_mu._blocks[1] - U_rom_new_mu._blocks[1]).norm() / U_new_mu._blocks[1].norm()
     # stokes_rel_errors_new_mu = (U_new_mu._blocks[2] - U_rom_new_mu._blocks[2]).norm() / U_new_mu._blocks[2].norm()
     pfield_rel_errors = mpi.comm_world.gather(pfield_rel_errors, root=0)
     ofield_rel_errors = mpi.comm_world.gather(ofield_rel_errors, root=0)
     stokes_rel_errors = mpi.comm_world.gather(stokes_rel_errors, root=0)
+    pfield_norms = mpi.comm_world.gather(pfield_norms, root=0)
+    ofield_norms = mpi.comm_world.gather(ofield_norms, root=0)
+    stokes_norms = mpi.comm_world.gather(stokes_norms, root=0)
     # pfield_rel_errors_new_mus = mpi.comm_world.gather(pfield_rel_errors_new_mu, root=0)
     # ofield_rel_errors_new_mus = mpi.comm_world.gather(ofield_rel_errors_new_mu, root=0)
     # stokes_rel_errors_new_mus = mpi.comm_world.gather(stokes_rel_errors_new_mu, root=0)
@@ -311,16 +317,22 @@ if __name__ == "__main__":
         pfield_rel_errors = np.concatenate(pfield_rel_errors)
         ofield_rel_errors = np.concatenate(ofield_rel_errors)
         stokes_rel_errors = np.concatenate(stokes_rel_errors)
+        pfield_norms = np.concatenate(pfield_norms)
+        ofield_norms = np.concatenate(ofield_norms)
+        stokes_norms = np.concatenate(stokes_norms)
         # pfield_rel_errors_new_mus = np.concatenate(pfield_rel_errors_new_mus)
         # ofield_rel_errors_new_mus = np.concatenate(ofield_rel_errors_new_mus)
         # stokes_rel_errors_new_mus = np.concatenate(stokes_rel_errors_new_mus)
         with open(filename, 'a') as ff:
-            ff.write("{} {} {} {} {} {} {} {} {}\n".format(
+            ff.write("{} {} {} {} {} {} {} {} {} {} {} {}\n".format(
                 pfield_atol, ofield_atol, stokes_atol,
                 len(pfield_basis), len(ofield_basis), len(stokes_basis),
                 mean([err for err in pfield_rel_errors if not np.isnan(err)]),
                 mean([err for err in ofield_rel_errors if not np.isnan(err)]),
                 mean([err for err in stokes_rel_errors if not np.isnan(err)]),
+                mean([norm for norm in pfield_norms if not np.isnan(norm)]),
+                mean([norm for norm in ofield_norms if not np.isnan(norm)]),
+                mean([norm for norm in stokes_norms if not np.isnan(norm)]),
                 ))
                 # mean([err for err in pfield_rel_errors_new_mus if not np.isnan(err)]),
                 # mean([err for err in ofield_rel_errors_new_mus if not np.isnan(err)]),
