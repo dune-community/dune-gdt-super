@@ -5,6 +5,7 @@ import random
 from timeit import default_timer as timer
 import weakref
 
+from pymor.algorithms.ei import deim
 from pymor.algorithms.newton import newton
 from pymor.algorithms.projection import project
 from pymor.core.base import abstractmethod
@@ -13,6 +14,7 @@ from pymor.operators.interface import Operator
 from pymor.operators.constructions import (VectorOperator, ConstantOperator, LincombOperator, LinearOperator,
                                            FixedParameterOperator, ProjectedOperator)
 from pymor.parameters.base import Parameter, ParameterType, Parametric
+from pymor.operators.ei import EmpiricalInterpolatedOperator
 from pymor.parameters.functionals import ExpressionParameterFunctional
 from pymor.parameters.spaces import CubicParameterSpace
 from pymor.reductors.basic import ProjectionBasedReductor
@@ -744,6 +746,15 @@ class ProjectedSystemOperator(Operator):
         return ProjectedOperator(op, self.range_bases, remaining_source_bases[0])
 
 
+class EmpiricalInterpolatedOperatorWithFixComponent(EmpiricalInterpolatedOperator):
+
+    def fix_components(self, idx, U):
+        if hasattr(self, 'restricted_operator'):
+            raise NotImplementedError
+        op = self.operator.fix_components(idx, U)
+        return self.with_(operator=op)
+
+
 class CellModelReductor(ProjectionBasedReductor):
 
     def __init__(self,
@@ -755,7 +766,10 @@ class CellModelReductor(ProjectionBasedReductor):
                  check_tol=None,
                  least_squares_pfield=False,
                  least_squares_ofield=False,
-                 least_squares_stokes=False):
+                 least_squares_stokes=False,
+                 pfield_deim_basis=None,
+                 ofield_deim_basis=None,
+                 stokes_deim_basis=None):
         bases = {'pfield': pfield_basis, 'ofield': ofield_basis, 'stokes': stokes_basis}
         # products = {'pfield': None,
         #             'ofield': None,
@@ -768,15 +782,25 @@ class CellModelReductor(ProjectionBasedReductor):
     def project_operators(self):
         fom = self.fom
         pfield_basis, ofield_basis, stokes_basis = self.bases['pfield'], self.bases['ofield'], self.bases['stokes']
+        pfield_op, ofield_op, stokes_op = fom.pfield_op, fom.ofield_op, fom.stokes_op
+        if self.pfield_deim_basis:
+            pfield_dofs, pfield_deim_basis, _ = deim(self.pfield_deim_basis, pod=False)
+            pfield_op = EmpiricalInterpolatedOperatorWithFixComponent(pfield_op, pfield_dofs, pfield_deim_basis, False)
+        if self.ofield_deim_basis:
+            ofield_dofs, ofield_deim_basis, _ = deim(self.ofield_deim_basis, pod=False)
+            ofield_op = EmpiricalInterpolatedOperatorWithFixComponent(ofield_op, ofield_dofs, ofield_deim_basis, False)
+        if self.stokes_deim_basis:
+            stokes_dofs, stokes_deim_basis, _ = deim(self.stokes_deim_basis, pod=False)
+            stokes_op = EmpiricalInterpolatedOperatorWithFixComponent(stokes_op, stokes_dofs, stokes_deim_basis, False)
         projected_operators = {
             'pfield_op':
-            ProjectedSystemOperator(fom.pfield_op, pfield_basis if not self.least_squares_pfield else None,
+            ProjectedSystemOperator(pfield_op, pfield_basis if not self.least_squares_pfield else None,
                                     [pfield_basis, pfield_basis, ofield_basis, stokes_basis]),
             'ofield_op':
-            ProjectedSystemOperator(fom.ofield_op, ofield_basis if not self.least_squares_ofield else None,
+            ProjectedSystemOperator(ofield_op, ofield_basis if not self.least_squares_ofield else None,
                                     [ofield_basis, pfield_basis, ofield_basis, stokes_basis]),
             'stokes_op':
-            ProjectedSystemOperator(fom.stokes_op, stokes_basis if not self.least_squares_stokes else None,
+            ProjectedSystemOperator(stokes_op, stokes_basis if not self.least_squares_stokes else None,
                                     [stokes_basis, pfield_basis, ofield_basis]),
             'initial_pfield':
             project(fom.initial_pfield, pfield_basis, None),
