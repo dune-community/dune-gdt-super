@@ -499,7 +499,7 @@ class CellModel(Model):
         self.build_parameter_type(pfield_op, ofield_op, stokes_op)
         self.initial_values = self.solution_space.make_array([self.initial_pfield.as_vector(), self.initial_ofield.as_vector(), self.initial_stokes.as_vector()])
 
-    def _solve(self, mu=None, return_output=False, return_stages=False):
+    def _solve(self, mu=None, return_output=False, return_stages=False, return_residuals=False):
         assert not return_output
 
         # initial values
@@ -511,6 +511,10 @@ class CellModel(Model):
             pfield_stages = pfield_vecarray.empty()
             ofield_stages = ofield_vecarray.empty()
             stokes_stages = stokes_vecarray.empty()
+        if return_residuals:
+            pfield_residuals = pfield_vecarray.empty()
+            ofield_residuals = ofield_vecarray.empty()
+            stokes_residuals = stokes_vecarray.empty()
 
         U_all = self.solution_space.make_array([pfield_vecarray, ofield_vecarray, stokes_vecarray])
 
@@ -528,6 +532,7 @@ class CellModel(Model):
                 mu=mu,
                 least_squares=self.least_squares_pfield,
                 return_stages=return_stages,
+                return_residuals = return_residuals,
                 **self.newton_params_pfield
             )
             ofield_vecarray, ofield_data = newton(
@@ -537,6 +542,7 @@ class CellModel(Model):
                 mu=mu,
                 least_squares=self.least_squares_ofield,
                 return_stages=return_stages,
+                return_residuals = return_residuals,
                 **self.newton_params_ofield
             )
             stokes_vecarray, stokes_data = newton(
@@ -546,6 +552,7 @@ class CellModel(Model):
                 mu=mu,
                 least_squares=self.least_squares_stokes,
                 return_stages=return_stages,
+                return_residuals = return_residuals,
                 **self.newton_params_stokes
             )
             i += 1
@@ -557,13 +564,19 @@ class CellModel(Model):
                 pfield_stages.append(pfield_data['stages'])
                 ofield_stages.append(ofield_data['stages'])
                 stokes_stages.append(stokes_data['stages'])
+            if return_residuals:
+                pfield_residuals.append(pfield_data['residuals'])
+                ofield_residuals.append(ofield_data['residuals'])
+                stokes_residuals.append(stokes_data['residuals'])
 
+        retval = [U_all]
         if return_stages:
-            return U_all, (pfield_stages, ofield_stages, stokes_stages)
-        else:
-            return U_all
+            retval.append(pfield_stages, ofield_stages, stokes_stages)
+        if return_residuals:
+            retval.append(pfield_residuals, ofield_residuals, stokes_residuals)
+        return retval if len(retval) > 1 else retval[0]
 
-    def next_time_step(self, U_last, t, mu=None, return_output=False, return_stages=False):
+    def next_time_step(self, U_last, t, mu=None, return_output=False, return_stages=False, return_residuals=False):
         assert not return_output
 
         pfield_vecs, ofield_vecs, stokes_vecs = U_last._blocks
@@ -572,12 +585,18 @@ class CellModel(Model):
             pfield_stages = pfield_vecs.empty()
             ofield_stages = ofield_vecs.empty()
             stokes_stages = stokes_vecs.empty()
+        if return_residuals:
+            pfield_residuals = pfield_vecs.empty()
+            ofield_residuals = ofield_vecs.empty()
+            stokes_residuals = stokes_vecs.empty()
 
         if t > self.t_end - 1e-14:
+            retval = [None, self.t_end]
             if return_stages:
-                return None, self.t_end, (None, None, None)
-            else:
-                return None, self.t_end
+                retval.append((None, None, None))
+            if return_residuals:
+                retval.append((None, None, None))
+            return tuple(retval)
 
         # do not go past t_end
         actual_dt = min(self.dt, self.t_end - t)
@@ -590,6 +609,7 @@ class CellModel(Model):
             mu=mu,
             least_squares=self.least_squares_pfield,
             return_stages=return_stages,
+            return_residuals = return_residuals,
             **self.newton_params_pfield
         )
         ofield_vecs, ofield_data = newton(
@@ -599,6 +619,7 @@ class CellModel(Model):
             mu=mu,
             least_squares=self.least_squares_ofield,
             return_stages=return_stages,
+            return_residuals = return_residuals,
             **self.newton_params_ofield
         )
         stokes_vecs, stokes_data = newton(
@@ -608,6 +629,7 @@ class CellModel(Model):
             mu=mu,
             least_squares=self.least_squares_stokes,
             return_stages=return_stages,
+            return_residuals = return_residuals,
             **self.newton_params_stokes
         )
         t += actual_dt
@@ -617,11 +639,17 @@ class CellModel(Model):
             pfield_stages.append(pfield_data['stages'])
             ofield_stages.append(ofield_data['stages'])
             stokes_stages.append(stokes_data['stages'])
+        if return_residuals:
+            pfield_residuals.append(pfield_data['residuals'])
+            ofield_residuals.append(ofield_data['residuals'])
+            stokes_residuals.append(stokes_data['residuals'])
 
+        retval = [U, t]
         if return_stages:
-            return U, t, (pfield_stages, ofield_stages, stokes_stages)
-        else:
-            return U, t
+            retval.append((pfield_stages, ofield_stages, stokes_stages))
+        if return_residuals:
+            retval.append((pfield_residuals, ofield_residuals, stokes_residuals))
+        return retval
 
 
 class DuneCellModel(CellModel):
