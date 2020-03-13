@@ -57,8 +57,8 @@ def binary_tree_hapod(cellmodel,
     svals = [None] * 3
 
     # store HAPOD parameters for easier handling
-    hapod_params = [HapodParameters(rooted_tree_depth, epsilon_ast=pfield_tol, omega=omega), 
-                    HapodParameters(rooted_tree_depth, epsilon_ast=ofield_tol, omega=omega), 
+    hapod_params = [HapodParameters(rooted_tree_depth, epsilon_ast=pfield_tol, omega=omega),
+                    HapodParameters(rooted_tree_depth, epsilon_ast=ofield_tol, omega=omega),
                     HapodParameters(rooted_tree_depth, epsilon_ast=stokes_tol, omega=omega)]
 
     max_vectors_before_pod, max_local_modes, total_num_snapshots, svals = [[0] * 3, [0] * 3, [0] * 3, [[]] * 3]
@@ -269,7 +269,7 @@ if __name__ == "__main__":
             ff.write("tol_pf tol_of tol_st n_pf n_of n_st err_pf err_of err_st err_pf_new err_of_new err_st_new norm_pf norm_of norm_st\n")
 
     ####### Scatter parameters to MPI ranks #######
-    # Transform mus and new_mus from plain list to list of lists where the i-th inner list contains all parameters for rank i 
+    # Transform mus and new_mus from plain list to list of lists where the i-th inner list contains all parameters for rank i
     mus = np.reshape(np.array(mus), (mpi.size_world, train_params_per_rank)).tolist()
     new_mus = np.reshape(np.array(new_mus), (mpi.size_world, test_params_per_rank)).tolist()
     mus = mpi.comm_world.scatter(mus, root=0)

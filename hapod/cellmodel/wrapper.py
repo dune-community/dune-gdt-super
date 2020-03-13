@@ -101,6 +101,24 @@ class CellModelSolver(Parametric):
     def stokes_vector(self):
         return DuneXtLaVector(self.impl.stokes_vec())
 
+    def compute_pfield_deim_dofs(self, output_dofs, cell_index=0):
+        self.impl.compute_restricted_pfield_dofs(output_dofs, cell_index)
+
+    def compute_ofield_deim_dofs(self, output_dofs, cell_index=0):
+        self.impl.compute_restricted_ofield_dofs(output_dofs, cell_index)
+
+    def compute_stokes_deim_dofs(self, output_dofs):
+        self.impl.compute_restricted_stokes_dofs(output_dofs)
+
+    def pfield_deim_input_dofs(self, cell_index):
+        return self.impl.pfield_deim_input_dofs(cell_index)
+
+    def ofield_deim_input_dofs(self, cell_index):
+        return self.impl.ofield_deim_input_dofs(cell_index)
+
+    def stokes_deim_input_dofs(self):
+        return self.impl.stokes_deim_input_dofs()
+
     def set_pfield_vec(self, cell_index, vec):
         return self.impl.set_pfield_vec(cell_index, vec.impl)
 
@@ -110,20 +128,29 @@ class CellModelSolver(Parametric):
     def set_stokes_vec(self, vec):
         return self.impl.set_stokes_vec(vec.impl)
 
-    def prepare_pfield_operator(self, dt, cell_index):
-        return self.impl.prepare_pfield_operator(dt, cell_index)
+    def set_pfield_vec_dofs(self, cell_index, vec, dofs):
+        return self.impl.set_pfield_vec_dofs(cell_index, vec.impl, dofs)
 
-    def prepare_ofield_operator(self, dt, cell_index):
-        return self.impl.prepare_ofield_operator(dt, cell_index)
+    def set_ofield_vec_dofs(self, cell_index, vec):
+        return self.impl.set_ofield_vec_dofs(cell_index, vec.impl, dofs)
 
-    def set_pfield_jacobian_state(self, vec, cellindex):
-        self.impl.set_pfield_jacobian_state(vec.impl, cellindex)
+    def set_stokes_vec_dofs(self, vec, dofs):
+        return self.impl.set_stokes_vec_dofs(vec.impl, dofs)
 
-    def set_ofield_jacobian_state(self, vec, cellindex):
-        self.impl.set_ofield_jacobian_state(vec.impl, cellindex)
+    def prepare_pfield_operator(self, dt, cell_index, restricted=False):
+        return self.impl.prepare_pfield_operator(dt, cell_index, restricted)
 
-    def prepare_stokes_operator(self):
-        return self.impl.prepare_stokes_operator()
+    def prepare_ofield_operator(self, dt, cell_index, restricted=False):
+        return self.impl.prepare_ofield_operator(dt, cell_index, restricted)
+
+    def prepare_stokes_operator(self, restricted=False):
+        return self.impl.prepare_stokes_operator(restricted)
+
+    def set_pfield_jacobian_state(self, vec, cell_index, restricted=False):
+        self.impl.set_pfield_jacobian_state(vec.impl, cell_index, restricted)
+
+    def set_ofield_jacobian_state(self, vec, cell_index, restricted=False):
+        self.impl.set_ofield_jacobian_state(vec.impl, cell_index, restricted)
 
     def apply_inverse_pfield_operator(self, guess_vec, cell_index):
         return self.pfield_solution_space.make_array(
@@ -136,16 +163,16 @@ class CellModelSolver(Parametric):
     def apply_inverse_stokes_operator(self):
         return self.stokes_solution_space.make_array([self.impl.apply_inverse_stokes_operator()])
 
-    def apply_pfield_operator(self, U, cell_index):
-        U_out = [self.impl.apply_pfield_operator(vec.impl, cell_index) for vec in U._list]
+    def apply_pfield_operator(self, U, cell_index, restricted=False):
+        U_out = [self.impl.apply_pfield_operator(vec.impl, cell_index, restricted) for vec in U._list]
         return self.pfield_solution_space.make_array(U_out)
 
-    def apply_ofield_operator(self, U, cell_index):
-        U_out = [self.impl.apply_ofield_operator(vec.impl, cell_index) for vec in U._list]
+    def apply_ofield_operator(self, U, cell_index, restricted=False):
+        U_out = [self.impl.apply_ofield_operator(vec.impl, cell_index, restricted) for vec in U._list]
         return self.ofield_solution_space.make_array(U_out)
 
-    def apply_stokes_operator(self, U, mu=None):
-        U_out = [self.impl.apply_stokes_operator(vec.impl) for vec in U._list]
+    def apply_stokes_operator(self, U, restricted=False):
+        U_out = [self.impl.apply_stokes_operator(vec.impl, restricted) for vec in U._list]
         return self.stokes_solution_space.make_array(U_out)
 
     def apply_inverse_pfield_jacobian(self, V, cell_index):
@@ -160,23 +187,23 @@ class CellModelSolver(Parametric):
         return self.stokes_solution_space.make_array(
             [self.impl.apply_inverse_stokes_jacobian(vec.impl) for vec in V._list])
 
-    def apply_pfield_jacobian(self, U, cell_index):
-        U_out = [self.impl.apply_pfield_jacobian(vec.impl, cell_index) for vec in U._list]
+    def apply_pfield_jacobian(self, U, cell_index, restricted=False):
+        U_out = [self.impl.apply_pfield_jacobian(vec.impl, cell_index, restricted) for vec in U._list]
         return self.pfield_solution_space.make_array(U_out)
 
-    def apply_ofield_jacobian(self, U, cell_index):
-        U_out = [self.impl.apply_ofield_jacobian(vec.impl, cell_index) for vec in U._list]
+    def apply_ofield_jacobian(self, U, cell_index, restricted=False):
+        U_out = [self.impl.apply_ofield_jacobian(vec.impl, cell_index, restricted) for vec in U._list]
         return self.ofield_solution_space.make_array(U_out)
 
-    def apply_stokes_jacobian(self, U, mu=None):
-        U_out = [self.impl.apply_stokes_jacobian(vec.impl) for vec in U._list]
+    def apply_stokes_jacobian(self, U, restricted=False):
+        U_out = [self.impl.apply_stokes_jacobian(vec.impl, restricted) for vec in U._list]
         return self.stokes_solution_space.make_array(U_out)
 
-    def update_pfield_parameters(self, mu):
-        self.impl.update_pfield_parameters(float(mu['Be']), float(mu['Ca']), float(mu['Pa']))
+    def update_pfield_parameters(self, mu, cell_index=0, restricted=False):
+        self.impl.update_pfield_parameters(float(mu['Be']), float(mu['Ca']), float(mu['Pa']), cell_index, restricted)
 
-    def update_ofield_parameters(self, mu):
-        self.impl.update_ofield_parameters(float(mu['Pa']))
+    def update_ofield_parameters(self, mu, cell_index=0, restricted=False):
+        self.impl.update_ofield_parameters(float(mu['Pa']), cell_index, restricted)
 
 class CellModelPfieldProductOperator(Operator):
 
@@ -366,7 +393,7 @@ class CellModelPfieldOperator(MutableStateComponentJacobianOperator):
 
     def _change_state(self, component_value=None, mu=None):
         if mu is not None:
-            self.solver.update_pfield_parameters(mu)
+            self.solver.update_pfield_parameters(mu, self.cell_index)
         if component_value is not None:
             self.solver.set_pfield_vec(0, component_value[0]._list[0])
             self.solver.set_ofield_vec(0, component_value[1]._list[0])
