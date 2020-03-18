@@ -26,6 +26,7 @@ from pymor.vectorarrays.interface import VectorArray
 from hapod.xt import DuneXtLaVector, DuneXtLaListVectorSpace
 
 import gdt.cellmodel
+from gdt.vectors import CommonDenseVector
 
 # Parameters are Be, Ca, Pa
 CELLMODEL_PARAMETER_TYPE = ParameterType({'s': (3,)})
@@ -34,8 +35,8 @@ CELLMODEL_PARAMETER_TYPE = ParameterType({'s': (3,)})
 class CellModelSolver(Parametric):
 
     def __init__(self, testcase, t_end, grid_size_x, grid_size_y, pol_order, mu):
-        self.impl = gdt.cellmodel.CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, pol_order, False, float(mu['Be']),
-                                                float(mu['Ca']), float(mu['Pa']))
+        self.impl = gdt.cellmodel.CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, pol_order, False,
+                                                  float(mu['Be']), float(mu['Ca']), float(mu['Pa']))
         self.last_mu = mu
         self.pfield_solution_space = DuneXtLaListVectorSpace(self.impl.pfield_vec(0).dim)
         self.pfield_numpy_space = NumpyVectorSpace(self.impl.pfield_vec(0).dim)
@@ -101,41 +102,53 @@ class CellModelSolver(Parametric):
     def stokes_vector(self):
         return DuneXtLaVector(self.impl.stokes_vec())
 
-    def compute_pfield_deim_dofs(self, output_dofs, cell_index=0):
-        self.impl.compute_restricted_pfield_dofs(output_dofs, cell_index)
+    def compute_pfield_deim_dofs(self, range_dofs, cell_index=0):
+        self.impl.compute_restricted_pfield_dofs([int(i) for i in range_dofs], cell_index)
 
-    def compute_ofield_deim_dofs(self, output_dofs, cell_index=0):
-        self.impl.compute_restricted_ofield_dofs(output_dofs, cell_index)
+    def compute_ofield_deim_dofs(self, range_dofs, cell_index=0):
+        self.impl.compute_restricted_ofield_dofs([int(i) for i in range_dofs], cell_index)
 
-    def compute_stokes_deim_dofs(self, output_dofs):
-        self.impl.compute_restricted_stokes_dofs(output_dofs)
+    def compute_stokes_deim_dofs(self, range_dofs):
+        self.impl.compute_restricted_stokes_dofs([int(i) for i in range_dofs])
 
-    def pfield_deim_input_dofs(self, cell_index):
-        return self.impl.pfield_deim_input_dofs(cell_index)
+    def pfield_deim_source_dofs(self, cell_index):
+        return self.impl.pfield_deim_source_dofs(cell_index)
 
-    def ofield_deim_input_dofs(self, cell_index):
-        return self.impl.ofield_deim_input_dofs(cell_index)
+    def ofield_deim_source_dofs(self, cell_index):
+        return self.impl.ofield_deim_source_dofs(cell_index)
 
-    def stokes_deim_input_dofs(self):
-        return self.impl.stokes_deim_input_dofs()
+    def stokes_deim_source_dofs(self):
+        return self.impl.stokes_deim_source_dofs()
 
     def set_pfield_vec(self, cell_index, vec):
+        assert isinstance(vec, DuneXtLaVector)
+        assert vec.dim == self.pfield_solution_space.dim
         return self.impl.set_pfield_vec(cell_index, vec.impl)
 
     def set_ofield_vec(self, cell_index, vec):
+        assert isinstance(vec, DuneXtLaVector)
+        assert vec.dim == self.ofield_solution_space.dim
         return self.impl.set_ofield_vec(cell_index, vec.impl)
 
     def set_stokes_vec(self, vec):
+        assert isinstance(vec, DuneXtLaVector)
+        assert vec.dim == self.stokes_solution_space.dim
         return self.impl.set_stokes_vec(vec.impl)
 
     def set_pfield_vec_dofs(self, cell_index, vec, dofs):
-        return self.impl.set_pfield_vec_dofs(cell_index, vec.impl, dofs)
+        assert len(vec) == len(dofs)
+        assert all([dof < self.pfield_solution_space.dim for dof in dofs])
+        return self.impl.set_pfield_vec_dofs(cell_index, [val for val in vec], [int(i) for i in dofs])
 
-    def set_ofield_vec_dofs(self, cell_index, vec):
-        return self.impl.set_ofield_vec_dofs(cell_index, vec.impl, dofs)
+    def set_ofield_vec_dofs(self, cell_index, vec, dofs):
+        assert len(vec) == len(dofs)
+        assert all([dof < self.ofield_solution_space.dim for dof in dofs])
+        return self.impl.set_ofield_vec_dofs(cell_index, [val for val in vec], [int(i) for i in dofs])
 
     def set_stokes_vec_dofs(self, vec, dofs):
-        return self.impl.set_stokes_vec_dofs(vec.impl, dofs)
+        assert len(vec) == len(dofs)
+        assert all([dof < self.stokes_solution_space.dim for dof in dofs])
+        return self.impl.set_stokes_vec_dofs([val for val in vec], [int(i) for i in dofs])
 
     def prepare_pfield_operator(self, dt, cell_index, restricted=False):
         return self.impl.prepare_pfield_operator(dt, cell_index, restricted)
@@ -146,17 +159,31 @@ class CellModelSolver(Parametric):
     def prepare_stokes_operator(self, restricted=False):
         return self.impl.prepare_stokes_operator(restricted)
 
-    def set_pfield_jacobian_state(self, vec, cell_index, restricted=False):
-        self.impl.set_pfield_jacobian_state(vec.impl, cell_index, restricted)
+    def set_pfield_jacobian_state(self, vec, cell_index):
+        assert isinstance(vec, DuneXtLaVector)
+        assert vec.dim == self.pfield_solution_space.dim
+        self.impl.set_pfield_jacobian_state(vec.impl, cell_index)
 
-    def set_ofield_jacobian_state(self, vec, cell_index, restricted=False):
-        self.impl.set_ofield_jacobian_state(vec.impl, cell_index, restricted)
+    def set_ofield_jacobian_state(self, vec, cell_index):
+        assert isinstance(vec, DuneXtLaVector)
+        assert vec.dim == self.ofield_solution_space.dim
+        self.impl.set_ofield_jacobian_state(vec.impl, cell_index)
+
+    def set_pfield_jacobian_state_dofs(self, vec, cell_index):
+        self.impl.set_pfield_jacobian_state_dofs(vec, cell_index)
+
+    def set_ofield_jacobian_state_dofs(self, vec, cell_index):
+        self.impl.set_ofield_jacobian_state_dofs(vec, cell_index)
 
     def apply_inverse_pfield_operator(self, guess_vec, cell_index):
+        assert isinstance(guess_vec, DuneXtLaVector)
+        assert vec.dim == self.pfield_solution_space.dim
         return self.pfield_solution_space.make_array(
             [self.impl.apply_inverse_pfield_operator(guess_vec.impl, cell_index)])
 
     def apply_inverse_ofield_operator(self, guess_vec, cell_index):
+        assert isinstance(guess_vec, DuneXtLaVector)
+        assert vec.dim == self.ofield_solution_space.dim
         return self.ofield_solution_space.make_array(
             [self.impl.apply_inverse_ofield_operator(guess_vec.impl, cell_index)])
 
@@ -164,14 +191,26 @@ class CellModelSolver(Parametric):
         return self.stokes_solution_space.make_array([self.impl.apply_inverse_stokes_operator()])
 
     def apply_pfield_operator(self, U, cell_index, restricted=False):
+        if restricted:
+            U = self.numpy_vecarray_to_xt_listvecarray(U)
+        else:
+            assert U.dim == self.pfield_solution_space.dim
         U_out = [self.impl.apply_pfield_operator(vec.impl, cell_index, restricted) for vec in U._list]
         return self.pfield_solution_space.make_array(U_out)
 
     def apply_ofield_operator(self, U, cell_index, restricted=False):
+        if restricted:
+            U = self.numpy_vecarray_to_xt_listvecarray(U)
+        else:
+            assert U.dim == self.ofield_solution_space.dim
         U_out = [self.impl.apply_ofield_operator(vec.impl, cell_index, restricted) for vec in U._list]
         return self.ofield_solution_space.make_array(U_out)
 
     def apply_stokes_operator(self, U, restricted=False):
+        if restricted:
+            U = self.numpy_vecarray_to_xt_listvecarray(U)
+        else:
+            assert U.dim == self.stokes_solution_space.dim
         U_out = [self.impl.apply_stokes_operator(vec.impl, restricted) for vec in U._list]
         return self.stokes_solution_space.make_array(U_out)
 
@@ -187,15 +226,32 @@ class CellModelSolver(Parametric):
         return self.stokes_solution_space.make_array(
             [self.impl.apply_inverse_stokes_jacobian(vec.impl) for vec in V._list])
 
+    def numpy_vecarray_to_xt_listvecarray(self, U):
+        assert isinstance(U, NumpyVectorArray)
+        U_xt = []
+        for i in range(len(U)):
+            vec_i = DuneXtLaVector(CommonDenseVector(U._data.shape[1], 0.))
+            for j, val in enumerate(U._data[i]):
+                vec_i[j] = val
+            U_xt.append(vec_i.copy())
+        return ListVectorArray(U_xt, DuneXtLaListVectorSpace(U._data.shape[1]))
+
     def apply_pfield_jacobian(self, U, cell_index, restricted=False):
+        if restricted:
+            U = self.numpy_vecarray_to_xt_listvecarray(U)
         U_out = [self.impl.apply_pfield_jacobian(vec.impl, cell_index, restricted) for vec in U._list]
-        return self.pfield_solution_space.make_array(U_out)
+        ret = self.pfield_solution_space.make_array(U_out)
+        return ret
 
     def apply_ofield_jacobian(self, U, cell_index, restricted=False):
+        if restricted:
+            U = self.numpy_vecarray_to_xt_listvecarray(U)
         U_out = [self.impl.apply_ofield_jacobian(vec.impl, cell_index, restricted) for vec in U._list]
         return self.ofield_solution_space.make_array(U_out)
 
     def apply_stokes_jacobian(self, U, restricted=False):
+        if restricted:
+            U = self.numpy_vecarray_to_xt_listvecarray(U)
         U_out = [self.impl.apply_stokes_jacobian(vec.impl, restricted) for vec in U._list]
         return self.stokes_solution_space.make_array(U_out)
 
@@ -204,6 +260,7 @@ class CellModelSolver(Parametric):
 
     def update_ofield_parameters(self, mu, cell_index=0, restricted=False):
         self.impl.update_ofield_parameters(float(mu['Pa']), cell_index, restricted)
+
 
 class CellModelPfieldProductOperator(Operator):
 
@@ -295,6 +352,8 @@ class MutableStateFixedComponentOperator(Operator):
         component_value = tuple(U.copy() for U in component_value)
         self.__auto_init(locals())
         self.source = operator.fixed_component_source
+        #if hasattr(operator.fixed_component_source_dofs):
+        #    self.source_dofs = operator.fixed_component_source_dofs
         self.range = operator.range
         self.linear = operator.linear
 
@@ -376,6 +435,66 @@ class MutableStateFixedComponentJacobianOperator(Operator):
         self.operator._set_state_jacobian(self.component_value, self.mu, self.jacobian_value)
         return self.operator._fixed_component_jacobian_apply_inverse(V, least_squares=least_squares)
 
+    def restricted(self, dofs):
+        restricted_operator, source_dofs = self.operator.restricted(dofs)
+        restricted_source_dofs = restricted_operator._fixed_component_source_dofs
+        restricted_component_value = [
+            NumpyVectorArray(
+                value.dofs(source_dofs[restricted_operator.mutable_state_index[i]]),
+                NumpyVectorSpace(len(self.component_value))) for i, value in enumerate(self.component_value)
+        ]
+        restricted_jacobian_value = [self.jacobian_value[i] for i in restricted_source_dofs]
+        ret_op = self.with_(
+            operator=restricted_operator,
+            component_value=restricted_component_value,
+            jacobian_value=restricted_jacobian_value)
+        return ret_op, restricted_source_dofs
+
+
+class CellModelRestrictedPfieldOperator(MutableStateComponentJacobianOperator):
+
+    mutable_state_index = (1, 2, 3)
+
+    def __init__(self, solver, cell_index, dt, range_dofs):
+        self.__auto_init(locals())
+        self.linear = False
+        self.solver.compute_pfield_deim_dofs(self.range_dofs, self.cell_index)
+        self.source_dofs = self.solver.pfield_deim_source_dofs(self.cell_index)
+        self.source_dofs = [self.source_dofs[0], *self.source_dofs]
+        self._fixed_component_source_dofs = self.source_dofs[0]
+        self.source = BlockVectorSpace([NumpyVectorSpace(len(dofs)) for dofs in self.source_dofs])
+        self.range = NumpyVectorSpace(len(range_dofs))
+        self.build_parameter_type(Be=(), Ca=(), Pa=())
+
+    def _change_state(self, component_value=None, mu=None):
+        if mu is not None:
+            self.solver.update_pfield_parameters(mu, self.cell_index, restricted=True)
+        if component_value is not None:
+            self.solver.set_pfield_vec_dofs(0, component_value[0]._data[0], self.source_dofs[1])
+            self.solver.set_ofield_vec_dofs(0, component_value[1]._data[0], self.source_dofs[2])
+            self.solver.set_stokes_vec_dofs(component_value[2]._data[0], self.source_dofs[3])
+        if mu is not None or component_value is not None:
+            self.solver.prepare_pfield_operator(self.dt, self.cell_index, restricted=True)
+
+    def _change_jacobian_state(self, jacobian_value):
+        assert len(jacobian_value) == len(self._fixed_component_source_dofs)
+        self.solver.set_pfield_jacobian_state_dofs(jacobian_value, self.cell_index)
+
+    def _need_to_invalidate_jacobian_state(self, component_value_changed, mu_changed):
+        return component_value_changed or mu_changed
+
+    def _fixed_component_apply(self, U):
+        return self.solver.apply_pfield_operator(U, self.cell_index, restricted=True)
+
+    def _fixed_component_apply_inverse(self, V, least_squares=False):
+        raise NotImplementedError
+
+    def _fixed_component_jacobian_apply(self, U):
+        return self.solver.apply_pfield_jacobian(U, self.cell_index, restricted=True)
+
+    def _fixed_component_jacobian_apply_inverse(self, V, least_squares=False):
+        raise NotImplementedError
+
 
 class CellModelPfieldOperator(MutableStateComponentJacobianOperator):
 
@@ -385,8 +504,8 @@ class CellModelPfieldOperator(MutableStateComponentJacobianOperator):
         self.__auto_init(locals())
         self.linear = False
         self.source = BlockVectorSpace([
-            self.solver.pfield_solution_space,
-            self.solver.pfield_solution_space, self.solver.ofield_solution_space, self.solver.stokes_solution_space
+            self.solver.pfield_solution_space, self.solver.pfield_solution_space, self.solver.ofield_solution_space,
+            self.solver.stokes_solution_space
         ])
         self.range = self.solver.pfield_solution_space
         self.build_parameter_type(Be=(), Ca=(), Pa=())
@@ -423,26 +542,73 @@ class CellModelPfieldOperator(MutableStateComponentJacobianOperator):
         assert not least_squares, "Least squares not implemented!"
         return self.solver.apply_inverse_pfield_jacobian(V, self.cell_index)
 
+    def restricted(self, dofs):
+        restricted_op = CellModelRestrictedPfieldOperator(self.solver, self.cell_index, self.dt, dofs)
+        return restricted_op, restricted_op.source_dofs
+
+
+class CellModelRestrictedOfieldOperator(MutableStateComponentJacobianOperator):
+
+    mutable_state_index = (1, 2, 3)
+
+    def __init__(self, solver, cell_index, dt, range_dofs):
+        self.__auto_init(locals())
+        self.linear = False
+        self.solver.compute_ofield_deim_dofs(self.range_dofs, self.cell_index)
+        self.source_dofs = self.solver.ofield_deim_source_dofs(self.cell_index)
+        self.source_dofs = [self.source_dofs[1], *self.source_dofs]
+        self._fixed_component_source_dofs = self.source_dofs[0]
+        self.source = BlockVectorSpace([NumpyVectorSpace(len(dofs)) for dofs in self.source_dofs])
+        self.range = NumpyVectorSpace(len(range_dofs))
+        self.build_parameter_type(Pa=())
+
+    def _change_state(self, component_value=None, mu=None):
+        if mu is not None:
+            self.solver.update_ofield_parameters(mu, self.cell_index, restricted=True)
+        if component_value is not None:
+            self.solver.set_pfield_vec_dofs(0, component_value[0]._data[0], self.source_dofs[1])
+            self.solver.set_ofield_vec_dofs(0, component_value[1]._data[0], self.source_dofs[2])
+            self.solver.set_stokes_vec_dofs(component_value[2]._data[0], self.source_dofs[3])
+        if mu is not None or component_value is not None:
+            self.solver.prepare_ofield_operator(self.dt, self.cell_index, restricted=True)
+
+    def _change_jacobian_state(self, jacobian_value):
+        assert len(jacobian_value) == len(self._fixed_component_source_dofs)
+        self.solver.set_ofield_jacobian_state_dofs(jacobian_value, self.cell_index)
+
+    def _need_to_invalidate_jacobian_state(self, component_value_changed, mu_changed):
+        return component_value_changed or mu_changed
+
+    def _fixed_component_apply(self, U):
+        return self.solver.apply_ofield_operator(U, self.cell_index, restricted=True)
+
+    def _fixed_component_apply_inverse(self, V, least_squares=False):
+        raise NotImplementedError
+
+    def _fixed_component_jacobian_apply(self, U):
+        return self.solver.apply_ofield_jacobian(U, self.cell_index, restricted=True)
+
+    def _fixed_component_jacobian_apply_inverse(self, V, least_squares=False):
+        raise NotImplementedError
+
 
 class CellModelOfieldOperator(MutableStateComponentJacobianOperator):
 
     mutable_state_index = (1, 2, 3)
 
     def __init__(self, solver, cell_index, dt):
-        self.solver = solver
-        self.cell_index = cell_index
-        self.dt = dt
+        self.__auto_init(locals())
         self.linear = False
         self.source = BlockVectorSpace([
-            self.solver.ofield_solution_space,
-            self.solver.pfield_solution_space, self.solver.ofield_solution_space, self.solver.stokes_solution_space
+            self.solver.ofield_solution_space, self.solver.pfield_solution_space, self.solver.ofield_solution_space,
+            self.solver.stokes_solution_space
         ])
         self.range = self.solver.ofield_solution_space
         self.build_parameter_type(Pa=())
 
     def _change_state(self, component_value=None, mu=None):
         if mu is not None:
-            self.solver.update_ofield_parameters(mu)
+            self.solver.update_ofield_parameters(mu, self.cell_index)
         if component_value is not None:
             self.solver.set_pfield_vec(0, component_value[0]._list[0])
             self.solver.set_ofield_vec(0, component_value[1]._list[0])
@@ -472,18 +638,59 @@ class CellModelOfieldOperator(MutableStateComponentJacobianOperator):
         assert not least_squares, "Least squares not implemented!"
         return self.solver.apply_inverse_ofield_jacobian(V, self.cell_index)
 
+    def restricted(self, dofs):
+        restricted_op = CellModelRestrictedOfieldOperator(self.solver, self.cell_index, self.dt, dofs)
+        return restricted_op, restricted_op.source_dofs
+
+
+class CellModelRestrictedStokesOperator(MutableStateComponentJacobianOperator):
+
+    mutable_state_index = (1, 2)
+
+    def __init__(self, solver, range_dofs):
+        self.__auto_init(locals())
+        self.linear = False
+        self.solver.compute_stokes_deim_dofs(self.range_dofs)
+        self.source_dofs = self.solver.stokes_deim_source_dofs()
+        self.source_dofs = [self.source_dofs[2], self.source_dofs[0], self.source_dofs[1]]
+        self._fixed_component_source_dofs = self.source_dofs[0]
+        self.source = BlockVectorSpace([NumpyVectorSpace(len(dofs)) for dofs in self.source_dofs])
+        self.range = NumpyVectorSpace(len(range_dofs))
+
+    def _change_state(self, component_value=None, mu=None):
+        if component_value is not None:
+            self.solver.set_pfield_vec_dofs(0, component_value[0]._data[0], self.source_dofs[1])
+            self.solver.set_ofield_vec_dofs(0, component_value[1]._data[0], self.source_dofs[2])
+            self.solver.prepare_stokes_operator(restricted=True)
+
+    def _change_jacobian_state(self, jacobian_value):
+        pass
+
+    def _need_to_invalidate_jacobian_state(self, component_value_changed, mu_changed):
+        return False
+
+    def _fixed_component_apply(self, U):
+        return self.solver.apply_stokes_operator(U, restricted=True)
+
+    def _fixed_component_apply_inverse(self, V, least_squares=False):
+        raise NotImplementedError
+
+    def _fixed_component_jacobian_apply(self, U):
+        return self.solver.apply_stokes_jacobian(U, restricted=True)
+
+    def _fixed_component_jacobian_apply_inverse(self, V, least_squares=False):
+        raise NotImplementedError
+
 
 class CellModelStokesOperator(MutableStateComponentJacobianOperator):
 
     mutable_state_index = (1, 2)
 
     def __init__(self, solver):
-        self.solver = solver
+        self.__auto_init(locals())
         self.linear = False
-        self.source = BlockVectorSpace([
-            self.solver.stokes_solution_space,
-            self.solver.pfield_solution_space, self.solver.ofield_solution_space
-        ])
+        self.source = BlockVectorSpace(
+            [self.solver.stokes_solution_space, self.solver.pfield_solution_space, self.solver.ofield_solution_space])
         self.range = self.solver.stokes_solution_space
 
     def _change_state(self, component_value=None, mu=None):
@@ -496,7 +703,7 @@ class CellModelStokesOperator(MutableStateComponentJacobianOperator):
         pass
 
     def _need_to_invalidate_jacobian_state(self, component_value_changed, mu_changed):
-        return component_value_changed
+        return False
 
     def _fixed_component_apply(self, U):
         return self.solver.apply_stokes_operator(U)
@@ -513,20 +720,38 @@ class CellModelStokesOperator(MutableStateComponentJacobianOperator):
         assert not least_squares, "Least squares not implemented!"
         return self.solver.apply_inverse_stokes_jacobian(V)
 
+    def restricted(self, dofs):
+        restricted_op = CellModelRestrictedStokesOperator(self.solver, dofs)
+        return restricted_op, restricted_op.source_dofs
+
 
 class CellModel(Model):
-    def __init__(self, pfield_op, ofield_op, stokes_op,
-                 initial_pfield, initial_ofield, initial_stokes,
-                 dt, t_end,
-                 newton_params_pfield={}, newton_params_ofield={}, newton_params_stokes={},
-                 least_squares_pfield=False, least_squares_ofield=False, least_squares_stokes=False,
+
+    def __init__(self,
+                 pfield_op,
+                 ofield_op,
+                 stokes_op,
+                 initial_pfield,
+                 initial_ofield,
+                 initial_stokes,
+                 dt,
+                 t_end,
+                 newton_params_pfield={},
+                 newton_params_ofield={},
+                 newton_params_stokes={},
+                 least_squares_pfield=False,
+                 least_squares_ofield=False,
+                 least_squares_stokes=False,
                  name=None):
         self.__auto_init(locals())
         self.solution_space = BlockVectorSpace(
             [pfield_op.source.subspaces[0], ofield_op.source.subspaces[0], stokes_op.source.subspaces[0]])
         self.linear = False
         self.build_parameter_type(pfield_op, ofield_op, stokes_op)
-        self.initial_values = self.solution_space.make_array([self.initial_pfield.as_vector(), self.initial_ofield.as_vector(), self.initial_stokes.as_vector()])
+        self.initial_values = self.solution_space.make_array(
+            [self.initial_pfield.as_vector(),
+             self.initial_ofield.as_vector(),
+             self.initial_stokes.as_vector()])
 
     def _solve(self, mu=None, return_output=False, return_stages=False, return_residuals=False):
         assert not return_output
@@ -561,9 +786,8 @@ class CellModel(Model):
                 mu=mu,
                 least_squares=self.least_squares_pfield,
                 return_stages=return_stages,
-                return_residuals = return_residuals,
-                **self.newton_params_pfield
-            )
+                return_residuals=return_residuals,
+                **self.newton_params_pfield)
             ofield_vecarray, ofield_data = newton(
                 self.ofield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]),
                 self.ofield_op.range.zeros(),
@@ -571,9 +795,8 @@ class CellModel(Model):
                 mu=mu,
                 least_squares=self.least_squares_ofield,
                 return_stages=return_stages,
-                return_residuals = return_residuals,
-                **self.newton_params_ofield
-            )
+                return_residuals=return_residuals,
+                **self.newton_params_ofield)
             stokes_vecarray, stokes_data = newton(
                 self.stokes_op.fix_components((1, 2), [pfield_vecarray, ofield_vecarray]),
                 self.stokes_op.range.zeros(),
@@ -581,9 +804,8 @@ class CellModel(Model):
                 mu=mu,
                 least_squares=self.least_squares_stokes,
                 return_stages=return_stages,
-                return_residuals = return_residuals,
-                **self.newton_params_stokes
-            )
+                return_residuals=return_residuals,
+                **self.newton_params_stokes)
             i += 1
             t += actual_dt
             U = self.solution_space.make_array([pfield_vecarray, ofield_vecarray, stokes_vecarray])
@@ -638,9 +860,8 @@ class CellModel(Model):
             mu=mu,
             least_squares=self.least_squares_pfield,
             return_stages=return_stages,
-            return_residuals = return_residuals,
-            **self.newton_params_pfield
-        )
+            return_residuals=return_residuals,
+            **self.newton_params_pfield)
         ofield_vecs, ofield_data = newton(
             self.ofield_op.fix_components((1, 2, 3), [pfield_vecs, ofield_vecs, stokes_vecs]),
             self.ofield_op.range.zeros(),
@@ -648,9 +869,8 @@ class CellModel(Model):
             mu=mu,
             least_squares=self.least_squares_ofield,
             return_stages=return_stages,
-            return_residuals = return_residuals,
-            **self.newton_params_ofield
-        )
+            return_residuals=return_residuals,
+            **self.newton_params_ofield)
         stokes_vecs, stokes_data = newton(
             self.stokes_op.fix_components((1, 2), [pfield_vecs, ofield_vecs]),
             self.stokes_op.range.zeros(),
@@ -658,9 +878,8 @@ class CellModel(Model):
             mu=mu,
             least_squares=self.least_squares_stokes,
             return_stages=return_stages,
-            return_residuals = return_residuals,
-            **self.newton_params_stokes
-        )
+            return_residuals=return_residuals,
+            **self.newton_params_stokes)
         t += actual_dt
         U = self.solution_space.make_array([pfield_vecs, ofield_vecs, stokes_vecs])
 
@@ -690,13 +909,20 @@ class DuneCellModel(CellModel):
         initial_pfield = VectorOperator(solver.pfield_solution_space.make_array([solver.pfield_vector(0)]))
         initial_ofield = VectorOperator(solver.ofield_solution_space.make_array([solver.ofield_vector(0)]))
         initial_stokes = VectorOperator(solver.stokes_solution_space.make_array([solver.stokes_vector()]))
-        newton_params= {'atol': 1e-11, 'rtol': 1e-14, 'stagnation_threshold': 0.99, 'stagnation_window': 3}
-        super().__init__(pfield_op, ofield_op, stokes_op, initial_pfield, initial_ofield, initial_stokes,
-                         dt, t_end,
-                         newton_params_pfield=newton_params,
-                         newton_params_ofield=newton_params,
-                         newton_params_stokes=newton_params,
-                         name=name)
+        newton_params = {'atol': 1e-11, 'rtol': 1e-14, 'stagnation_threshold': 0.99, 'stagnation_window': 3}
+        super().__init__(
+            pfield_op,
+            ofield_op,
+            stokes_op,
+            initial_pfield,
+            initial_ofield,
+            initial_stokes,
+            dt,
+            t_end,
+            newton_params_pfield=newton_params,
+            newton_params_ofield=newton_params,
+            newton_params_stokes=newton_params,
+            name=name)
         self.solver = solver
 
     def visualize(self, U, prefix='cellmodel_result', subsampling=True, every_nth=None):
@@ -776,10 +1002,44 @@ class ProjectedSystemOperator(Operator):
 class EmpiricalInterpolatedOperatorWithFixComponent(EmpiricalInterpolatedOperator):
 
     def fix_components(self, idx, U):
-        if hasattr(self, 'restricted_operator'):
-            raise NotImplementedError
-        op = self.operator.fix_components(idx, U)
-        return self.with_(operator=op)
+        return FixedComponentEmpiricalInterpolatedOperator(self, idx, U)
+
+
+class FixedComponentEmpiricalInterpolatedOperator(EmpiricalInterpolatedOperator):
+
+    def __init__(self, ei_operator, idx, U):
+        assert isinstance(ei_operator, EmpiricalInterpolatedOperator)
+        self.__auto_init(locals())
+        # copy attributes from ei_operator
+        self.interpolation_dofs = ei_operator.interpolation_dofs
+        self.range = ei_operator.range
+        self.linear = ei_operator.linear
+        self.parameter_type = ei_operator.parameter_type
+        self.solver_options = ei_operator.solver_options
+        self.triangular = ei_operator.triangular
+        self.name = f'{ei_operator.name}_fixed_component'
+
+        # we only have to change the operators, source and source_dofs
+        if hasattr(ei_operator, 'restricted_operator'):
+            self.interpolation_matrix = ei_operator.interpolation_matrix
+            self.collateral_basis = ei_operator.collateral_basis
+            restricted_op = ei_operator.restricted_operator
+            subspaces = restricted_op.source.subspaces
+            if idx != restricted_op.mutable_state_index:
+                raise NotImplementedError
+            U_restricted = [subspaces[j].from_numpy(U[i].dofs(ei_operator.source_dofs[j])) for i, j in enumerate(idx)]
+            self.restricted_operator = restricted_op.fix_components(idx, U_restricted)
+            fixed_source_indices = [i for i in range(len(subspaces)) if i not in idx]
+            if len(fixed_source_indices) != 1:
+                raise NotImplementedError
+            self.source_dofs = ei_operator.source_dofs[fixed_source_indices[0]]
+            # TODO: Replace next line, performs high-dimensional operations
+            self._fixed_component_operator = ei_operator.operator.fix_components(idx, U)
+            self._operator = weakref.ref(self._fixed_component_operator)
+            self.source = self.operator.source
+        else:
+            self._operator = ei_operator.operator.fix_components(idx, U)
+            self.source = self.operator.source
 
 
 class CellModelReductor(ProjectionBasedReductor):

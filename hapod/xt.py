@@ -20,6 +20,15 @@ class DuneXtLaVector(Vector):
     def __eq__(self, other):
         return type(self) == type(other) and self.impl == other.impl
 
+    def __getitem__(self, ind):
+        return self.impl[ind]
+
+    def __setitem__(self, ind, val):
+        self.impl[ind] = val
+
+    def __len__(self):
+        return self.dim
+
     @classmethod
     def make_zeros(cls, subtype):
         impl = subtype[0](subtype[1], 0.)

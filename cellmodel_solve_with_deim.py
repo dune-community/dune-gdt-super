@@ -65,7 +65,7 @@ def binary_tree_hapod(cellmodel,
     curr_values = [None]*len(mus)
     for p in range(len(mus)):
         curr_values[p] = cellmodel.initial_values
-    
+
     if return_snapshots:
         U = [None] * len(mus)
         for p in range(len(mus)):
@@ -275,6 +275,10 @@ if __name__ == "__main__":
     mus = mpi.comm_world.scatter(mus, root=0)
     new_mus = mpi.comm_world.scatter(new_mus, root=0)
     solver = CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, pol_order, mus[0])
+    output_dofs = [1, 100, 200]
+    solver.compute_pfield_deim_dofs(output_dofs)
+    solver.compute_ofield_deim_dofs(output_dofs)
+    solver.compute_stokes_deim_dofs(output_dofs)
     num_cells = solver.num_cells
     m = DuneCellModel(solver, dt, t_end)
     Us, Us_res, modes, svals, _, _, _ = binary_tree_hapod(
