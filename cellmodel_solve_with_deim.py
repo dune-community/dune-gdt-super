@@ -23,6 +23,7 @@ from hapod.hapod import (
     binary_tree_hapod_over_ranks,
     binary_tree_depth,
 )
+import cProfile
 
 # set_log_levels({'pymor.algorithms.newton': 'WARN'})
 
@@ -246,9 +247,9 @@ if __name__ == "__main__":
     pfield_atol = 1e-3
     ofield_atol = 1e-3
     stokes_atol = 1e-3
-    pfield_deim_atol = 1e-6
-    ofield_deim_atol = 1e-6
-    stokes_deim_atol = 1e-6
+    pfield_deim_atol = 1e-8
+    ofield_deim_atol = 1e-8
+    stokes_deim_atol = 1e-8
     visualize_step = 50
     include_newton_stages = True
     pod_pfield = True
@@ -295,8 +296,8 @@ if __name__ == "__main__":
 
     ####### Create training parameters ######
     # One parameter per process if we are MPI parallel, else 4 parameters
-    train_params_per_rank = 1 if mpi.size_world > 1 else 4
-    test_params_per_rank = 1 if mpi.size_world > 1 else 4
+    train_params_per_rank = 1 if mpi.size_world > 1 else 1
+    test_params_per_rank = 1 if mpi.size_world > 1 else 1
     num_train_params = train_params_per_rank * mpi.size_world
     num_test_params = test_params_per_rank * mpi.size_world
     # Factor of largest to smallest training parameter
@@ -304,7 +305,7 @@ if __name__ == "__main__":
     rf = np.sqrt(rf)
     # Compute factors such that mu_i/mu_{i+1} = const and mu_0 = default_value/sqrt(rf), mu_last = default_value*sqrt(rf)
     # factors = np.array([1.])
-    factors = np.array([(rf ** 2) ** (i / (num_train_params - 1)) / rf for i in range(num_train_params)])
+    factors = np.array([(rf ** 2) ** (i / (num_train_params - 1)) / rf for i in range(num_train_params)] if num_train_params > 1 else [1.])
     # Actually create training parameters.
     # Currently, only tested_param varies, the other two entries are set to the default value
     if tested_param == "Ca":
@@ -383,7 +384,7 @@ if __name__ == "__main__":
     start = timer()
     U_new_mu = m.solve(mu=new_mus[0], return_stages=False)
     for p in range(1, len(new_mus)):
-        U_new_mu.append(m.solve(mu=new_mus[0], return_stages=False))
+        U_new_mu.append(m.solve(mu=new_mus[p], return_stages=False))
     mean_fom_time = (timer() - start) / len(new_mus)
     # Be, Ca, Pa = (float(new_mu['Be']), float(new_mu['Ca']), float(new_mu['Pa']))
     # m.visualize(U_new_mu, prefix=f"fullorder_Be{Be}_Ca{Ca}_Pa{Pa}", subsampling=subsampling, every_nth=visualize_step)
@@ -404,15 +405,6 @@ if __name__ == "__main__":
     # stokes_deim_basis, _ = pod(
     #     U_res[2], product=None, atol=0.0, rtol=0.0, l2_err=stokes_deim_atol / np.sqrt(len(U)),
     # )
-    print(
-        "****",
-        len(pfield_basis),
-        len(ofield_basis),
-        len(stokes_basis),
-        len(pfield_deim_basis),
-        len(ofield_deim_basis),
-        len(stokes_deim_basis),
-    )
 
     reduced_prefix = "param{}_{}_pfield_{}_ofield_{}_stokes_{}".format(
         tested_param,
@@ -445,9 +437,10 @@ if __name__ == "__main__":
     ################## test new parameters #######################
     # solve reduced model for new params
     start = timer()
+    # cProfile.run('u_new_mu = rom.solve(new_mus[0], return_stages=False)')
     u_new_mu = rom.solve(new_mus[0], return_stages=False)
     for p in range(1, len(new_mus)):
-        u_new_mu.append(rom.solve(new_mus[0], return_stages=False))
+        u_new_mu.append(rom.solve(new_mus[p], return_stages=False))
     mean_rom_time = (timer() - start) / len(new_mus)
     U_rom_new_mu = reductor.reconstruct(u_new_mu)
     # Be, Ca, Pa = (float(new_mu['Be']), float(new_mu['Ca']), float(new_mu['Pa']))
@@ -464,15 +457,9 @@ if __name__ == "__main__":
     pfield_norms = U._blocks[0].norm()
     ofield_norms = U._blocks[1].norm()
     stokes_norms = U._blocks[2].norm()
-    pfield_rel_errors_new_mu = (U_new_mu._blocks[0] - U_rom_new_mu._blocks[0]).norm() / U_new_mu._blocks[
-        0
-    ].norm()
-    ofield_rel_errors_new_mu = (U_new_mu._blocks[1] - U_rom_new_mu._blocks[1]).norm() / U_new_mu._blocks[
-        1
-    ].norm()
-    stokes_rel_errors_new_mu = (U_new_mu._blocks[2] - U_rom_new_mu._blocks[2]).norm() / U_new_mu._blocks[
-        2
-    ].norm()
+    pfield_rel_errors_new_mu = (U_new_mu._blocks[0] - U_rom_new_mu._blocks[0]).norm() / U_new_mu._blocks[0].norm()
+    ofield_rel_errors_new_mu = (U_new_mu._blocks[1] - U_rom_new_mu._blocks[1]).norm() / U_new_mu._blocks[1].norm()
+    stokes_rel_errors_new_mu = (U_new_mu._blocks[2] - U_rom_new_mu._blocks[2]).norm() / U_new_mu._blocks[2].norm()
     pfield_rel_errors = mpi.comm_world.gather(pfield_rel_errors, root=0)
     ofield_rel_errors = mpi.comm_world.gather(ofield_rel_errors, root=0)
     stokes_rel_errors = mpi.comm_world.gather(stokes_rel_errors, root=0)
@@ -511,6 +498,15 @@ if __name__ == "__main__":
         #         mean([norm for norm in ofield_norms if not np.isnan(norm)]),
         #         mean([norm for norm in stokes_norms if not np.isnan(norm)]),
         #         ))
+        print(
+            "****",
+            len(pfield_basis),
+            len(ofield_basis),
+            len(stokes_basis),
+            len(pfield_deim_basis),
+            len(ofield_deim_basis),
+            len(stokes_deim_basis),
+        )
         print("Trained mus")
         print(pfield_rel_errors)
         print(ofield_rel_errors)

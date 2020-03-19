@@ -352,8 +352,6 @@ class MutableStateFixedComponentOperator(Operator):
         component_value = tuple(U.copy() for U in component_value)
         self.__auto_init(locals())
         self.source = operator.fixed_component_source
-        #if hasattr(operator.fixed_component_source_dofs):
-        #    self.source_dofs = operator.fixed_component_source_dofs
         self.range = operator.range
         self.linear = operator.linear
 
