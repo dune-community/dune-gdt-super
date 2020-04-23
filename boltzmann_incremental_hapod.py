@@ -9,7 +9,7 @@ from hapod.hapod import local_pod, HapodParameters, incremental_hapod_over_ranks
 from hapod.mpi import MPIWrapper
 
 
-def boltzmann_incremental_hapod(grid_size, chunk_size, tol, omega=0.95, logfile=None, incremental_gramian=True):
+def boltzmann_incremental_hapod(dimension, grid_size, chunk_size, tol, omega=0.95, logfile=None, incremental_gramian=True):
 
     start = timer()
 
@@ -18,7 +18,7 @@ def boltzmann_incremental_hapod(grid_size, chunk_size, tol, omega=0.95, logfile=
 
     # get boltzmann solver to create snapshots
     mu = create_and_scatter_boltzmann_parameters(mpi.comm_world)
-    solver = create_boltzmann_solver(grid_size, mu)
+    solver = create_boltzmann_solver(dimension, grid_size, mu)
     num_chunks, num_timesteps = solver_statistics(solver, chunk_size)
 
     # calculate rooted tree depth
@@ -100,14 +100,15 @@ if __name__ == "__main__":
     chunk_size = 6 if argc < 3 else int(sys.argv[2])
     tol = 1e-3 if argc < 4 else float(sys.argv[3])
     omega = 0.95 if argc < 5 else float(sys.argv[4])
-    inc_gramian = True if argc < 6 else not (sys.argv[5] == "False" or sys.argv[5] == "0")
+    dimension = 2 if argc < 6 else int(sys.argv[5])
+    inc_gramian = True if argc < 7 else not (sys.argv[6] == "False" or sys.argv[6] == "0")
     filename = "boltzmann_incremental_hapod_gridsize_%d_chunksize_%d_tol_%f_omega_%f.log" \
                % (grid_size, chunk_size, tol, omega)
     logfile = open(filename, "a")
     final_modes, _, total_num_snapshots, mu, mpi, _, _, _ = boltzmann_incremental_hapod(
-        grid_size, chunk_size, tol * grid_size, omega=omega, logfile=logfile, incremental_gramian=inc_gramian)
+        dimension, grid_size, chunk_size, tol * grid_size, omega=omega, logfile=logfile, incremental_gramian=inc_gramian)
     final_modes, win = mpi.shared_memory_bcast_modes(final_modes)
-    calculate_error(final_modes, grid_size, mu, total_num_snapshots, mpi, grid_size, logfile=logfile)
+    calculate_error(final_modes, dimension, grid_size, mu, total_num_snapshots, mpi, grid_size, logfile=logfile)
     win.Free()
     logfile.close()
     if mpi.rank_world == 0:

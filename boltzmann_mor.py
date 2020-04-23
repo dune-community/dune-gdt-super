@@ -18,6 +18,7 @@ from hapod.boltzmann.utility import solver_statistics
 def calculate_l2_error_for_random_samples(basis,
                                           mpi,
                                           solver,
+                                          dimension,
                                           grid_size,
                                           chunk_size,
                                           seed=MPI.COMM_WORLD.Get_rank(),
@@ -44,7 +45,7 @@ def calculate_l2_error_for_random_samples(basis,
     for _ in range(params_per_rank):
         mu = [random.uniform(0., 8.), random.uniform(0., 8.), 0., random.uniform(0., 8.)]
 
-        fom = DuneModel(nt, solver.dt, '', 2000000, grid_size, False, True, *mu)
+        fom = DuneModel(nt, solver.dt, dimension, '', 2000000, grid_size, False, True, *mu)
 
         mu = fom.parse_parameter(mu)
 
@@ -87,12 +88,13 @@ if __name__ == "__main__":
     chunk_size = 6 if argc < 3 else int(sys.argv[2])
     tol = 1e-3 if argc < 4 else float(sys.argv[3])
     omega = 0.95 if argc < 5 else float(sys.argv[4])
+    dimension = 2 if argc < 6 else int(sys.argv[5])
     orthonormalize = True
     (basis, _, _, _, total_num_snaps, total_num_evals, _, mpi, _, _, _, _, solver) = \
-            boltzmann_binary_tree_hapod(grid_size, chunk_size, tol * grid_size, omega=omega, orthonormalize=orthonormalize)
+            boltzmann_binary_tree_hapod(dimension, grid_size, chunk_size, tol * grid_size, omega=omega, orthonormalize=orthonormalize)
     basis, win = mpi.shared_memory_bcast_modes(basis, returnlistvectorarray=True)
     red_errs, proj_errs, elapsed_red, elapsed_high_dim = calculate_l2_error_for_random_samples(
-        basis, mpi, solver, grid_size, chunk_size, basis_is_orthonormal=orthonormalize)
+        basis, mpi, solver, dimension, grid_size, chunk_size, basis_is_orthonormal=orthonormalize)
 
     red_err = np.sqrt(np.sum(red_errs) / total_num_snaps) / grid_size if mpi.rank_world == 0 else None
     proj_err = np.sqrt(np.sum(proj_errs) / total_num_snaps) / grid_size if mpi.rank_world == 0 else None

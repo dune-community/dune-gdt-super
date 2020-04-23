@@ -20,6 +20,7 @@ from hapod.boltzmann.utility import solver_statistics, create_boltzmann_solver
 def calculate_l2_error_for_random_samples(basis,
                                           mpi,
                                           solver,
+                                          dimension,
                                           grid_size,
                                           chunk_size,
                                           seed=MPI.COMM_WORLD.Get_rank(),
@@ -51,20 +52,20 @@ def calculate_l2_error_for_random_samples(basis,
         mu = [random.uniform(0., 8.), random.uniform(0., 8.), 0., random.uniform(0., 8.)]
 
         # solve without saving solution to measure time
-        fom = DuneModel(nt, solver.dt, '', 0, grid_size, False, True, *mu, linear)
+        fom = DuneModel(nt, solver.dt, dimension, '', 0, grid_size, False, True, *mu, linear)
         parsed_mu = fom.parse_parameter(mu)
         start = timer()
         fom.solve(parsed_mu, return_half_steps=False)
         elapsed_high_dim += timer() - start
 
         # now create Model that saves time steps to calculate error
-        fom = DuneModel(nt, solver.dt, '', 2000000, grid_size, False, False, *mu, linear)
+        fom = DuneModel(nt, solver.dt, dimension, '', 2000000, grid_size, False, False, *mu, linear)
         assert hyper_reduction in ('none', 'projection', 'deim')
         if hyper_reduction == 'projection':
             lf = Concatenation([VectorArrayOperator(deim_cb), VectorArrayOperator(deim_cb, adjoint=True), fom.lf])
         elif hyper_reduction == 'deim':
             lf = EmpiricalInterpolatedOperator(fom.lf, deim_dofs, deim_cb, False)
-        fom = fom.with_(new_type=BoltzmannModelBase, lf=lf)
+        fom = fom.with_(new_type=BoltzmannModel, lf=lf)
 
         print("Starting reduction ", timer() - start)
         start = timer()
@@ -81,7 +82,7 @@ def calculate_l2_error_for_random_samples(basis,
         # reconstruct high-dimensional solution, calculate l^2 error
         step_n = 1
         curr_step = 0
-        solver = create_boltzmann_solver(grid_size, mu)
+        solver = create_boltzmann_solver(dimension, grid_size, mu)
         solver.reset()     # resets some static variables in C++
         while not solver.finished():
             next_U = solver.next_n_timesteps(step_n, False)
@@ -121,7 +122,8 @@ if __name__ == "__main__":
     L2_tol = 1e-3 if argc < 4 else float(sys.argv[3])
     L2_deim_tol = 1e-3 if argc < 5 else float(sys.argv[4])
     omega = 0.95 if argc < 6 else float(sys.argv[5])
-    timings = False if argc < 7 else bool(sys.argv[6])
+    dimension = 2 if argc < 7 else int(sys.argv[6])
+    timings = False if argc < 8 else bool(sys.argv[7])
     # We want to prescribe the mean L^2 error, but the HAPOD works with the l^2 error, so rescale tolerance
     tol_scale_factor = (grid_size / 7)**(3 / 2)
     l2_tol = L2_tol * tol_scale_factor
@@ -131,7 +133,7 @@ if __name__ == "__main__":
     logfile = open(filename, "a")
     start = timer()
     (basis, eval_basis, _, _, total_num_snaps, total_num_evals, _, mpi, _, _, _, _, solver) = \
-            boltzmann_binary_tree_hapod(grid_size, chunk_size, l2_tol, eval_tol=l2_deim_tol, omega=omega,
+            boltzmann_binary_tree_hapod(dimension, grid_size, chunk_size, l2_tol, eval_tol=l2_deim_tol, omega=omega,
                                         calc_eval_basis=True, logfile=logfile,linear=False)
     logfile.close()
     logfile = open(filename, "a")
@@ -150,6 +152,7 @@ if __name__ == "__main__":
         basis,
         mpi,
         solver,
+        dimension,
         grid_size,
         chunk_size,
         deim_dofs=deim_dofs,

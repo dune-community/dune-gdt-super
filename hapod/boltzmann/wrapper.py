@@ -20,7 +20,7 @@ from pymor.vectorarrays.numpy import NumpyVectorArray, NumpyVectorSpace
 from gdt.vectors import CommonDenseVector
 import gdt.boltzmann
 
-from hapod.xt import DuneXtLaListVectorSpace
+from hapod.xt import DuneXtLaVector, DuneXtLaListVectorSpace
 
 #import cvxopt
 #from cvxopt import matrix as cvxmatrix
@@ -32,9 +32,9 @@ PARAMETER_TYPE = ParameterType({'s': (4,)})
 
 class Solver(Parametric):
 
-    def __init__(self, *args):
-        self.impl = gdt.boltzmann.BoltzmannSolver2d(*args)
-        #self.impl = gdt.boltzmann.BoltzmannSolver3d(*args)
+    def __init__(self, dimension=2, *args):
+        assert dimension == 2 or dimension == 3
+        self.impl = gdt.boltzmann.BoltzmannSolver3d(*args) if dimension == 2 else gdt.boltzmann.BoltzmannSolver3d(*args)
         self.last_mu = None
         self.solution_space = DuneXtLaListVectorSpace(self.impl.get_initial_values().dim)
         self.build_parameter_type(PARAMETER_TYPE)
@@ -197,7 +197,7 @@ class DuneModel(BoltzmannModel):
         super().__init__(initial_data=initial_data,
                          lf=lf_operator,
                          rhs=rhs_operator,
-                         t_end=solver.t_end(),
+                         t_end=solver.t_end,
                          nt=nt,
                          dt=dt,
                          parameter_space=param_space,
