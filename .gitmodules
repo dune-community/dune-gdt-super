@@ -40,24 +40,18 @@
 [submodule "scripts"]
 	path = scripts
 	url = https://github.com/wwu-numerik/scripts.git
-[submodule "dune-python"]
-	path = dune-python
-	url = https://github.com/dune-mirrors/dune-python.git
 [submodule "dune-testtools"]
 	path = dune-testtools
 	url = https://github.com/dune-community/dune-testtools.git
 [submodule "dune-alugrid"]
 	path = dune-alugrid
-	url = https://github.com/dune-mirrors/dune-alugrid.git
+	url = https://gitlab.dune-project.org/extensions/dune-alugrid.git
 [submodule "dune-uggrid"]
 	path = dune-uggrid
 	url = https://github.com/dune-mirrors/dune-uggrid.git
 [submodule "dune-functions"]
 	path = dune-functions
 	url = https://github.com/dune-mirrors/dune-functions.git
-[submodule "dune-pybindxi"]
-	path = dune-pybindxi
-	url = https://github.com/dune-community/dune-pybindxi.git
 [submodule "dune-grid-glue"]
 	path = dune-grid-glue
 	url = https://github.com/dune-mirrors/dune-grid-glue.git
