@@ -18,6 +18,11 @@ tags.temp
 *.log
 cellmodel_snapshot_*
 boltzmann_snapshot_*
+coordinatetransformedmn_snapshot_*
+coordinatetransformedboltzmann_snapshot_*
+coordinatetransformedmn_sigma_*
 *.swp
+*.vtp
 *.vtu
 rom_results*
+*_timings.txt

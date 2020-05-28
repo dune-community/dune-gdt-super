@@ -61,7 +61,7 @@ class DuneXtLaVector(Vector):
         return self.impl.l2_norm()
 
     def l2_norm2(self):
-        return self.impl.l2_norm()
+        return self.impl.l2_norm()**2
 
     def sup_norm(self):
         return self.impl.sup_norm()

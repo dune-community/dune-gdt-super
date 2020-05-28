@@ -6,7 +6,7 @@ from hapod.boltzmann import wrapper
 from hapod.boltzmann.utility import create_and_scatter_boltzmann_parameters
 
 
-def visualize_solutions(grid_size=50,dimension=2):
+def visualize_solutions(grid_size=50, dimension=2):
     comm_world = MPI.COMM_WORLD
     parameters = create_and_scatter_boltzmann_parameters(comm_world)
     prefix = "boltzmann_snapshot_sigma_s1_{:g}_s2_{:g}_a1_{:g}_a2_{:g}".format(*parameters)

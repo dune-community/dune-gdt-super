@@ -29,11 +29,30 @@ IMPL_TYPES = (CommonDenseVector,)
 
 PARAMETER_TYPE = ParameterType({'s': (4,)})
 
+TESTCASES_1D = ["HFM50SourceBeam", "PMM50SourceBeam", "M50SourceBeam"]
+TESTCASES_2D = []
+TESTCASES_3D = ["HFM66Checkerboard3d", "PMM128Checkerboard3d", "M3Checkerboard3d"]
+AVAILABLE_TESTCASES = TESTCASES_1D + TESTCASES_2D + TESTCASES_3D
+
 
 class Solver(Parametric):
 
-    def __init__(self, *args):
-        self.impl = gdt.coordinatetransformedmn.CoordinateTransformedBoltzmannSolver3d(*args)
+    def __init__(self, testcase, *args):
+
+        if testcase == "HFM50SourceBeam":
+            self.impl = gdt.coordinatetransformedmn.HFM50SourceBeamSolver(*args)
+        elif testcase == "PMM50SourceBeam":
+            self.impl = gdt.coordinatetransformedmn.PMM50SourceBeamSolver(*args)
+        elif testcase == "M50SourceBeam":
+            self.impl = gdt.coordinatetransformedmn.M50SourceBeamSolver(*args)
+        elif testcase == "HFM66Checkerboard3d":
+            self.impl = gdt.coordinatetransformedmn.HFM66CheckerboardSolver3d(*args)
+        elif testcase == "PMM128Checkerboard3d":
+            self.impl = gdt.coordinatetransformedmn.PMM128CheckerboardSolver3d(*args)
+        elif testcase == "M3Checkerboard3d":
+            self.impl = gdt.coordinatetransformedmn.M3CheckerboardSolver3d(*args)
+        else:
+            raise NotImplementedError(f"Unknown testcase {testcase}, available testcases:\n{AVAILABLE_TESTCASES}")
         self.last_mu = None
         self.solution_space = DuneXtLaListVectorSpace(self.impl.get_initial_values().dim)
         self.build_parameter_type(PARAMETER_TYPE)
@@ -43,7 +62,11 @@ class Solver(Parametric):
         return self.impl.linear()
 
     def solve(self):
-        return self.solution_space.make_array(self.impl.solve())
+        times, snapshots = self.impl.solve()
+        return times, self.solution_space.make_array(snapshots)
+
+    def u_from_alpha(self, alpha_vec):
+        return DuneXtLaVector(self.impl.u_from_alpha(alpha_vec.impl))
 
     def reset(self):
         self.impl.reset()
@@ -63,15 +86,12 @@ class Solver(Parametric):
     def get_initial_values(self):
         return self.solution_space.make_array([self.impl.get_initial_values()])
 
-    def set_params(self,
-                   sigma_s_scattering=1,
-                   sigma_s_absorbing=0,
-                   sigma_t_scattering=1,
-                   sigma_t_absorbing=10):
+    def set_params(self, sigma_s_scattering=1, sigma_s_absorbing=0, sigma_t_scattering=1, sigma_t_absorbing=10):
         mu = (sigma_s_scattering, sigma_s_absorbing, sigma_t_scattering, sigma_t_absorbing)
         if mu != self.last_mu:
             self.last_mu = mu
             self.impl.set_parameters(*mu)
+
 
 # class BoltzmannModel(Model):
 #

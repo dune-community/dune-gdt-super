@@ -46,13 +46,15 @@ class BinaryTreeHapodResults:
 def pods_on_processor_cores_in_binary_tree_hapod(r, vecs):
     r.max_vectors_before_pod = max(r.max_vectors_before_pod, len(vecs))
     vecs, svals = local_pod(
-        [vecs], len(vecs), r.params, incremental_gramian=False, orthonormalize=r.orthonormalize,
+        [vecs],
+        len(vecs),
+        r.params,
+        incremental_gramian=False,
+        orthonormalize=r.orthonormalize,
     )
     r.max_local_modes = max(r.max_local_modes, len(vecs))
     vecs.scal(svals)
-    r.gathered_modes, _, r.num_snaps, _ = mpi.comm_proc.gather_on_rank_0(
-        vecs, len(vecs), num_modes_equal=False
-    )
+    r.gathered_modes, _, r.num_snaps, _ = mpi.comm_proc.gather_on_rank_0(vecs, len(vecs), num_modes_equal=False)
 
 
 # perform a POD with gathered modes on rank 0 on each processor/node
@@ -61,7 +63,10 @@ def pod_on_node_in_binary_tree_hapod(r, chunk_index, num_chunks, mpi):
     if chunk_index == 0:
         r.max_vectors_before_pod = max(r.max_vectors_before_pod, len(r.gathered_modes))
         r.modes, r.svals = local_pod(
-            [r.gathered_modes], r.num_snaps, r.params, orthonormalize=r.orthonormalize,
+            [r.gathered_modes],
+            r.num_snaps,
+            r.params,
+            orthonormalize=r.orthonormalize,
         )
     else:
         r.max_vectors_before_pod = max(r.max_vectors_before_pod, len(r.modes) + len(r.gathered_modes))
@@ -98,18 +103,18 @@ def final_hapod_in_binary_tree_hapod(r, mpi):
 
 
 def binary_tree_hapod(
-    cellmodel,
-    mus,
-    chunk_size,
-    mpi,
-    tolerances,
-    indices,
-    include_newton_stages=False,
-    omega=0.95,
-    return_snapshots=False,
-    return_newton_residuals=False,
-    incremental_gramian=True,
-    orthonormalize=True,
+        cellmodel,
+        mus,
+        chunk_size,
+        mpi,
+        tolerances,
+        indices,
+        include_newton_stages=False,
+        omega=0.95,
+        return_snapshots=False,
+        return_newton_residuals=False,
+        incremental_gramian=True,
+        orthonormalize=True,
 ):
 
     assert isinstance(cellmodel, CellModel)
@@ -343,8 +348,7 @@ if __name__ == "__main__":
         with open(filename, "w") as ff:
             ff.write(
                 f"{filename}\nTrained with {len(mus)} Parameters for {tested_param}: {[param[tested_param] for param in mus]}\n"
-                f"Tested with {len(new_mus)} new Parameters: {[param[tested_param] for param in new_mus]}\n"
-            )
+                f"Tested with {len(new_mus)} new Parameters: {[param[tested_param] for param in new_mus]}\n")
             ff.write(
                 "tol_pf tol_of tol_st n_pf n_of n_st err_pf err_of err_st err_pf_new err_of_new err_st_new norm_pf norm_of norm_st\n"
             )

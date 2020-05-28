@@ -6,6 +6,7 @@ from pymor.core.base import abstractmethod
 
 from hapod.xt import DuneXtLaListVectorSpace
 
+
 class MPIWrapper:
     '''Stores MPI communicators for all ranks (world), for all ranks on a single compute node (proc)
        and for all ranks that have rank 0 on their compute node (rank_0_group).
@@ -31,15 +32,20 @@ class MPIWrapper:
         self.rank_rank_0_group = self.comm_rank_0_group.rank
 
     def shared_memory_bcast_modes(self, modes, returnlistvectorarray=False):
-        ''' broadcast modes on rank 0 to all ranks by using a shared memory buffer on each node
-            :param modes: ListVectorArray of (HA)POD modes
-            :param returnlistvectorarray: If True, a DuneXtLaListVectorArray is returned instead of a
-            NumpyVectorArray. On each node, the VectorArrays for all MPI ranks (one for each processor
-            core) share the same underlying memory buffer.
-            :returns: A tuple (modes, win) where modes is a DuneXtLaListVectorArray (if
-            returnlistvectorarray=True) or a NumpyVectorArray (if returnlistvectorarray=False)
-            containing the modes and win is the MPI window that holds the shared memory buffer. You
-            have to free the memory yourself by calling win.Free() once you are done.'''
+        """
+        Broadcast modes on rank 0 to all ranks by using a shared memory buffer on each node
+
+        Parameters
+        ----------
+        modes: ListVectorArray of (HA)POD modes
+        returnlistvectorarray: If True, a DuneXtLaListVectorArray is returned instead of a NumpyVectorArray.
+
+        Returns
+        -----
+        A tuple (modes, win) where modes is a DuneXtLaListVectorArray (if returnlistvectorarray=True) or a NumpyVectorArray
+        (if returnlistvectorarray=False) containing the modes and win is the MPI window that holds the shared memory buffer.
+        You have to free the memory yourself by calling win.Free() once you are done.
+        """
         if modes is None:
             modes = np.empty(shape=(0, 0), dtype='d')
         modes_length = self.comm_world.bcast(len(modes) if self.rank_world == 0 else 0, root=0)
@@ -69,6 +75,7 @@ class MPIWrapper:
             modes = NumpyVectorSpace.from_numpy(modes_numpy)
             return modes, win
 
+
 class MPICommunicator(object):
 
     rank = None
@@ -81,6 +88,7 @@ class MPICommunicator(object):
     @abstractmethod
     def recv_modes(self, source):
         pass
+
 
 class BoltzmannMPICommunicator(MPICommunicator, MPI.Intracomm):
 

@@ -9,7 +9,13 @@ from hapod.hapod import local_pod, HapodParameters, incremental_hapod_over_ranks
 from hapod.mpi import MPIWrapper
 
 
-def boltzmann_incremental_hapod(dimension, grid_size, chunk_size, tol, omega=0.95, logfile=None, incremental_gramian=True):
+def boltzmann_incremental_hapod(dimension,
+                                grid_size,
+                                chunk_size,
+                                tol,
+                                omega=0.95,
+                                logfile=None,
+                                incremental_gramian=True):
 
     start = timer()
 
@@ -106,7 +112,13 @@ if __name__ == "__main__":
                % (grid_size, chunk_size, tol, omega)
     logfile = open(filename, "a")
     final_modes, _, total_num_snapshots, mu, mpi, _, _, _ = boltzmann_incremental_hapod(
-        dimension, grid_size, chunk_size, tol * grid_size, omega=omega, logfile=logfile, incremental_gramian=inc_gramian)
+        dimension,
+        grid_size,
+        chunk_size,
+        tol * grid_size,
+        omega=omega,
+        logfile=logfile,
+        incremental_gramian=inc_gramian)
     final_modes, win = mpi.shared_memory_bcast_modes(final_modes)
     calculate_error(final_modes, dimension, grid_size, mu, total_num_snapshots, mpi, grid_size, logfile=logfile)
     win.Free()
