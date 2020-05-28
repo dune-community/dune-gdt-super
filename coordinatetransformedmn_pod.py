@@ -1,6 +1,8 @@
 import math
 import resource
+import time
 import sys
+from mpi4py import MPI
 from timeit import default_timer as timer
 
 import numpy as np
@@ -11,6 +13,21 @@ from hapod.mpi import MPIWrapper
 
 import matplotlib.pyplot as plt
 
+# The POD only uses MPI rank 0, all other processes are busy-waiting for it to finish.
+# With idle_wait, the waiting threads do not cause such a high CPU usage.
+# Adapted from https://gist.github.com/donkirkby/16a89d276e46abb0a106
+def idle_wait(mpi, root):
+    # Set this to 0 for maximum responsiveness, but that will peg CPU to 100%
+    if mpi.rank_world == root:
+        for rank in range(1, mpi.size_world):
+            mpi.comm_world.send(0, dest=rank, tag=rank)
+    else:
+        sleep_seconds = 1
+        if sleep_seconds > 0:
+            while not mpi.comm_world.Iprobe(source=MPI.ANY_SOURCE):
+                # print(f"{mpi.rank_world} waited another second")
+                time.sleep(sleep_seconds)
+        mpi.comm_world.recv(source=root, tag=mpi.rank_world)
 
 def coordinatetransformedmn_pod(grid_size, l2_tol, testcase, logfile=None):
 
@@ -75,6 +92,8 @@ def coordinatetransformedmn_pod(grid_size, l2_tol, testcase, logfile=None):
         # t_max = (interval_index+1) * interval_length + (interval_index == num_time_intervals - 1)
 
         indices = np.where(np.logical_and(times >= t_min, times < t_max))
+        if len(indices[0]) == 0:
+            continue
         times_in_interval = times[indices]
         dts_in_interval = (times_in_interval[1:] - times_in_interval[:-1]).tolist()
         next_index = indices[0][-1] + 1
@@ -148,16 +167,17 @@ def coordinatetransformedmn_pod(grid_size, l2_tol, testcase, logfile=None):
                 svalfile.write(f"{sval:.15e}\n")
         elapsed_pod = timer() - start
 
-    # write statistics to file
-    if logfile is not None and mpi.rank_world == 0:
-        logfile.write("After the POD, there are " + str(len(snapshots)) + " modes of " + str(total_num_snapshots) +
-                      " snapshots left!\n")
-        logfile.write("After the POD with selected snapshots, there are " + str(len(selected_snapshots)) +
-                      " modes of " + str(total_num_selected_snapshots) + " snapshots left!\n")
-        logfile.write("The maximum amount of memory used on rank 0 was: " +
-                      str(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1000.**2) + " GB\n")
-        elapsed = timer() - start
-        logfile.write("Time elapsed: " + str(elapsed) + "\n")
+        # write statistics to file
+        if logfile is not None:
+            logfile.write("After the POD, there are " + str(len(snapshots)) + " modes of " + str(total_num_snapshots) +
+                          " snapshots left!\n")
+            logfile.write("After the POD with selected snapshots, there are " + str(len(selected_snapshots)) +
+                          " modes of " + str(total_num_selected_snapshots) + " snapshots left!\n")
+            logfile.write("The maximum amount of memory used on rank 0 was: " +
+                          str(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1000.**2) + " GB\n")
+            elapsed = timer() - start
+            logfile.write("Time elapsed: " + str(elapsed) + "\n")
+    idle_wait(mpi, root=0)
 
     return snapshots, selected_snapshots, svals, total_num_snapshots, mu, mpi, elapsed_data_gen, elapsed_pod
 
