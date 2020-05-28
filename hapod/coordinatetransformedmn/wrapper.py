@@ -10,9 +10,8 @@ from pymor.models.interface import Model
 from pymor.operators.interface import Operator
 from pymor.operators.constructions import (VectorOperator, ConstantOperator, LincombOperator, LinearOperator,
                                            FixedParameterOperator)
-from pymor.parameters.base import Parameter, ParameterType, Parametric
+from pymor.parameters.base import Mu, Parameters, ParametricObject
 from pymor.parameters.functionals import ExpressionParameterFunctional
-from pymor.parameters.spaces import CubicParameterSpace
 from pymor.reductors.basic import ProjectionBasedReductor
 from pymor.vectorarrays.block import BlockVectorSpace
 from pymor.vectorarrays.numpy import NumpyVectorArray, NumpyVectorSpace
@@ -27,7 +26,10 @@ from hapod.xt import DuneXtLaVector, DuneXtLaListVectorSpace
 
 IMPL_TYPES = (CommonDenseVector,)
 
-PARAMETER_TYPE = ParameterType({'s': (4,)})
+# Parameters are:
+# - Sourcebeam test: (sigma_a_left, sigma_a_right, sigma_s_left, sigma_s_middle, sigma_s_right)
+# - Checkerboard test: (sigma_s_scattering, sigma_s_absorbing, sigma_a_scattering, sigma_a_absorbing)
+# PARAMETER_TYPE = Parameters({'s': 4})
 
 TESTCASES_1D = ["HFM50SourceBeam", "PMM50SourceBeam", "M50SourceBeam"]
 TESTCASES_2D = []
@@ -35,10 +37,9 @@ TESTCASES_3D = ["HFM66Checkerboard3d", "PMM128Checkerboard3d", "M3Checkerboard3d
 AVAILABLE_TESTCASES = TESTCASES_1D + TESTCASES_2D + TESTCASES_3D
 
 
-class Solver(Parametric):
+class Solver(ParametricObject):
 
     def __init__(self, testcase, *args):
-
         if testcase == "HFM50SourceBeam":
             self.impl = gdt.coordinatetransformedmn.HFM50SourceBeamSolver(*args)
         elif testcase == "PMM50SourceBeam":
@@ -54,8 +55,9 @@ class Solver(Parametric):
         else:
             raise NotImplementedError(f"Unknown testcase {testcase}, available testcases:\n{AVAILABLE_TESTCASES}")
         self.last_mu = None
+        self.testcase = testcase
         self.solution_space = DuneXtLaListVectorSpace(self.impl.get_initial_values().dim)
-        self.build_parameter_type(PARAMETER_TYPE)
+        self.parameters_own = {"s" : 5} if "SourceBeam" in testcase else {"s" : 4}
         self.t_end = self.impl.t_end()
 
     def linear(self):
@@ -91,255 +93,3 @@ class Solver(Parametric):
         if mu != self.last_mu:
             self.last_mu = mu
             self.impl.set_parameters(*mu)
-
-
-# class BoltzmannModel(Model):
-#
-#     def __init__(self,
-#                  lf,
-#                  rhs,
-#                  initial_data,
-#                  nt=60,
-#                  dt=0.056,
-#                  t_end=3.2,
-#                  operators=None,
-#                  products=None,
-#                  estimator=None,
-#                  visualizer=None,
-#                  parameter_space=None,
-#                  cache_region=None,
-#                  name=None):
-#         super().__init__(products=products,
-#                          estimator=estimator,
-#                          visualizer=visualizer,
-#                          cache_region=cache_region,
-#                          name=name)
-#         self.build_parameter_type(PARAMETER_TYPE)
-#         self.__auto_init(locals())
-#         self.solution_space = self.initial_data.range
-#
-#     # def project_to_realizable_set(self, vec, cvxopt_P, cvxopt_G, cvxopt_h, dim, space):
-#     #    cvxopt_q = cvxmatrix(-vec.to_numpy().transpose(), size=(dim,1), tc='d')
-#     #    sol = cvxopt.solvers.qp(P=cvxopt_P, q=cvxopt_q, G=cvxopt_G, h=cvxopt_h)
-#     #    if 'optimal' not in sol['status']:
-#     #        raise NotImplementedError
-#     #    return NumpyVectorArray(np.array(sol['x']).reshape(1, dim), space)
-#
-#     # def is_realizable(self, coeffs, basis):
-#     #    tol = 1e-8
-#     #    vec = basis.lincomb(coeffs._data)
-#     #    return np.all(np.greater_equal(vec._data, tol))
-#
-#     def _solve(self,
-#                mu=None,
-#                return_output=False,
-#                return_half_steps=False,
-#                cvxopt_P=None,
-#                cvxopt_G=None,
-#                cvxopt_h=None,
-#                basis=None):
-#         assert not return_output
-#         U = self.initial_data.as_vector(mu)
-#         U_half = U.empty()
-#         U_last = U.copy()
-#         rhs = self.rhs.assemble(mu)
-#         final_dt = self.t_end - (self.nt - 1) * self.dt
-#         assert final_dt >= 0 and final_dt <= self.dt
-#         for n in range(self.nt):
-#             dt = self.dt if n != self.nt - 1 else final_dt
-#             self.logger.info('Time step {}'.format(n))
-#             param = Parameter({'t': n * self.dt, 'dt': self.dt})
-#             param['s'] = mu['s']
-#             V = U_last - self.lf.apply(U_last, param) * dt
-#             # if cvxopt_P is not None and not self.is_realizable(V, basis):
-#             #    V = self.project_to_realizable_set(V, cvxopt_P, cvxopt_G, cvxopt_h, V.dim, V.space)
-#             if return_half_steps:
-#                 U_half.append(V)
-#             U_last = V + rhs.apply(V, mu=mu) * dt     # explicit Euler for RHS
-#             # if cvxopt_P is not None and not self.is_realizable(U_last, basis):
-#             #    U_last = self.project_to_realizable_set(U_last, cvxopt_P, cvxopt_G, cvxopt_h, V.dim, V.space)
-#             # matrix exponential for RHS
-#             # mu['dt'] = dt
-#             # U_last = rhs.apply(V, mu=mu)
-#             U.append(U_last)
-#         if return_half_steps:
-#             return U, U_half
-#         else:
-#             return U
-#
-#
-# class DuneModel(BoltzmannModel):
-#
-#     def __init__(self, nt=60, dt=0.056, *args):
-#         self.solver = solver = Solver(*args)
-#         initial_data = VectorOperator(solver.get_initial_values())
-#         # lf_operator = LFOperator(self.solver)
-#         # Todo: rename from lf_operator to kinetic_operator
-#         lf_operator = KineticOperator(self.solver)
-#         self.non_decomp_rhs_operator = ndrhs = RHSOperator(self.solver)
-#         param = solver.parse_parameter([0., 0., 0., 0.])
-#         affine_part = ConstantOperator(ndrhs.apply(initial_data.range.zeros(), mu=param), initial_data.range)
-#         rhs_operator = affine_part + \
-#             LincombOperator(
-#                 [LinearOperator(FixedParameterOperator(RHSOperator(self.solver),
-#                                                        solver.parse_parameter(mu=[0., 0., 0., 0.])) - affine_part),
-#                  LinearOperator(FixedParameterOperator(RHSOperator(self.solver),
-#                                                        solver.parse_parameter(mu=[1., 0., 0., 0.])) - affine_part),
-#                  LinearOperator(FixedParameterOperator(RHSOperator(self.solver),
-#                                                        solver.parse_parameter(mu=[0., 1., 0., 0.])) - affine_part),
-#                  LinearOperator(FixedParameterOperator(RHSOperator(self.solver),
-#                                                        solver.parse_parameter(mu=[1., 0., 1., 0.])) - affine_part),
-#                  LinearOperator(FixedParameterOperator(RHSOperator(self.solver),
-#                                                        solver.parse_parameter(mu=[0., 1., 0., 1.])) - affine_part)],
-#                 [ExpressionParameterFunctional('1 - s[0] - s[1]', PARAMETER_TYPE),
-#                  ExpressionParameterFunctional('s[0] - s[2]', PARAMETER_TYPE),
-#                  ExpressionParameterFunctional('s[1] - s[3]', PARAMETER_TYPE),
-#                  ExpressionParameterFunctional('s[2]', PARAMETER_TYPE),
-#                  ExpressionParameterFunctional('s[3]', PARAMETER_TYPE)]
-#             )
-#         param_space = CubicParameterSpace(PARAMETER_TYPE, 0., 10.)
-#         super().__init__(initial_data=initial_data,
-#                          lf=lf_operator,
-#                          rhs=rhs_operator,
-#                          t_end=solver.t_end,
-#                          nt=nt,
-#                          dt=dt,
-#                          parameter_space=param_space,
-#                          name='DuneModel')
-#
-#     def _solve(self, mu=None, return_output=False, return_half_steps=False):
-#         assert not return_output
-#         return (self.with_(new_type=BoltzmannModel,
-#                            rhs=self.non_decomp_rhs_operator).solve(mu=mu, return_half_steps=return_half_steps))
-#
-#
-# class DuneOperator(Operator):
-#
-#     def __init__(self, solver):
-#         self.solver = solver
-#         self.linear = solver.linear()
-#         self.source = self.range = solver.solution_space
-#         self.dt = solver.dt
-#
-#
-# class RestrictedDuneOperator(Operator):
-#
-#     def __init__(self, solver, source_dim, range_dim):
-#         self.solver = solver
-#         self.source = NumpyVectorSpace(source_dim)
-#         self.range = NumpyVectorSpace(range_dim)
-#         self.dt = solver.dt
-#
-#
-# class LFOperator(DuneOperator):
-#
-#     linear = True
-#
-#     def apply(self, U, mu=None):
-#         assert U in self.source
-#         return self.range.make_array([
-#             self.solver.impl.apply_LF_operator(u.impl, mu['t'] if mu is not None and 't' in mu else 0.,
-#                                                mu['dt'] if mu is not None and 'dt' in mu else self.dt) for u in U._list
-#         ])
-#
-#
-# class RestrictedKineticOperator(RestrictedDuneOperator):
-#
-#     linear = False
-#
-#     def __init__(self, solver, dofs):
-#         self.solver = solver
-#         self.dofs = dofs
-#         dofs_as_list = [int(i) for i in dofs]
-#         self.solver.impl.prepare_restricted_operator(dofs_as_list)
-#         super(RestrictedKineticOperator, self).__init__(solver, self.solver.impl.len_source_dofs(), len(dofs))
-#
-#     def apply(self, U, mu=None):
-#         assert U in self.source
-#         # hack to ensure realizability for hatfunction moment models
-#         for vec in U._data:
-#             vec[np.where(vec < 1e-8)] = 1e-8
-#         U = DuneXtLaListVectorSpace.from_numpy(U.to_numpy())
-#         ret = [
-#             DuneXtLaVector(self.solver.impl.apply_restricted_kinetic_operator(u.impl)).to_numpy(True) for u in U._list
-#         ]
-#         return self.range.make_array(ret)
-#
-#
-# class KineticOperator(DuneOperator):
-#
-#     def apply(self, U, mu=None):
-#         assert U in self.source
-#         if not self.linear:
-#             # hack to ensure realizability for hatfunction moment models
-#             for vec in U._data:
-#                 vec[np.where(vec < 1e-8)] = 1e-8
-#         return self.range.make_array([
-#             self.solver.impl.apply_kinetic_operator(u.impl,
-#                                                     float(mu['t']) if mu is not None and 't' in mu else 0.,
-#                                                     float(mu['dt']) if mu is not None and 'dt' in mu else self.dt)
-#             for u in U._list
-#         ])
-#
-#     def restricted(self, dofs):
-#         return RestrictedKineticOperator(self.solver, dofs), np.array(self.solver.impl.source_dofs())
-#
-#
-# class GodunovOperator(DuneOperator):
-#
-#     linear = True
-#
-#     def apply(self, U, mu=None):
-#         assert U in self.source
-#         return self.range.make_array([self.solver.impl.apply_godunov_operator(u.impl, 0.) for u in U._list])
-#
-#
-# class RHSOperator(DuneOperator):
-#
-#     linear = True
-#
-#     def __init__(self, solver):
-#         super(RHSOperator, self).__init__(solver)
-#         self.build_parameter_type(PARAMETER_TYPE)
-#
-#     def apply(self, U, mu=None):
-#         assert U in self.source
-#         # explicit euler for rhs
-#         self.solver.set_rhs_operator_params(*map(float, mu['s']))
-#         return self.range.make_array([self.solver.impl.apply_rhs_operator(u.impl, 0.) for u in U._list])
-#         # matrix exponential for rhs
-#         # return self.range.make_array([self.solver.impl.apply_rhs_timestepper(u.impl, 0., mu['dt'][0]) for u in U._list])
-#         # self.solver.set_rhs_timestepper_params(*map(float, mu['s']))
-#
-# class BoltzmannRBReductor(ProjectionBasedReductor):
-#
-#     def __init__(self, fom, RB=None, check_orthonormality=None, check_tol=None):
-#         assert isinstance(fom, BoltzmannModel)
-#         RB = fom.solution_space.empty() if RB is None else RB
-#         assert RB in fom.solution_space, (RB.space, fom.solution_space)
-#         super().__init__(fom, {'RB': RB}, check_orthonormality=check_orthonormality, check_tol=check_tol)
-#
-#     def project_operators(self):
-#         fom = self.fom
-#         RB = self.bases['RB']
-#         projected_operators = {
-#             'lf': project(fom.lf, RB, RB),
-#             'rhs': project(fom.rhs, RB, RB),
-#             'initial_data': project(fom.initial_data, RB, None),
-#             'products': {k: project(v, RB, RB) for k, v in fom.products.items()},
-#         }
-#         return projected_operators
-#
-#     def project_operators_to_subbasis(self, dims):
-#         rom = self._last_rom
-#         dim = dims['RB']
-#         projected_operators = {
-#             'lf': project_to_subbasis(rom.lf, dim, dim),
-#             'rhs': project_to_subbasis(rom.rhs, dim, dim),
-#             'initial_data': project_to_subbasis(rom.initial_data, dim, None),
-#             'products': {k: project_to_subbasis(v, dim, dim) for k, v in rom.products.items()},
-#         }
-#         return projected_operators
-#
-#     def build_rom(self, projected_operators, estimator):
-#         return self.fom.with_(new_type=BoltzmannModel, **projected_operators)

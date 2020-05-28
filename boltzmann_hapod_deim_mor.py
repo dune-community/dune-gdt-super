@@ -53,7 +53,7 @@ def calculate_l2_error_for_random_samples(basis,
 
         # solve without saving solution to measure time
         fom = DuneModel(nt, solver.dt, dimension, '', 0, grid_size, False, True, *mu, linear)
-        parsed_mu = fom.parse_parameter(mu)
+        parsed_mu = fom.parameters.parse(mu)
         start = timer()
         fom.solve(parsed_mu, return_half_steps=False)
         elapsed_high_dim += timer() - start

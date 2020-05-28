@@ -13,10 +13,9 @@ from pymor.models.interface import Model
 from pymor.operators.interface import Operator
 from pymor.operators.constructions import (VectorOperator, ConstantOperator, LincombOperator, LinearOperator,
                                            FixedParameterOperator, ProjectedOperator)
-from pymor.parameters.base import Parameter, ParameterType, Parametric
+from pymor.parameters.base import Mu, Parameters, ParametricObject
 from pymor.operators.ei import EmpiricalInterpolatedOperator
 from pymor.parameters.functionals import ExpressionParameterFunctional
-from pymor.parameters.spaces import CubicParameterSpace
 from pymor.reductors.basic import ProjectionBasedReductor
 from pymor.vectorarrays.block import BlockVectorSpace
 from pymor.vectorarrays.list import Vector, ListVectorSpace, ListVectorArray
@@ -29,20 +28,19 @@ import gdt.cellmodel
 from gdt.vectors import CommonDenseVector
 
 # Parameters are Be, Ca, Pa
-CELLMODEL_PARAMETER_TYPE = ParameterType({'s': (3,)})
+CELLMODEL_PARAMETER_TYPE = Parameters({'Be': 1, 'Ca': 1, 'Pa': 1})
 
-
-class CellModelSolver(Parametric):
+class CellModelSolver(ParametricObject):
 
     def __init__(self, testcase, t_end, grid_size_x, grid_size_y, pol_order, mu):
+        self.__auto_init(locals())
         self.impl = gdt.cellmodel.CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, pol_order, False,
                                                   float(mu['Be']), float(mu['Ca']), float(mu['Pa']))
-        self.last_mu = mu
+        self._last_mu = mu
         self.pfield_solution_space = DuneXtLaListVectorSpace(self.impl.pfield_vec(0).dim)
         self.pfield_numpy_space = NumpyVectorSpace(self.impl.pfield_vec(0).dim)
         self.ofield_solution_space = DuneXtLaListVectorSpace(self.impl.ofield_vec(0).dim)
         self.stokes_solution_space = DuneXtLaListVectorSpace(self.impl.stokes_vec().dim)
-        self.build_parameter_type(CELLMODEL_PARAMETER_TYPE)
         self.num_cells = self.impl.num_cells()
 
     def linear(self):
@@ -462,7 +460,7 @@ class CellModelRestrictedPfieldOperator(MutableStateComponentJacobianOperator):
         self._fixed_component_source_dofs = self.source_dofs[0]
         self.source = BlockVectorSpace([NumpyVectorSpace(len(dofs)) for dofs in self.source_dofs])
         self.range = NumpyVectorSpace(len(range_dofs))
-        self.build_parameter_type(Be=(), Ca=(), Pa=())
+        self.parameters_own = {"Be": 1, "Ca" : 1, "Pa" : 1}
 
     def _change_state(self, component_value=None, mu=None):
         if mu is not None:
@@ -506,7 +504,7 @@ class CellModelPfieldOperator(MutableStateComponentJacobianOperator):
             self.solver.stokes_solution_space
         ])
         self.range = self.solver.pfield_solution_space
-        self.build_parameter_type(Be=(), Ca=(), Pa=())
+        self.parameters_own = {"Be": 1, "Ca" : 1, "Pa" : 1}
 
     def _change_state(self, component_value=None, mu=None):
         if mu is not None:
@@ -558,7 +556,7 @@ class CellModelRestrictedOfieldOperator(MutableStateComponentJacobianOperator):
         self._fixed_component_source_dofs = self.source_dofs[0]
         self.source = BlockVectorSpace([NumpyVectorSpace(len(dofs)) for dofs in self.source_dofs])
         self.range = NumpyVectorSpace(len(range_dofs))
-        self.build_parameter_type(Pa=())
+        self.parameters_own = {"Be": 1, "Ca" : 1, "Pa" : 1}
 
     def _change_state(self, component_value=None, mu=None):
         if mu is not None:
@@ -602,7 +600,7 @@ class CellModelOfieldOperator(MutableStateComponentJacobianOperator):
             self.solver.stokes_solution_space
         ])
         self.range = self.solver.ofield_solution_space
-        self.build_parameter_type(Pa=())
+        self.parameters_own = {"Pa" : 1}
 
     def _change_state(self, component_value=None, mu=None):
         if mu is not None:
@@ -745,7 +743,6 @@ class CellModel(Model):
         self.solution_space = BlockVectorSpace(
             [pfield_op.source.subspaces[0], ofield_op.source.subspaces[0], stokes_op.source.subspaces[0]])
         self.linear = False
-        self.build_parameter_type(pfield_op, ofield_op, stokes_op)
         self.initial_values = self.solution_space.make_array(
             [self.initial_pfield.as_vector(),
              self.initial_ofield.as_vector(),
@@ -921,6 +918,7 @@ class DuneCellModel(CellModel):
             newton_params_ofield=newton_params,
             newton_params_stokes=newton_params,
             name=name)
+        self.parameters_own = CELLMODEL_PARAMETER_TYPE
         self.solver = solver
 
     def visualize(self, U, prefix='cellmodel_result', subsampling=True, every_nth=None):
@@ -971,7 +969,6 @@ class ProjectedSystemOperator(Operator):
             ])
 
         self.__auto_init(locals())
-        self.build_parameter_type(operator)
         self.linear = operator.linear
 
     def apply(self, U, mu=None):
@@ -1012,7 +1009,7 @@ class FixedComponentEmpiricalInterpolatedOperator(EmpiricalInterpolatedOperator)
         self.interpolation_dofs = ei_operator.interpolation_dofs
         self.range = ei_operator.range
         self.linear = ei_operator.linear
-        self.parameter_type = ei_operator.parameter_type
+        self.parameters = ei_operator.parameters
         self.solver_options = ei_operator.solver_options
         self.triangular = ei_operator.triangular
         self.name = f'{ei_operator.name}_fixed_component'
@@ -1127,39 +1124,39 @@ class CellModelReductor(ProjectionBasedReductor):
 
 
 def create_and_scatter_cellmodel_parameters(comm,
-                                            Re_min=1e-14,
-                                            Re_max=1e-4,
-                                            Fa_min=0.1,
-                                            Fa_max=10,
-                                            xi_min=0.1,
-                                            xi_max=10):
+                                            Be_min=0.3 / 3,
+                                            Be_max=0.3 * 3,
+                                            Ca_min=0.1 / 3,
+                                            Ca_max=0.1 * 3,
+                                            Pa_min=1.0 / 3,
+                                            Pa_max=1.0 * 3):
     ''' Samples all 3 parameters uniformly with the same width and adds random parameter combinations until
         comm.Get_size() parameters are created. After that, parameter combinations are scattered to ranks. '''
     num_samples_per_parameter = int(comm.Get_size()**(1. / 3.) + 0.1)
-    sample_width_Re = (Re_max - Re_min) / (num_samples_per_parameter - 1) if num_samples_per_parameter > 1 else 1e10
-    sample_width_Fa = (Fa_max - Fa_min) / (num_samples_per_parameter - 1) if num_samples_per_parameter > 1 else 1e10
-    sample_width_xi = (xi_max - xi_min) / (num_samples_per_parameter - 1) if num_samples_per_parameter > 1 else 1e10
-    Re_range = np.arange(Re_min, Re_max + 1e-15, sample_width_Re)
-    Fa_range = np.arange(Fa_min, Fa_max + 1e-15, sample_width_Fa)
-    xi_range = np.arange(xi_min, xi_max + 1e-15, sample_width_xi)
+    sample_width_Be = (Be_max - Be_min) / (num_samples_per_parameter - 1) if num_samples_per_parameter > 1 else 1e10
+    sample_width_Ca = (Ca_max - Ca_min) / (num_samples_per_parameter - 1) if num_samples_per_parameter > 1 else 1e10
+    sample_width_Pa = (Pa_max - Pa_min) / (num_samples_per_parameter - 1) if num_samples_per_parameter > 1 else 1e10
+    Be_range = np.arange(Be_min, Be_max + 1e-15, sample_width_Be)
+    Ca_range = np.arange(Ca_min, Ca_max + 1e-15, sample_width_Ca)
+    Pa_range = np.arange(Pa_min, Pa_max + 1e-15, sample_width_Pa)
     parameters_list = []
-    for Re in Re_range:
-        for Fa in Fa_range:
-            for xi in xi_range:
-                parameters_list.append([Re, Fa, xi])
+    for Be in Be_range:
+        for Ca in Ca_range:
+            for Pa in Pa_range:
+                parameters_list.append({"Be": Be, "Ca": Ca, "Pa": Pa})
     while len(parameters_list) < comm.Get_size():
         parameters_list.append(
-            [random.uniform(Re_min, Re_max),
-             random.uniform(Fa_min, Fa_max),
-             random.uniform(xi_min, xi_max)])
+            {"Be": random.uniform(Be_min, Be_max),
+             "Ca": random.uniform(Ca_min, Ca_max),
+             "Pa": random.uniform(Pa_min, Pa_max)})
     return comm.scatter(parameters_list, root=0)
 
 
-def calculate_cellmodel_trajectory_errors(modes, testcase, t_end, dt, grid_size_x, grid_size_y, mu):
+def calculate_cellmodel_trajectory_errors(modes, testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu):
     errs = [0.] * len(modes)
     # modes has length 2*num_cells+1
     nc = (len(modes) - 1) // 2
-    solver = CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, mu)
+    solver = CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, pol_order, mu)
     n = 0
     while not solver.finished():
         print("timestep: ", n)
@@ -1184,10 +1181,11 @@ def calculate_mean_cellmodel_projection_errors(modes,
                                                dt,
                                                grid_size_x,
                                                grid_size_y,
+                                               pol_order,
                                                mu,
                                                mpi_wrapper,
                                                with_half_steps=True):
-    trajectory_errs = calculate_cellmodel_trajectory_errors(modes, testcase, t_end, dt, grid_size_x, grid_size_y, mu)
+    trajectory_errs = calculate_cellmodel_trajectory_errors(modes, testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu)
     errs = [0.] * len(modes)
     for index, trajectory_err in enumerate(trajectory_errs):
         trajectory_err = mpi_wrapper.comm_world.gather(trajectory_err, root=0)
@@ -1196,12 +1194,11 @@ def calculate_mean_cellmodel_projection_errors(modes,
     return errs
 
 
-def calculate_cellmodel_errors(modes, testcase, t_end, dt, grid_size_x, grid_size_y, mu, mpi_wrapper, logfile=None):
+def calculate_cellmodel_errors(modes, testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu, mpi_wrapper, logfile=None):
     ''' Calculates projection error. As we cannot store all snapshots due to memory restrictions, the
         problem is solved again and the error calculated on the fly'''
     start = timer()
-    errs = calculate_mean_cellmodel_projection_errors(modes, testcase, t_end, dt, grid_size_x, grid_size_y, mu,
-                                                      mpi_wrapper)
+    errs = calculate_mean_cellmodel_projection_errors(modes, testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu, mpi_wrapper)
     elapsed = timer() - start
     if mpi_wrapper.rank_world == 0 and logfile is not None:
         logfile.write("Time used for calculating error: " + str(elapsed) + "\n")

@@ -10,9 +10,8 @@ from pymor.models.interface import Model
 from pymor.operators.interface import Operator
 from pymor.operators.constructions import (VectorOperator, ConstantOperator, LincombOperator, LinearOperator,
                                            FixedParameterOperator)
-from pymor.parameters.base import Parameter, ParameterType, Parametric
+from pymor.parameters.base import Mu, Parameters, ParameterSpace, ParametricObject
 from pymor.parameters.functionals import ExpressionParameterFunctional
-from pymor.parameters.spaces import CubicParameterSpace
 from pymor.reductors.basic import ProjectionBasedReductor
 from pymor.vectorarrays.block import BlockVectorSpace
 from pymor.vectorarrays.numpy import NumpyVectorArray, NumpyVectorSpace
@@ -27,19 +26,20 @@ from hapod.xt import DuneXtLaVector, DuneXtLaListVectorSpace
 
 IMPL_TYPES = (CommonDenseVector,)
 
-PARAMETER_TYPE = ParameterType({'s': (4,)})
+PARAMETER_TYPE = Parameters({'s': 4})
 
 
-class Solver(Parametric):
+class Solver(ParametricObject):
 
     def __init__(self, dimension=2, *args):
         assert dimension == 2 or dimension == 3
+        self.dimension = dimension
         self.impl = gdt.boltzmann.BoltzmannSolver3d(*args) if dimension == 2 else gdt.boltzmann.BoltzmannSolver3d(*args)
-        self.last_mu = None
+        self._last_mu = None
         self.solution_space = DuneXtLaListVectorSpace(self.impl.get_initial_values().dim)
-        self.build_parameter_type(PARAMETER_TYPE)
         self.t_end = self.impl.t_end()
         self.dt = self.impl.time_step_length()
+        self.parameters_own = PARAMETER_TYPE
 
     def linear(self):
         return self.impl.linear()
@@ -74,8 +74,8 @@ class Solver(Parametric):
                                 sigma_t_scattering=1,
                                 sigma_t_absorbing=10):
         mu = (sigma_s_scattering, sigma_s_absorbing, sigma_t_scattering, sigma_t_absorbing)
-        if mu != self.last_mu:
-            self.last_mu = mu
+        if mu != self._last_mu:
+            self._last_mu = mu
             self.impl.set_rhs_operator_parameters(*mu)
 
     def set_rhs_timestepper_params(self,
@@ -84,8 +84,8 @@ class Solver(Parametric):
                                    sigma_t_scattering=1,
                                    sigma_t_absorbing=10):
         mu = (sigma_s_scattering, sigma_s_absorbing, sigma_t_scattering, sigma_t_absorbing)
-        if mu != self.last_mu:
-            self.last_mu = mu
+        if mu != self._last_mu:
+            self._last_mu = mu
             self.impl.set_rhs_timestepper_parameters(*mu)
 
 
@@ -102,7 +102,6 @@ class BoltzmannModel(Model):
                  products=None,
                  estimator=None,
                  visualizer=None,
-                 parameter_space=None,
                  cache_region=None,
                  name=None):
         super().__init__(products=products,
@@ -110,8 +109,8 @@ class BoltzmannModel(Model):
                          visualizer=visualizer,
                          cache_region=cache_region,
                          name=name)
-        self.build_parameter_type(PARAMETER_TYPE)
         self.__auto_init(locals())
+        self.parameters_own = PARAMETER_TYPE
         self.solution_space = self.initial_data.range
 
     # def project_to_realizable_set(self, vec, cvxopt_P, cvxopt_G, cvxopt_h, dim, space):
@@ -144,8 +143,7 @@ class BoltzmannModel(Model):
         for n in range(self.nt):
             dt = self.dt if n != self.nt - 1 else final_dt
             self.logger.info('Time step {}'.format(n))
-            param = Parameter({'t': n * self.dt, 'dt': self.dt})
-            param['s'] = mu['s']
+            param = Mu({'t': n * self.dt, 'dt': self.dt, 's': mu['s']})
             V = U_last - self.lf.apply(U_last, param) * dt
             # if cvxopt_P is not None and not self.is_realizable(V, basis):
             #    V = self.project_to_realizable_set(V, cvxopt_P, cvxopt_G, cvxopt_h, V.dim, V.space)
@@ -173,34 +171,32 @@ class DuneModel(BoltzmannModel):
         # Todo: rename from lf_operator to kinetic_operator
         lf_operator = KineticOperator(self.solver)
         self.non_decomp_rhs_operator = ndrhs = RHSOperator(self.solver)
-        param = solver.parse_parameter([0., 0., 0., 0.])
+        param = solver.parameters.parse([0., 0., 0., 0.])
         affine_part = ConstantOperator(ndrhs.apply(initial_data.range.zeros(), mu=param), initial_data.range)
         rhs_operator = affine_part + \
             LincombOperator(
                 [LinearOperator(FixedParameterOperator(RHSOperator(self.solver),
-                                                       solver.parse_parameter(mu=[0., 0., 0., 0.])) - affine_part),
+                                                       solver.parameters.parse(mu=[0., 0., 0., 0.])) - affine_part),
                  LinearOperator(FixedParameterOperator(RHSOperator(self.solver),
-                                                       solver.parse_parameter(mu=[1., 0., 0., 0.])) - affine_part),
+                                                       solver.parameters.parse(mu=[1., 0., 0., 0.])) - affine_part),
                  LinearOperator(FixedParameterOperator(RHSOperator(self.solver),
-                                                       solver.parse_parameter(mu=[0., 1., 0., 0.])) - affine_part),
+                                                       solver.parameters.parse(mu=[0., 1., 0., 0.])) - affine_part),
                  LinearOperator(FixedParameterOperator(RHSOperator(self.solver),
-                                                       solver.parse_parameter(mu=[1., 0., 1., 0.])) - affine_part),
+                                                       solver.parameters.parse(mu=[1., 0., 1., 0.])) - affine_part),
                  LinearOperator(FixedParameterOperator(RHSOperator(self.solver),
-                                                       solver.parse_parameter(mu=[0., 1., 0., 1.])) - affine_part)],
+                                                       solver.parameters.parse(mu=[0., 1., 0., 1.])) - affine_part)],
                 [ExpressionParameterFunctional('1 - s[0] - s[1]', PARAMETER_TYPE),
                  ExpressionParameterFunctional('s[0] - s[2]', PARAMETER_TYPE),
                  ExpressionParameterFunctional('s[1] - s[3]', PARAMETER_TYPE),
                  ExpressionParameterFunctional('s[2]', PARAMETER_TYPE),
                  ExpressionParameterFunctional('s[3]', PARAMETER_TYPE)]
             )
-        param_space = CubicParameterSpace(PARAMETER_TYPE, 0., 10.)
         super().__init__(initial_data=initial_data,
                          lf=lf_operator,
                          rhs=rhs_operator,
                          t_end=solver.t_end,
                          nt=nt,
                          dt=dt,
-                         parameter_space=param_space,
                          name='DuneModel')
 
     def _solve(self, mu=None, return_output=False, return_half_steps=False):
@@ -296,7 +292,6 @@ class RHSOperator(DuneOperator):
 
     def __init__(self, solver):
         super(RHSOperator, self).__init__(solver)
-        self.build_parameter_type(PARAMETER_TYPE)
 
     def apply(self, U, mu=None):
         assert U in self.source

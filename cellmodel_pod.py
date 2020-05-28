@@ -7,9 +7,6 @@ from pymor.algorithms.pod import pod
 
 from hapod.mpi import MPIWrapper
 from hapod.cellmodel.wrapper import CellModelSolver, CellModelPfieldProductOperator, CellModelOfieldProductOperator, CellModelStokesProductOperator, calculate_cellmodel_errors, create_and_scatter_cellmodel_parameters
-from pymor.operators.basic import OperatorBase
-from pymor.vectorarrays.numpy import NumpyVectorSpace, NumpyVectorArray
-
 
 def calculate_pod(result, product, mpi, tol, name):
     num_snapshots = len(result)
@@ -31,13 +28,13 @@ def calculate_pod(result, product, mpi, tol, name):
     return result, svals, elapsed_pod, total_num_snapshots
 
 
-def cellmodel_pod(testcase, t_end, dt, grid_size_x, grid_size_y, tol, logfile=None):
+def cellmodel_pod(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, tol, logfile=None):
     # get MPI communicators
     mpi = MPIWrapper()
 
     # get cellmodel solver to create snapshots
     mu = create_and_scatter_cellmodel_parameters(mpi.comm_world)
-    solver = CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, mu)
+    solver = CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, pol_order, mu)
     nc = solver.num_cells
 
     # calculate Boltzmann problem trajectory
@@ -77,34 +74,6 @@ def cellmodel_pod(testcase, t_end, dt, grid_size_x, grid_size_y, tol, logfile=No
     return [modes, svals, total_num_snaps, mu, mpi]
 
 
-# class MatrixOperator(OperatorBase):
-#
-#     def __init__(self, mat):
-#         self.mat = scipy.sparse.block_diag((mat, mat, mat), 'csr')
-#         self.mass_mat = mat
-#         self.n = n = mat.shape[0]
-#         assert (self.mat[0:n, 0:n] != mat).nnz == 0
-#         assert (self.mat[n:2 * n, n:2 * n] != mat).nnz == 0
-#         assert (self.mat[2 * n:3 * n, 2 * n:3 * n] != mat).nnz == 0
-#         self.numpy_solution_space = NumpyVectorSpace(self.mat.shape[0])
-#         self.solution_space = DuneXtLaListVectorSpace(self.mat.shape[0])
-#
-#     def apply(self, U, mu=None, res=None):
-#         U_out = np.transpose(self.mat @ np.transpose(U.to_numpy()))
-#         return self.solution_space.from_numpy(U_out)
-#
-#     def calculate_error(self, modes, name, product=None):
-#         if product is None:
-#             product = self
-#         snaps = load_snapshots(name)
-#         residual = snaps - modes.lincomb(
-#             snaps.dot(self.numpy_solution_space.from_numpy(product.apply(modes).to_numpy())))
-#         return np.sqrt(
-#             np.sum(residual.pairwise_dot(self.numpy_solution_space.from_numpy(product.apply(residual).to_numpy()))))
-#
-#        # residual = snaps - modes.lincomb(snaps.dot(product.apply(modes, numpy=True)))
-#        # return np.sqrt(np.sum(residual.pairwise_dot(product.apply(residual, numpy=True))))
-
 if __name__ == "__main__":
     argc = len(sys.argv)
     testcase = 'single_cell' if argc < 2 else sys.argv[1]
@@ -115,8 +84,9 @@ if __name__ == "__main__":
     tol = 1e-4 if argc < 7 else float(sys.argv[6])
     filename = "cellmodel_POD_grid_%dx%d_tol_%f.log" % (grid_size_x, grid_size_y, tol)
     logfile = open(filename, "a")
+    pol_order = 2
     modes, _, total_num_snaps, mu, mpi = cellmodel_pod(
-        testcase, t_end, dt, grid_size_x, grid_size_y, tol, logfile=logfile)
+        testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, tol, logfile=logfile)
 
     # Broadcast modes to all ranks, if possible via shared memory
     retlistvecs = True
@@ -125,7 +95,7 @@ if __name__ == "__main__":
         modes[i], wins[i] = mpi.shared_memory_bcast_modes(modes[i], returnlistvectorarray=retlistvecs)
 
     # calculate errors
-    errors = calculate_cellmodel_errors(modes, testcase, t_end, dt, grid_size_x, grid_size_y, mu, mpi, logfile=logfile)
+    errors = calculate_cellmodel_errors(modes, testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu, mpi, logfile=logfile)
 
     # free MPI windows
     for win in wins:

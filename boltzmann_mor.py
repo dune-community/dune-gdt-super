@@ -47,7 +47,7 @@ def calculate_l2_error_for_random_samples(basis,
 
         fom = DuneModel(nt, solver.dt, dimension, '', 2000000, grid_size, False, True, *mu)
 
-        mu = fom.parse_parameter(mu)
+        mu = fom.parameters.parse(mu)
 
         # calculate high-dimensional solution
         start = timer()
