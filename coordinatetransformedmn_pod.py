@@ -186,7 +186,7 @@ if __name__ == "__main__":
     argc = len(sys.argv)
     grid_size = 21 if argc < 2 else int(sys.argv[1])
     L2_tol = 1e-3 if argc < 3 else float(sys.argv[2])
-    testcase = "HFM66Checkerboard3d" if argc < 4 else sys.argv[3]
+    testcase = "HFM50SourceBeam" if argc < 4 else sys.argv[3]
     filename = f"{testcase}_POD_gridsize_{grid_size}_tol_{L2_tol}.log"
     logfile = open(filename, "a")
     final_modes, final_modes_selected, _, total_num_snapshots, mu, mpi, _, _ = coordinatetransformedmn_pod(

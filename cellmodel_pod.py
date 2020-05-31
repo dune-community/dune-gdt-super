@@ -39,7 +39,7 @@ def cellmodel_pod(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, tol,
 
     # calculate Boltzmann problem trajectory
     start = timer()
-    snapshots = solver.solve(dt, True, dt, "cellmodel_snapshot_" + str(mu))
+    snapshots = solver.solve(dt, True, dt, f"cellmodel_Be_{mu['Be']}_Ca_{mu['Ca']}_Pa_{mu['Pa']}")
     mpi.comm_world.Barrier()
     elapsed_data_gen = timer() - start
 

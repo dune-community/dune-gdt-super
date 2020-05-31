@@ -78,7 +78,7 @@ def create_and_scatter_parameters(testcase, comm, min_param=1., max_param=8.):
         raise NotImplementedError("Unknown testcase!")
 
 
-def create_coordinatetransformedmn_solver(gridsize, mu, testcase="HFM66Checkerboard3d"):
+def create_coordinatetransformedmn_solver(gridsize, mu, testcase):
     prefix = "coordinatetransformedmn_sigma_s_s_{}_a_{}_sigma_t_s_{}_a_{}".format(*mu)
     return wrapper.Solver(testcase, prefix, 2000000, gridsize, False, False, mu)
 

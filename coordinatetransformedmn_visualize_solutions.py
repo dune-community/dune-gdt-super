@@ -6,7 +6,7 @@ from hapod.coordinatetransformedmn import wrapper
 from hapod.coordinatetransformedmn.utility import create_and_scatter_parameters
 
 
-def visualize_solutions(grid_size=21, testcase="HFM66Checkerboard3d"):
+def visualize_solutions(grid_size, testcase):
     comm_world = MPI.COMM_WORLD
     parameters = create_and_scatter_parameters(testcase, comm_world, min_param=1, max_param=8)
     # parameters = [1, 0, 0, 2, 10]
@@ -31,5 +31,5 @@ def visualize_solutions(grid_size=21, testcase="HFM66Checkerboard3d"):
 if __name__ == "__main__":
     argc = len(sys.argv)
     grid_size = 21 if argc < 2 else int(sys.argv[1])
-    testcase = "HFM66Checkerboard3d" if argc < 3 else sys.argv[2]
+    testcase = "HFM50SourceBeam" if argc < 3 else sys.argv[2]
     visualize_solutions(grid_size, testcase)
