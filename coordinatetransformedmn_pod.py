@@ -40,7 +40,7 @@ def coordinatetransformedmn_pod(grid_size, l2_tol, testcase, logfile=None):
     mu = create_and_scatter_parameters(testcase, mpi.comm_world, min_param=min_param, max_param=max_param)
     solver = create_coordinatetransformedmn_solver(grid_size, mu, testcase)
 
-    # calculate Boltzmann problem trajectory
+    # calculate problem trajectory
     start = timer()
     times, snapshots = solver.solve()
     times = np.array(times)
