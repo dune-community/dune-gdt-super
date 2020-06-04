@@ -220,7 +220,7 @@ class RestrictedCoordinateTransformedmnOperator(RestrictedDuneOperator):
         self.solver.impl.prepare_restricted_operator(dofs_as_list)
         super(RestrictedCoordinateTransformedmnOperator, self).__init__(solver, self.solver.impl.len_source_dofs(), len(dofs))
 
-    def apply(self, U, mu=None):
+    def apply(self, Alpha, mu=None):
         assert Alpha in self.source
         Alpha = DuneXtLaListVectorSpace.from_numpy(Alpha.to_numpy())
         ret = [DuneXtLaVector(self.solver.impl.apply_restricted_operator(alpha.impl)).to_numpy(True) for alpha in Alpha._list]
