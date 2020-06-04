@@ -29,7 +29,7 @@ class DuneXtLaVector(Vector):
     def __len__(self):
         return self.dim
 
-    def __iter__(self):  # iterate over all keys
+    def __iter__(self):
         for i in range(self.dim):
             yield self[i]
 
