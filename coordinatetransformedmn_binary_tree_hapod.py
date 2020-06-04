@@ -18,7 +18,7 @@ from hapod.mpi import MPIWrapper
 
 
 def coordinatetransformedmn_hapod(
-    grid_size, l2_tol, testcase, l2_eval_tol=None, omega=0.95, logfile=None, incremental_gramian=True, orthonormalize=True
+    grid_size, l2_tol, testcase, eval_l2_tol=None, omega=0.95, logfile=None, incremental_gramian=True, orthonormalize=True
 ):
 
     start = timer()
@@ -46,7 +46,7 @@ def coordinatetransformedmn_hapod(
     rooted_tree_depth = mpi.comm_world.allreduce(rooted_tree_depth, op=MPI.MAX)
 
     hapod_params = HapodParameters(rooted_tree_depth=rooted_tree_depth, epsilon_ast=l2_tol, omega=omega)
-    # eval_hapod_params = HapodParameters(rooted_tree_depth, epsilon_ast=eval_tol, omega=omega)
+    hapod_params = HapodParameters(rooted_tree_depth=rooted_tree_depth, epsilon_ast=eval_l2_tol, omega=omega)
 
     # calculate problem trajectory
     start = timer()
@@ -67,15 +67,15 @@ def coordinatetransformedmn_hapod(
     if mpi.size_proc > 1:
         if use_binary_tree_hapod:
             modes, svals, num_snapshots_on_compute_node, _, _ = binary_tree_hapod_over_ranks(
-                    mpi.comm_proc,
-                    modes,
-                    num_snapshots,
-                    hapod_params,
-                    svals=svals,
-                    last_hapod=(mpi.size_rank_0_group == 1),
-                    incremental_gramian=incremental_gramian,
-                    orthonormalize=orthonormalize,
-                )
+                mpi.comm_proc,
+                modes,
+                num_snapshots,
+                hapod_params,
+                svals=svals,
+                last_hapod=(mpi.size_rank_0_group == 1),
+                incremental_gramian=incremental_gramian,
+                orthonormalize=orthonormalize,
+            )
         else:
             gathered_modes, gathered_svals, num_snapshots_on_compute_node, _ = mpi.comm_proc.gather_on_rank_0(
                 modes, num_snapshots, svals=svals, num_modes_equal=False, merge=False
@@ -158,7 +158,7 @@ if __name__ == "__main__":
         grid_size=grid_size,
         l2_tol=convert_L2_l2(L2_tol, grid_size, testcase),
         testcase=testcase,
-        l2_eval_tol=None,
+        eval_l2_tol=None,
         omega=omega,
         logfile=logfile,
         incremental_gramian=inc_gramian,

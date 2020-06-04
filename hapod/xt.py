@@ -5,15 +5,15 @@ from pymor.vectorarrays.list import Vector, ListVectorSpace, ListVectorArray
 
 from gdt.vectors import CommonDenseVector
 
-class DuneXtLaVector(Vector):
 
+class DuneXtLaVector(Vector):
     def __init__(self, impl):
         self.impl = impl
         self.dim = impl.dim
 
     def to_numpy(self, ensure_copy=False):
         # if ensure_copy:
-            return np.frombuffer(self.impl.buffer(), dtype=np.double).copy()
+        return np.frombuffer(self.impl.buffer(), dtype=np.double).copy()
         # else:
         #    return np.frombuffer(self.impl.buffer(), dtype=np.double)
 
@@ -29,9 +29,13 @@ class DuneXtLaVector(Vector):
     def __len__(self):
         return self.dim
 
+    def __iter__(self):  # iterate over all keys
+        for i in range(self.dim):
+            yield self[i]
+
     @classmethod
     def make_zeros(cls, subtype):
-        impl = subtype[0](subtype[1], 0.)
+        impl = subtype[0](subtype[1], 0.0)
         return DuneXtLaVector(impl)
 
     @property
@@ -61,7 +65,7 @@ class DuneXtLaVector(Vector):
         return self.impl.l2_norm()
 
     def l2_norm2(self):
-        return self.impl.l2_norm()**2
+        return self.impl.l2_norm() ** 2
 
     def sup_norm(self):
         return self.impl.sup_norm()
@@ -100,12 +104,11 @@ class DuneXtLaVector(Vector):
         return type(self.impl), self.data
 
     def __setstate__(self, state):
-        self.impl = state[0](len(state[1]), 0.)
+        self.impl = state[0](len(state[1]), 0.0)
         self.data[:] = state[1]
 
 
 class DuneXtLaListVectorSpace(ListVectorSpace):
-
     def __init__(self, dim, id=None):
         self.dim = dim
         self.id = id
@@ -141,6 +144,3 @@ class DuneXtLaListVectorSpace(ListVectorSpace):
         v = self.zero_vector()
         v.data[:] = data
         return v
-
-
-
