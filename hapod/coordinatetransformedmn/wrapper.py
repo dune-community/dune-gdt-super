@@ -54,7 +54,7 @@ class Solver(ParametricObject):
             self.impl = gdt.coordinatetransformedmn.M3CheckerboardSolver3d(*args)
         else:
             raise NotImplementedError(f"Unknown testcase {testcase}, available testcases:\n{AVAILABLE_TESTCASES}")
-        self.last_mu = None
+        self._last_mu = None
         self.testcase = testcase
         self.dimDomain = 1 if testcase in TESTCASES_1D else 3
         self.dx = self.impl.dx()
@@ -73,9 +73,6 @@ class Solver(ParametricObject):
     def u_from_alpha(self, alpha_vec):
         return DuneXtLaVector(self.impl.u_from_alpha(alpha_vec.impl))
 
-    def reset(self):
-        self.impl.reset()
-
     def finished(self):
         return self.impl.finished()
 
@@ -92,9 +89,9 @@ class Solver(ParametricObject):
         return self.solution_space.make_array([self.impl.get_initial_values()])
 
     def set_parameters(self, mu):
-        if mu != self.last_mu:
-            self.last_mu = mu
-            self.impl.set_parameters(mu["s"])
+        if mu != self._last_mu:
+            self._last_mu = mu
+            self.impl.set_parameters(mu)
 
     def visualize(self, vec, prefix):
         self.impl.visualize(vec.impl, prefix)

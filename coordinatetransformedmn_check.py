@@ -12,6 +12,27 @@ from hapod.coordinatetransformedmn.wrapper import (
 from hapod.coordinatetransformedmn.utility import create_and_scatter_parameters
 
 
+def check_solver_results(comm, times1, results1, times2, results2):
+    comm.Barrier()
+    times_diff = [abs(t1 - t2) for t1, t2 in zip(times1, times2)]
+    rel_errors_alpha = [
+        (alpha1 - alpha2).l2_norm() / max(alpha1.l2_norm(), alpha2.l2_norm()) if max(alpha1.l2_norm(), alpha2.l2_norm()) > 0.0 else 0.0
+        for alpha1, alpha2 in zip(results1._list, results2._list)
+    ]
+    max_times_diff = comm.reduce(max(times_diff), op=MPI.MAX, root=0)
+    max_rel_errors_alpha = comm.reduce(max(rel_errors_alpha), op=MPI.MAX, root=0)
+    if comm.rank == 0:
+        error_msg = ""
+        if not np.isclose(max_times_diff, 0.0):
+            error_msg += f"Timesteps differ, max difference is: {max_times_diff}\n"
+        if not np.isclose(max_rel_errors_alpha, 0.0):
+            error_msg += f"Alpha vectors differ, max relative l2 error is: {max_rel_errors_alpha}\n"
+        if error_msg:
+            print(f" nope!\n{error_msg}")
+        else:
+            print(" yes!")
+
+
 def check_solve(grid_size, testcase, verbose=False):
     comm_world = MPI.COMM_WORLD
     if comm_world.rank == 0:
@@ -28,24 +49,7 @@ def check_solve(grid_size, testcase, verbose=False):
     model = CoordinatetransformedmnModel(operator, solver.get_initial_values(), solver.t_end)
     times_python, results_python = model._solve(verbose=verbose)
     times_cpp, results_cpp = solver.solve()
-    times_diff = [abs(t1 - t2) for t1, t2 in zip(times_cpp, times_python)]
-    rel_errors_alpha = [
-        (alpha1 - alpha2).l2_norm() / max(alpha1.l2_norm(), alpha2.l2_norm()) if max(alpha1.l2_norm(), alpha2.l2_norm()) > 0.0 else 0.0
-        for alpha1, alpha2 in zip(results_python._list, results_cpp._list)
-    ]
-    comm_world.Barrier()
-    max_times_diff = comm_world.reduce(max(times_diff), op=MPI.MAX, root=0)
-    max_rel_errors_alpha = comm_world.reduce(max(rel_errors_alpha), op=MPI.MAX, root=0)
-    if comm_world.rank == 0:
-        error_msg = ""
-        if not np.isclose(max_times_diff, 0.0):
-            error_msg += f"Timesteps differ, max difference is: {max_times_diff}\n"
-        if not np.isclose(max_rel_errors_alpha, 0.0):
-            error_msg += f"Alpha vectors differ, max relative l2 error is: {max_rel_errors_alpha}\n"
-        if error_msg:
-            print(f" nope!\n{error_msg}")
-        else:
-            print(" yes!")
+    check_solver_results(comm_world, times_python, results_python, times_cpp, results_cpp)
 
 
 def check_restricted_op(grid_size, testcase, verbose=False):
@@ -92,6 +96,23 @@ def check_restricted_op(grid_size, testcase, verbose=False):
             print(" yes!")
 
 
+def check_set_parameters(grid_size, testcase, verbose=False):
+    comm_world = MPI.COMM_WORLD
+    if comm_world.rank == 0:
+        print("Checking whether the set_parameters method works...", end="", flush=True)
+    parameters = create_and_scatter_parameters(testcase, comm_world, min_param=1, max_param=8)
+    # create solver with default parameter and use set_parameters
+    solver1 = Solver(testcase, "", 1000000000, grid_size, False, not verbose)
+    solver1.set_parameters(parameters)
+    # create another solver directly with the correct parameters
+    solver2 = Solver(testcase, "", 1000000000, grid_size, False, not verbose, parameters)
+
+    # solve and check that output is the same
+    times1, results1 = solver1.solve()
+    times2, results2 = solver2.solve()
+    check_solver_results(comm_world, times1, results1, times2, results2)
+
+
 if __name__ == "__main__":
     argc = len(sys.argv)
     grid_size = 100 if argc < 2 else int(sys.argv[1])
@@ -99,3 +120,4 @@ if __name__ == "__main__":
     verbose = False if argc < 4 else not (sys.argv[3] == "False" or sys.argv[3] == "0")
     check_solve(grid_size, testcase, verbose=verbose)
     check_restricted_op(grid_size, testcase, verbose=verbose)
+    check_set_parameters(grid_size, testcase, verbose=verbose)
