@@ -14,14 +14,12 @@ from hapod.coordinatetransformedmn.utility import (
     create_coordinatetransformedmn_solver,
 )
 from hapod.hapod import local_pod, HapodParameters, binary_tree_hapod_over_ranks, binary_tree_depth
-from hapod.mpi import MPIWrapper
+from hapod.mpi import MPIWrapper, idle_wait
 
 
 def coordinatetransformedmn_hapod(
     grid_size, l2_tol, testcase, eval_l2_tol=None, omega=0.95, logfile=None, incremental_gramian=True, orthonormalize=True
 ):
-
-    start = timer()
 
     # get MPI communicators
     mpi = MPIWrapper()
@@ -35,8 +33,9 @@ def coordinatetransformedmn_hapod(
     # calculate problem trajectory
     start = timer()
     times, snapshots = solver.solve()
-    times = np.array(times)
+    idle_wait(mpi.comm_world)
     elapsed_data_gen = timer() - start
+    times = np.array(times)
     num_snapshots = len(snapshots)
     assert len(times) == num_snapshots
     if eval_l2_tol is not None:
@@ -45,6 +44,7 @@ def coordinatetransformedmn_hapod(
     # Setup HAPOD parameters and input
     # Whether to use an binary tree for the PODs on node level and final POD on rank 0. Setting this to True should improve performance and memory usage.
     use_binary_tree_hapod = True
+    # use_binary_tree_hapod = False
     # Calculate depth of rooted tree
     # Start with 1 for calculation of the trajectories
     rooted_tree_depth = 1
@@ -59,7 +59,7 @@ def coordinatetransformedmn_hapod(
     num_snapshots = [num_snapshots]
     hapod_params = [HapodParameters(rooted_tree_depth=rooted_tree_depth, epsilon_ast=l2_tol, omega=omega)]
     if eval_l2_tol is not None:
-        hapod_params.append(HapodParameters(rooted_tree_depth=rooted_tree_depth, epsilon_ast=eval_l2_tol, omega=omega));
+        hapod_params.append(HapodParameters(rooted_tree_depth=rooted_tree_depth, epsilon_ast=eval_l2_tol, omega=omega))
         snapshots.append(nonlin_snapshots)
         num_snapshots.append(len(nonlin_snapshots))
         del nonlin_snapshots
@@ -74,19 +74,23 @@ def coordinatetransformedmn_hapod(
     del snaps
     del snapshots
 
-    # gather modes on each compute node and perform second level PODs
-    start_proc = timer()
+    # Now perform binary tree hapods (or simple PODs with the gathered modes if use_binary_tree_hapod == False)
+    # over processor cores and compute nodes
     num_snapshots_in_leafs = num_snapshots.copy()
-    binary_trees = []
+    # For each of the (HA)PODs, we need to collect the communicator, whether this is the last POD in the HAPOD tree,
+    # and if this MPI rank participates in the POD. This information is stored in binary_tree_hapods.
+    # The empty list added is used to store timings.
+    binary_tree_hapods = []
     if mpi.size_proc > 1:
-        binary_trees.append((mpi.comm_proc, mpi.size_rank_0_group == 1, True))
+        binary_tree_hapods.append((mpi.comm_proc, mpi.size_rank_0_group == 1, True, []))
     if mpi.size_rank_0_group > 1:
-        binary_trees.append((mpi.comm_rank_0_group, True, mpi.comm_proc == 0))
+        binary_tree_hapods.append((mpi.comm_rank_0_group, True, mpi.comm_proc == 0, []))
 
     num_snapshots_in_leafs[i] = num_snapshots[i]
-    for comm, root_of_tree_cond, rank_cond in binary_trees:
+    for comm, root_of_tree_cond, rank_cond, timings in binary_tree_hapods:
         if rank_cond:
             for i in range(len(modes)):
+                timings.append(timer())
                 if use_binary_tree_hapod:
                     modes[i], svals[i], num_snapshots_in_leafs[i], _, _ = binary_tree_hapod_over_ranks(
                         comm,
@@ -114,6 +118,9 @@ def coordinatetransformedmn_hapod(
                         )
                         del pod_inputs
                     del gathered_modes
+                idle_wait(comm)
+                timings[i] = timer() - timings[i]
+    idle_wait(mpi.comm_world)
 
     # write statistics to file
     if logfile is not None and mpi.rank_world == 0:
@@ -123,9 +130,14 @@ def coordinatetransformedmn_hapod(
         logfile.write(
             "The maximum amount of memory used on rank 0 was: " + str(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1000.0 ** 2) + " GB\n"
         )
-        # logfile.write("Max time for HAPOD on processors:" + str(elapsed_proc) + "\n")
+        logfile.write("Timings:\n")
+        logfile.write("data_gen snaps_proc eval_procs snaps_nodes eval_nodes all\n")
+        all_timings = []
+        for _, _, _, timings in binary_tree_hapods:
+            all_timings += timings
         # logfile.write("Time for final HAPOD over nodes:" + str(elapsed_final) + "\n")
-        logfile.write("Time for all:" + str(timer() - start) + "\n")
+        all_timings = all_timings + [0] * (4 - len(all_timings))
+        logfile.write(f"{elapsed_data_gen}" + (" {}" * 5).format(*all_timings, timer()-start) + "\n")
 
     return modes[0], svals[0], num_snapshots_in_leafs[0], *([modes[1], svals[1], num_snapshots_in_leafs[1]] if eval_l2_tol is not None else [None] * 3), mu, mpi
 
@@ -150,10 +162,12 @@ if __name__ == "__main__":
         incremental_gramian=inc_gramian,
     )
     modes, win = mpi.shared_memory_bcast_modes(modes, returnlistvectorarray=True)
-    eval_modes, eval_win = mpi.shared_memory_bcast_modes(eval_modes, returnlistvectorarray=True)
+    if eval_L2_tol is not None:
+        eval_modes, eval_win = mpi.shared_memory_bcast_modes(eval_modes, returnlistvectorarray=True)
     calculate_mean_errors(modes, grid_size, mu, testcase, num_snaps, mpi, logfile=logfile, final_eval_modes=eval_modes, num_evals=eval_num_snaps)
     win.Free()
-    eval_win.Free()
+    if eval_L2_tol is not None:
+        eval_win.Free()
     logfile.close()
     if mpi.rank_world == 0:
         logfile = open(filename, "r")

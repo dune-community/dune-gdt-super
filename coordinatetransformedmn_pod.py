@@ -9,25 +9,9 @@ import numpy as np
 from pymor.algorithms.pod import pod
 
 from hapod.coordinatetransformedmn.utility import create_and_scatter_parameters, convert_L2_l2, calculate_mean_errors, create_coordinatetransformedmn_solver
-from hapod.mpi import MPIWrapper
+from hapod.mpi import MPIWrapper, idle_wait
 
 import matplotlib.pyplot as plt
-
-# The POD only uses MPI rank 0, all other processes are busy-waiting for it to finish.
-# With idle_wait, the waiting threads do not cause such a high CPU usage.
-# Adapted from https://gist.github.com/donkirkby/16a89d276e46abb0a106
-def idle_wait(mpi, root):
-    # Set this to 0 for maximum responsiveness, but that will peg CPU to 100%
-    if mpi.rank_world == root:
-        for rank in range(1, mpi.size_world):
-            mpi.comm_world.send(0, dest=rank, tag=rank)
-    else:
-        sleep_seconds = 1
-        if sleep_seconds > 0:
-            while not mpi.comm_world.Iprobe(source=MPI.ANY_SOURCE):
-                # print(f"{mpi.rank_world} waited another second")
-                time.sleep(sleep_seconds)
-        mpi.comm_world.recv(source=root, tag=mpi.rank_world)
 
 def coordinatetransformedmn_pod(grid_size, l2_tol, testcase, logfile=None):
 
@@ -177,7 +161,7 @@ def coordinatetransformedmn_pod(grid_size, l2_tol, testcase, logfile=None):
                           str(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1000.**2) + " GB\n")
             elapsed = timer() - start
             logfile.write("Time elapsed: " + str(elapsed) + "\n")
-    idle_wait(mpi, root=0)
+    idle_wait(mpi.comm_world)
 
     return snapshots, selected_snapshots, svals, total_num_snapshots, mu, mpi, elapsed_data_gen, elapsed_pod
 

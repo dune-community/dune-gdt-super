@@ -1,11 +1,27 @@
-from pymor.vectorarrays.numpy import NumpyVectorSpace
-from mpi4py import MPI
+import time
 import numpy as np
+from mpi4py import MPI
 
 from pymor.core.base import abstractmethod
+from pymor.vectorarrays.numpy import NumpyVectorSpace
 
 from hapod.xt import DuneXtLaListVectorSpace
 
+# The POD only uses MPI rank 0, all other processes are busy-waiting for it to finish.
+# With idle_wait, the waiting threads do not cause such a high CPU usage.
+# Adapted from https://gist.github.com/donkirkby/16a89d276e46abb0a106
+def idle_wait(comm, root=0):
+    if comm.rank == root:
+        for rank in range(1, comm.size):
+            comm.send(0, dest=rank, tag=rank)
+    else:
+        # Set this to 0 for maximum responsiveness, but that will peg CPU to 100%
+        sleep_seconds = 0.5
+        if sleep_seconds > 0:
+            while not comm.Iprobe(source=MPI.ANY_SOURCE):
+                # print(f"{mpi.rank_world} waited another second")
+                time.sleep(sleep_seconds)
+        comm.recv(source=root, tag=comm.rank)
 
 class MPIWrapper:
     """Stores MPI communicators for all ranks (world), for all ranks on a single compute node (proc)
