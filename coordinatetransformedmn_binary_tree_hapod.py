@@ -67,10 +67,14 @@ def coordinatetransformedmn_hapod(
     # perform POD of the local trajectory
     modes = [None] * 2 if eval_l2_tol is not None else [None]
     svals = [None] * 2 if eval_l2_tol is not None else [None]
+    max_num_local_modes = [None] * 2 if eval_l2_tol is not None else [None]
+    max_num_input_vecs = [None] * 2 if eval_l2_tol is not None else [None]
     for i, snaps in enumerate(snapshots):
+        max_num_input_vecs[i] = len(snaps)
         modes[i], svals[i] = local_pod(
             [snaps], num_snapshots[i], hapod_params[i], incremental_gramian=False, orthonormalize=orthonormalize, root_of_tree=(rooted_tree_depth == 1)
         )
+        max_num_local_modes[i] = len(modes[i])
     del snaps
     del snapshots
 
@@ -92,7 +96,7 @@ def coordinatetransformedmn_hapod(
             for i in range(len(modes)):
                 timings.append(timer())
                 if use_binary_tree_hapod:
-                    modes[i], svals[i], num_snapshots_in_leafs[i], _, _ = binary_tree_hapod_over_ranks(
+                    modes[i], svals[i], num_snapshots_in_leafs[i], num_input_vecs, num_local_modes = binary_tree_hapod_over_ranks(
                         comm,
                         modes[i],
                         num_snapshots_in_leafs[i],
@@ -102,12 +106,15 @@ def coordinatetransformedmn_hapod(
                         incremental_gramian=incremental_gramian,
                         orthonormalize=orthonormalize,
                     )
+                    max_num_input_vecs[i] = max(max_num_input_vecs[i], num_input_vecs)
+                    max_num_local_modes[i] = max(max_num_local_modes[i], num_local_modes)
                 else:
                     gathered_modes, gathered_svals, num_snapshots_in_leafs[i], _ = comm.gather_on_rank_0(
                         modes[i], num_snapshots[i], svals=svals[i], num_modes_equal=False, merge=False
                     )
                     if comm.rank == 0:
                         pod_inputs = [[m, s] for m, s in zip(gathered_modes, gathered_svals)]
+                        max_num_input_vecs[i] = max(max_num_input_vecs[i], sum([len(m) for m in gathered_modes]))
                         modes[i], svals[i] = local_pod(
                             pod_inputs,
                             num_snapshots_in_leafs[i],
@@ -116,6 +123,7 @@ def coordinatetransformedmn_hapod(
                             incremental_gramian=incremental_gramian,
                             root_of_tree=root_of_tree_cond,
                         )
+                        max_num_local_modes = max(max_num_local_modes[i], len(modes[i]))
                         del pod_inputs
                     del gathered_modes
                 idle_wait(comm)
@@ -123,10 +131,18 @@ def coordinatetransformedmn_hapod(
     idle_wait(mpi.comm_world)
 
     # write statistics to file
+    max_num_local_modes = mpi.comm_world.gather(max_num_local_modes, root=0)
+    max_num_input_vecs = mpi.comm_world.gather(max_num_input_vecs, root=0)
     if logfile is not None and mpi.rank_world == 0:
+        max_num_local_modes_snaps = max([m[0] for m in max_num_local_modes])
+        max_num_input_vecs_snaps = max([m[0] for m in max_num_input_vecs])
         logfile.write(f"The HAPOD resulted in {len(modes[0])} final modes taken from a total of {num_snapshots_in_leafs[0]} snapshots!\n")
+        logfile.write(f"max_num_input_vecs = {max_num_input_vecs_snaps}, max_num_local_modes = {max_num_local_modes_snaps}\n")
         if eval_l2_tol is not None:
+            max_num_local_modes_eval = max([m[1] for m in max_num_local_modes])
+            max_num_input_vecs_eval = max([m[1] for m in max_num_input_vecs])
             logfile.write(f"The DEIM-HAPOD resulted in {len(modes[1])} final modes taken from a total of {num_snapshots_in_leafs[1]} nonlinear snapshots!\n")
+            logfile.write(f"max_num_input_vecs = {max_num_input_vecs_eval}, max_num_local_modes = {max_num_local_modes_eval}\n")
         logfile.write(
             "The maximum amount of memory used on rank 0 was: " + str(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1000.0 ** 2) + " GB\n"
         )
@@ -135,7 +151,6 @@ def coordinatetransformedmn_hapod(
         all_timings = []
         for _, _, _, timings in binary_tree_hapods:
             all_timings += timings
-        # logfile.write("Time for final HAPOD over nodes:" + str(elapsed_final) + "\n")
         all_timings = all_timings + [0] * (4 - len(all_timings))
         logfile.write(f"{elapsed_data_gen}" + (" {}" * 5).format(*all_timings, timer()-start) + "\n")
 

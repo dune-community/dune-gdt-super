@@ -64,6 +64,7 @@ class MPIWrapper:
         if modes is None:
             modes = np.empty(shape=(0, 0), dtype="d")
         modes_length = self.comm_world.bcast(len(modes) if self.rank_world == 0 else 0, root=0)
+        assert modes_length > 0, "Cannot broadcast empty modes"
         vector_length = self.comm_world.bcast(modes[0].dim if self.rank_world == 0 else 0, root=0)
         # create shared memory buffer to share final modes between processes on each node
         size = modes_length * vector_length

@@ -82,23 +82,30 @@ def create_coordinatetransformedmn_solver(gridsize, mu, testcase):
 def calculate_trajectory_l2_errors(final_modes, grid_size, mu, testcase, final_eval_modes=None):
     solver = create_coordinatetransformedmn_solver(grid_size, mu, testcase)
     _, snapshots_alpha = solver.solve()
-    evals = snapshots_alpha[1:] - snapshots_alpha[:-1]
+    # compute projection error
     projected_snapshots_alpha = final_modes.lincomb(snapshots_alpha.dot(final_modes))
     differences_alpha = snapshots_alpha - projected_snapshots_alpha
     abs_error_alpha = np.sum(differences_alpha.l2_norm2())
     rel_error_alpha = np.sum(differences_alpha.l2_norm() / snapshots_alpha.l2_norm())
+    del differences_alpha
+    # convert to u coordinates
+    projected_snapshots_u = solver.solution_space.make_array([solver.u_from_alpha(vec) for vec in projected_snapshots_alpha._list])
+    del projected_snapshots_alpha
+    snapshots_u = solver.solution_space.make_array([solver.u_from_alpha(vec) for vec in snapshots_alpha._list])
+    differences_u = snapshots_u - projected_snapshots_u
+    del projected_snapshots_u
+    abs_error_u = np.sum(differences_u.l2_norm2())
+    rel_error_u = np.sum(differences_u.l2_norm() / snapshots_u.l2_norm())
+    del differences_u
+    # calculate projection error for nonlinear snapshots
     if final_eval_modes is not None:
+        evals = snapshots_alpha[1:] - snapshots_alpha[:-1]
+        del snapshots_alpha
         projected_evals = final_eval_modes.lincomb(evals.dot(final_eval_modes))
         differences_evals = evals - projected_evals
         abs_error_alpha_evals = np.sum(differences_evals.l2_norm2())
         rel_error_alpha_evals = np.sum(differences_evals.l2_norm() / evals.l2_norm())
-
-    # convert to u coordinates
-    snapshots_u = solver.solution_space.make_array([solver.u_from_alpha(vec) for vec in snapshots_alpha._list])
-    projected_snapshots_u = solver.solution_space.make_array([solver.u_from_alpha(vec) for vec in projected_snapshots_alpha._list])
-    differences_u = snapshots_u - projected_snapshots_u
-    abs_error_u = np.sum(differences_u.l2_norm2())
-    rel_error_u = np.sum(differences_u.l2_norm() / snapshots_u.l2_norm())
+    # collect errors and return
     ret = [abs_error_alpha, rel_error_alpha, abs_error_u, rel_error_u]
     if final_eval_modes is not None:
         ret += [abs_error_alpha_evals, rel_error_alpha_evals]
