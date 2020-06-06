@@ -13,7 +13,7 @@ from hapod.mpi import MPIWrapper, idle_wait
 
 import matplotlib.pyplot as plt
 
-def coordinatetransformedmn_pod(grid_size, l2_tol, testcase, logfile=None):
+def coordinatetransformedmn_pod(grid_size, l2_tol, testcase, logfile=None, selection_strategy="nth"):
 
     # get MPI communicators
     mpi = MPIWrapper()
@@ -100,20 +100,23 @@ def coordinatetransformedmn_pod(grid_size, l2_tol, testcase, logfile=None):
                 times_in_interval = times_in_interval[remaining_local_indices]
                 snapshots_in_interval = snapshots_in_interval[remaining_local_indices]
 
-                # # include remaining snapshots with largest dt
-                # dts_in_interval = [dts_in_interval[i] for i in remaining_local_indices]
-                # ordering = np.array(dts_in_interval).argsort()
-                # snapshots_in_interval = snapshots_in_interval[ordering[-num_snapshots_missing:]]
-                # times_in_interval = times_in_interval[ordering[-num_snapshots_missing:]]
-                # selected_times.extend(times_in_interval.tolist())
-
-                # include every nth remaining snapshot
-                num_snapshots_left = len(snapshots_in_interval)
-                step = num_snapshots_left / num_snapshots_missing
-                every_nth_index = [math.floor(i * step) for i in range(num_snapshots_missing)]
-                snapshots_in_interval = snapshots_in_interval[every_nth_index]
-                times_in_interval = times_in_interval[every_nth_index]
-                selected_times.extend(times_in_interval.tolist())
+                if selection_strategy == "dt":
+                    # include remaining snapshots with largest dt
+                    dts_in_interval = [dts_in_interval[i] for i in remaining_local_indices]
+                    ordering = np.array(dts_in_interval).argsort()
+                    snapshots_in_interval = snapshots_in_interval[ordering[-num_snapshots_missing:]]
+                    times_in_interval = times_in_interval[ordering[-num_snapshots_missing:]]
+                    selected_times.extend(times_in_interval.tolist())
+                elif selection_strategy == "nth":
+                    # include every nth remaining snapshot
+                    num_snapshots_left = len(snapshots_in_interval)
+                    step = num_snapshots_left / num_snapshots_missing
+                    every_nth_index = [math.floor(i * step) for i in range(num_snapshots_missing)]
+                    snapshots_in_interval = snapshots_in_interval[every_nth_index]
+                    times_in_interval = times_in_interval[every_nth_index]
+                    selected_times.extend(times_in_interval.tolist())
+                else: 
+                    raise NotImplementedError("Unknown selection_strategy")
 
             snapshots_in_interval = np.append(snapshots_in_interval, np.array(selected_snapshots_in_interval), axis=0)
         else:
@@ -140,15 +143,15 @@ def coordinatetransformedmn_pod(grid_size, l2_tol, testcase, logfile=None):
     elapsed_pod = 0
     svals = None
     if mpi.rank_world == 0:
-        snapshots, svals = pod(snapshots, atol=0., rtol=0., l2_err=l2_tol * np.sqrt(total_num_snapshots))
-        selected_snapshots, selected_svals = pod(
+        snapshots, svals, evals = pod(snapshots, atol=0., rtol=0., l2_err=l2_tol * np.sqrt(total_num_snapshots))
+        selected_snapshots, selected_svals, selected_evals = pod(
             selected_snapshots, atol=0., rtol=0., l2_err=l2_tol * np.sqrt(total_num_snapshots))
-        with open(f"{testcase}_grid_{grid_size}_svals.log", "w") as svalfile:
-            for sval in svals:
-                svalfile.write(f"{sval:.15e}\n")
-        with open(f"{testcase}_grid_{grid_size}_svals_selected.log", "w") as svalfile:
-            for sval in selected_svals:
-                svalfile.write(f"{sval:.15e}\n")
+        with open(f"{testcase}_grid_{grid_size}_procs_{mpi.size_world}_evals.log", "w") as evalfile:
+            for eval in evals:
+                evalfile.write(f"{eval:.15e}\n")
+        with open(f"{testcase}_grid_{grid_size}_procs_{mpi.size_world}_evals_selected.log", "w") as evalfile:
+            for eval in selected_evals:
+                evalfile.write(f"{eval:.15e}\n")
         elapsed_pod = timer() - start
 
         # write statistics to file
@@ -171,10 +174,12 @@ if __name__ == "__main__":
     grid_size = 21 if argc < 2 else int(sys.argv[1])
     L2_tol = 1e-3 if argc < 3 else float(sys.argv[2])
     testcase = "HFM50SourceBeam" if argc < 4 else sys.argv[3]
-    filename = f"{testcase}_POD_gridsize_{grid_size}_tol_{L2_tol}.log"
+    selection_strategy = "dt" if argc < 5 else sys.argv[4]
+    assert selection_strategy == "dt" or selection_strategy == "nth", "Unknown selection strategy"
+    filename = f"{testcase}_POD_gridsize_{grid_size}_tol_{L2_tol}_strategy_{'dt' if selection_strategy == 'dt' else 'nth'}.log"
     logfile = open(filename, "a")
     final_modes, final_modes_selected, _, total_num_snapshots, mu, mpi, _, _ = coordinatetransformedmn_pod(
-        grid_size, convert_L2_l2(L2_tol, grid_size, testcase), testcase, logfile=logfile)
+        grid_size, convert_L2_l2(L2_tol, grid_size, testcase), testcase, logfile=logfile, selection_strategy = selection_strategy)
     final_modes, win = mpi.shared_memory_bcast_modes(final_modes, returnlistvectorarray=True)
     final_modes_selected, win_selected = mpi.shared_memory_bcast_modes(
         final_modes_selected, returnlistvectorarray=True)
