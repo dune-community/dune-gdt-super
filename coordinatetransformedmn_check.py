@@ -12,21 +12,28 @@ from hapod.coordinatetransformedmn.wrapper import (
 from hapod.coordinatetransformedmn.utility import create_and_scatter_parameters
 
 
-def check_solver_results(comm, times1, results1, times2, results2):
+def check_solver_results(comm, times1, results1, nonlinear1, times2, results2, nonlinear2):
     comm.Barrier()
     times_diff = [abs(t1 - t2) for t1, t2 in zip(times1, times2)]
     rel_errors_alpha = [
         (alpha1 - alpha2).l2_norm() / max(alpha1.l2_norm(), alpha2.l2_norm()) if max(alpha1.l2_norm(), alpha2.l2_norm()) > 0.0 else 0.0
         for alpha1, alpha2 in zip(results1._list, results2._list)
     ]
+    rel_errors_nonlinear = [
+        (alpha1 - alpha2).l2_norm() / max(alpha1.l2_norm(), alpha2.l2_norm()) if max(alpha1.l2_norm(), alpha2.l2_norm()) > 0.0 else 0.0
+        for alpha1, alpha2 in zip(nonlinear1._list, nonlinear1._list)
+    ]
     max_times_diff = comm.reduce(max(times_diff), op=MPI.MAX, root=0)
     max_rel_errors_alpha = comm.reduce(max(rel_errors_alpha), op=MPI.MAX, root=0)
+    max_rel_errors_nonlinear = comm.reduce(max(rel_errors_nonlinear), op=MPI.MAX, root=0)
     if comm.rank == 0:
         error_msg = ""
         if not np.isclose(max_times_diff, 0.0):
             error_msg += f"Timesteps differ, max difference is: {max_times_diff}\n"
         if not np.isclose(max_rel_errors_alpha, 0.0):
             error_msg += f"Alpha vectors differ, max relative l2 error is: {max_rel_errors_alpha}\n"
+        if not np.isclose(max_rel_errors_nonlinear, 0.0):
+            error_msg += f"Nonlinear vectors differ, max relative l2 error is: {max_rel_errors_nonlinear}\n"
         if error_msg:
             print(f" nope!\n{error_msg}")
         else:
@@ -47,9 +54,9 @@ def check_solve(grid_size, testcase, verbose=False):
     solver = Solver(testcase, prefix, 1000000000, grid_size, False, not verbose, parameters)
     operator = CoordinateTransformedmnOperator(solver)
     model = CoordinatetransformedmnModel(operator, solver.get_initial_values(), solver.t_end)
-    times_python, results_python = model._solve(verbose=verbose)
-    times_cpp, results_cpp = solver.solve()
-    check_solver_results(comm_world, times_python, results_python, times_cpp, results_cpp)
+    times_python, results_python, nonlinear_python = model._solve(verbose=verbose)
+    times_cpp, results_cpp, nonlinear_cpp = solver.solve(store_operator_evaluations=True)
+    check_solver_results(comm_world, times_python, results_python, nonlinear_python, times_cpp, results_cpp, nonlinear_cpp)
     if comm_world.rank == 0:
         print("Checking whether next_n_steps works as expected...", end="", flush=True)
     # create new solver, we can also call reset() once we add such a method
@@ -57,12 +64,14 @@ def check_solve(grid_size, testcase, verbose=False):
     dt = solver.initial_dt()
     times_next_n_steps = []
     results_next_n_steps = solver.solution_space.empty()
+    nonlinear_next_n_steps = solver.solution_space.empty()
     n = 3
     while not solver.finished():
-        next_times, next_results, dt = solver.next_n_steps(n, dt)
+        next_times, next_results, next_nonlinear_results, dt = solver.next_n_steps(n, dt, store_operator_evaluations=True)
         times_next_n_steps += next_times
         results_next_n_steps.append(next_results)
-    check_solver_results(comm_world, times_next_n_steps, results_next_n_steps, times_cpp, results_cpp)
+        nonlinear_next_n_steps.append(next_nonlinear_results)
+    check_solver_results(comm_world, times_next_n_steps, results_next_n_steps, nonlinear_next_n_steps, times_cpp, results_cpp, nonlinear_cpp)
 
 
 def check_restricted_op(grid_size, testcase, verbose=False):
@@ -121,9 +130,9 @@ def check_set_parameters(grid_size, testcase, verbose=False):
     solver2 = Solver(testcase, "", 1000000000, grid_size, False, not verbose, parameters)
 
     # solve and check that output is the same
-    times1, results1 = solver1.solve()
-    times2, results2 = solver2.solve()
-    check_solver_results(comm_world, times1, results1, times2, results2)
+    times1, results1, nonlinear1 = solver1.solve(store_operator_evaluations=True)
+    times2, results2, nonlinear2 = solver2.solve(store_operator_evaluations=True)
+    check_solver_results(comm_world, times1, results1, nonlinear1, times2, results2, nonlinear2)
 
 
 if __name__ == "__main__":
