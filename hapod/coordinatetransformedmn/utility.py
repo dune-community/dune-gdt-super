@@ -165,7 +165,7 @@ def calculate_mean_errors(
     if final_eval_modes is not None:
         errors.insert(8, convert_L2_l2(errors[6], grid_size, testcase, True))
     if mpi_wrapper.rank_world == 0 and logfile is not None:
-        logfile.write(f"Time used for calculating error: {elapsed} s\n")
+        # logfile.write(f"Time used for calculating error: {elapsed} s\n")
         selected_string = "for selected snaps" if selected else "for all snaps"
         logfile.write(f"Errors {selected_string}:\n")
         logfile.write(f"l2_abs_a l2_rel_a L2_abs_a l2_abs_u l2_rel_u L2_abs_u")
