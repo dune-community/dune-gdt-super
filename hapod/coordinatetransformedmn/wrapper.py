@@ -63,35 +63,46 @@ class Solver(ParametricObject):
         self.t_end = self.impl.t_end()
         self.dt = None  # just to reuse some code in, e.g., DuneModel, should be unused
 
-    def linear(self):
-        return self.impl.linear()
-
-    def solve(self):
-        times, snapshots = self.impl.solve()
-        return times, self.solution_space.make_array(snapshots)
-
-    def u_from_alpha(self, alpha_vec):
-        return DuneXtLaVector(self.impl.u_from_alpha(alpha_vec.impl))
+    def current_time(self):
+        return self.impl.current_time()
 
     def finished(self):
         return self.impl.finished()
 
-    def current_time(self):
-        return self.impl.current_time()
+    def get_initial_values(self):
+        return self.solution_space.make_array([self.impl.get_initial_values()])
 
-    def set_current_time(self, time):
-        return self.impl.set_current_time(time)
+    def initial_dt(self):
+        return self.impl.initial_dt()
+
+    def linear(self):
+        return self.impl.linear()
+
+    def next_n_steps(self, n, initial_dt, store_operator_evaluations = False):
+        times, snapshots, nonlinear_snapshots, next_dt = self.impl.next_n_steps(n, initial_dt, store_operator_evaluations)
+        return times, self.solution_space.make_array(snapshots), self.solution_space.make_array(nonlinear_snapshots), next_dt
+
+    def num_timesteps(self):
+        return self.impl.num_timesteps()
 
     def set_current_solution(self, vec):
         return self.impl.set_current_solution(vec)
 
-    def get_initial_values(self):
-        return self.solution_space.make_array([self.impl.get_initial_values()])
+    def set_current_time(self, time):
+        return self.impl.set_current_time(time)
 
     def set_parameters(self, mu):
         if mu != self._last_mu:
             self._last_mu = mu
             self.impl.set_parameters(mu)
+
+    def solve(self, store_operator_evaluations = False, do_not_save=False):
+        times, snapshots, nonlinear_snapshots = self.impl.solve(store_operator_evaluations, do_not_save)
+        return times, self.solution_space.make_array(snapshots), self.solution_space.make_array(nonlinear_snapshots)
+
+
+    def u_from_alpha(self, alpha_vec):
+        return DuneXtLaVector(self.impl.u_from_alpha(alpha_vec.impl))
 
     def visualize(self, vec, prefix):
         self.impl.visualize(vec.impl, prefix)
@@ -118,13 +129,14 @@ class CoordinatetransformedmnModel(Model):
         assert not return_output
         assert len(self.initial_data) == 1
         Alphas = self.initial_data
+        solver = self.operator.solver
+        NonlinearSnaps = solver.solution_space.empty()
         # alpha = self.initial_data.as_vector(mu)
         alpha_n = Alphas.copy()
         t = 0
         times = [t]
-        solver = self.operator.solver
-        dt = solver.dx / 100
-        t_end = self.t_end
+        dt = solver.initial_dt()
+        t_end = solver.t_end
         first_same_as_last = True
         last_stage_of_previous_step = None
         num_stages = len(self.rk_b1)
@@ -190,13 +202,15 @@ class CoordinatetransformedmnModel(Model):
                         time_step_scale_factor = min(max(0.8 * (1.0 / mixed_error) ** (1.0 / (self.rk_q + 1.0)), scale_factor_min), scale_factor_max)
             alpha_n = alpha_np1.copy()
             Alphas.append(alpha_n)
+            for nonlinear_snap in stages[1:]:
+                NonlinearSnaps.append(nonlinear_snap)
             last_stage_of_previous_step = stages[num_stages - 1]
             if verbose:
                 print(f"t={t}, dt={dt}")
             t += dt
             times.append(t)
             dt *= time_step_scale_factor
-        return times, Alphas
+        return times, Alphas, NonlinearSnaps
 
     def check_for_nan(self, vec_array1, vec_array2):
         for vec1, vec2 in zip(vec_array1._list, vec_array2._list):

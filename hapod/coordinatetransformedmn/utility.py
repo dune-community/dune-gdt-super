@@ -44,9 +44,10 @@ def convert_L2_l2(tol, grid_size, testcase, input_is_l2=False):
     return tol / math.sqrt(vol) if not input_is_l2 else tol * math.sqrt(vol)
 
 
-def create_and_scatter_sourcebeam_parameters(comm, min_param, max_param):
+def create_and_scatter_sourcebeam_parameters(comm, min_param, max_param, seed=1):
     """ Samples all 3 parameters uniformly with the same width and adds random parameter combinations until
         comm.Get_size() parameters are created. After that, parameter combinations are scattered to ranks. """
+    random.seed(seed)
     num_samples_per_parameter = int(comm.Get_size() ** (1.0 / 3.0) + 0.1)
     sample_width = (max_param - min_param) / (num_samples_per_parameter - 1) if num_samples_per_parameter > 1 else 1e10
     sigma_a_left_range = sigma_s_left_range = sigma_s_right_range = np.arange(min_param, max_param + 1e-13, sample_width)
@@ -81,30 +82,35 @@ def create_coordinatetransformedmn_solver(gridsize, mu, testcase):
 
 def calculate_trajectory_l2_errors(final_modes, grid_size, mu, testcase, final_eval_modes=None):
     solver = create_coordinatetransformedmn_solver(grid_size, mu, testcase)
-    _, snapshots_alpha = solver.solve()
-    # compute projection error
-    projected_snapshots_alpha = final_modes.lincomb(snapshots_alpha.dot(final_modes))
-    differences_alpha = snapshots_alpha - projected_snapshots_alpha
-    abs_error_alpha = np.sum(differences_alpha.l2_norm2())
-    rel_error_alpha = np.sum(differences_alpha.l2_norm() / snapshots_alpha.l2_norm())
-    del differences_alpha
-    # convert to u coordinates
-    projected_snapshots_u = solver.solution_space.make_array([solver.u_from_alpha(vec) for vec in projected_snapshots_alpha._list])
-    del projected_snapshots_alpha
-    snapshots_u = solver.solution_space.make_array([solver.u_from_alpha(vec) for vec in snapshots_alpha._list])
-    differences_u = snapshots_u - projected_snapshots_u
-    del projected_snapshots_u
-    abs_error_u = np.sum(differences_u.l2_norm2())
-    rel_error_u = np.sum(differences_u.l2_norm() / snapshots_u.l2_norm())
-    del differences_u
-    # calculate projection error for nonlinear snapshots
-    if final_eval_modes is not None:
-        evals = snapshots_alpha[1:] - snapshots_alpha[:-1]
+    n = 10
+    dt = solver.initial_dt()
+    abs_error_alpha = rel_error_alpha = abs_error_u = rel_error_u = abs_error_alpha_evals = rel_error_alpha_evals = 0
+    while not solver.finished():
+        _, snapshots_alpha, nonlinear_snapshots_alpha, dt = solver.next_n_steps(n, dt, store_operator_evaluations=(final_eval_modes is not None))
+        projected_snapshots_alpha = final_modes.lincomb(snapshots_alpha.dot(final_modes))
+        # compute projection error
+        differences_alpha = snapshots_alpha - projected_snapshots_alpha
+        abs_error_alpha += np.sum(differences_alpha.l2_norm2())
+        rel_error_alpha += np.sum(differences_alpha.l2_norm() / snapshots_alpha.l2_norm())
+        del differences_alpha
+        # convert to u coordinates
+        projected_snapshots_u = solver.solution_space.make_array([solver.u_from_alpha(vec) for vec in projected_snapshots_alpha._list])
+        del projected_snapshots_alpha
+        snapshots_u = solver.solution_space.make_array([solver.u_from_alpha(vec) for vec in snapshots_alpha._list])
         del snapshots_alpha
-        projected_evals = final_eval_modes.lincomb(evals.dot(final_eval_modes))
-        differences_evals = evals - projected_evals
-        abs_error_alpha_evals = np.sum(differences_evals.l2_norm2())
-        rel_error_alpha_evals = np.sum(differences_evals.l2_norm() / evals.l2_norm())
+        differences_u = snapshots_u - projected_snapshots_u
+        del projected_snapshots_u
+        abs_error_u += np.sum(differences_u.l2_norm2())
+        rel_error_u += np.sum(differences_u.l2_norm() / snapshots_u.l2_norm())
+        del differences_u
+        # calculate projection error for nonlinear snapshots
+        if final_eval_modes is not None:
+            # TODO: remove the scaling? gives large errors due to the very large entries of nonlinear_snapshots_alpha
+            nonlinear_snapshots_alpha.scal(1.0 / nonlinear_snapshots_alpha.l2_norm())
+            projected_evals = final_eval_modes.lincomb(nonlinear_snapshots_alpha.dot(final_eval_modes))
+            differences_evals = nonlinear_snapshots_alpha - projected_evals
+            abs_error_alpha_evals += np.sum(differences_evals.l2_norm2())
+            rel_error_alpha_evals += np.sum(differences_evals.l2_norm() / nonlinear_snapshots_alpha.l2_norm())
     # collect errors and return
     ret = [abs_error_alpha, rel_error_alpha, abs_error_u, rel_error_u]
     if final_eval_modes is not None:
