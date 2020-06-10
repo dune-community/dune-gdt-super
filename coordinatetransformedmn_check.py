@@ -50,6 +50,19 @@ def check_solve(grid_size, testcase, verbose=False):
     times_python, results_python = model._solve(verbose=verbose)
     times_cpp, results_cpp = solver.solve()
     check_solver_results(comm_world, times_python, results_python, times_cpp, results_cpp)
+    if comm_world.rank == 0:
+        print("Checking whether next_n_steps works as expected...", end="", flush=True)
+    # create new solver, we can also call reset() once we add such a method
+    solver = Solver(testcase, prefix, 1000000000, grid_size, False, not verbose, parameters)
+    dt = solver.initial_dt()
+    times_next_n_steps = []
+    results_next_n_steps = solver.solution_space.empty()
+    n = 3
+    while not solver.finished():
+        next_times, next_results, dt = solver.next_n_steps(n, dt)
+        times_next_n_steps += next_times
+        results_next_n_steps.append(next_results)
+    check_solver_results(comm_world, times_next_n_steps, results_next_n_steps, times_cpp, results_cpp)
 
 
 def check_restricted_op(grid_size, testcase, verbose=False):
