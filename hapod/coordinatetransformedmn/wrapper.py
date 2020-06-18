@@ -128,7 +128,7 @@ class CoordinatetransformedmnModel(Model):
         """
         assert not return_output
         assert len(self.initial_data) == 1
-        Alphas = self.initial_data
+        Alphas = self.initial_data.copy()
         solver = self.operator.solver
         NonlinearSnaps = solver.solution_space.empty()
         # alpha = self.initial_data.as_vector(mu)
