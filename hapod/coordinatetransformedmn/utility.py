@@ -5,7 +5,7 @@ from timeit import default_timer as timer
 import numpy as np
 from pymor.vectorarrays.numpy import NumpyVectorSpace
 
-from hapod.boltzmann.utility import create_and_scatter_boltzmann_parameters
+from hapod.boltzmann.utility import create_boltzmann_parameters
 from hapod.coordinatetransformedmn import wrapper
 
 
@@ -44,11 +44,11 @@ def convert_L2_l2(tol, grid_size, testcase, input_is_l2=False):
     return tol / math.sqrt(vol) if not input_is_l2 else tol * math.sqrt(vol)
 
 
-def create_and_scatter_sourcebeam_parameters(comm, min_param, max_param, seed=1):
+def create_sourcebeam_parameters(count, min_param, max_param, seed=1):
     """ Samples all 3 parameters uniformly with the same width and adds random parameter combinations until
-        comm.Get_size() parameters are created. After that, parameter combinations are scattered to ranks. """
+        count parameters are created. After that, parameter combinations are scattered to ranks. """
     random.seed(seed)
-    num_samples_per_parameter = int(comm.Get_size() ** (1.0 / 3.0) + 0.1)
+    num_samples_per_parameter = int(count ** (1.0 / 3.0) + 0.1)
     sample_width = (max_param - min_param) / (num_samples_per_parameter - 1) if num_samples_per_parameter > 1 else 1e10
     sigma_a_left_range = sigma_s_left_range = sigma_s_right_range = np.arange(min_param, max_param + 1e-13, sample_width)
     sigma_a_right_range = sigma_s_middle_range = [0.0]
@@ -59,20 +59,25 @@ def create_and_scatter_sourcebeam_parameters(comm, min_param, max_param, seed=1)
                 for sigma_s_middle in sigma_s_middle_range:
                     for sigma_s_right in sigma_s_right_range:
                         parameters_list.append([sigma_a_left, sigma_a_right, sigma_s_left, sigma_s_middle, sigma_s_right])
-    while len(parameters_list) < comm.Get_size():
+    while len(parameters_list) < count:
         parameters_list.append(
             [random.uniform(min_param, max_param), 0.0, random.uniform(min_param, max_param), 0.0, random.uniform(min_param, max_param)]
         )
-    return comm.scatter(parameters_list, root=0)
+    return parameters_list
 
 
-def create_and_scatter_parameters(testcase, comm, min_param=1.0, max_param=8.0):
+def create_parameters(testcase, count, min_param=1.0, max_param=8.0, seed=1):
     if "Checkerboard" in testcase:
-        return create_and_scatter_boltzmann_parameters(comm, min_param, max_param)
+        return create_boltzmann_parameters(count, min_param, max_param, seed)
     elif "SourceBeam" in testcase:
-        return create_and_scatter_sourcebeam_parameters(comm, min_param, max_param)
+        return create_sourcebeam_parameters(count, min_param, max_param, seed)
     else:
         raise NotImplementedError("Unknown testcase!")
+
+
+def create_and_scatter_parameters(testcase, comm, min_param=1.0, max_param=8.0, seed=1):
+    parameters_list = create_parameters(testcase, comm.Get_size(), min_param, max_param, seed)
+    return comm.scatter(parameters_list, root=0)
 
 
 def create_coordinatetransformedmn_solver(gridsize, mu, testcase):

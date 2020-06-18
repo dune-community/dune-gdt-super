@@ -7,11 +7,12 @@ from pymor.vectorarrays.numpy import NumpyVectorSpace
 
 from hapod.boltzmann import wrapper
 
-def create_and_scatter_boltzmann_parameters(comm, min_param=0., max_param=8., seed=1):
+
+def create_boltzmann_parameters(count, min_param=0., max_param=8., seed=1):
     ''' Samples all 3 parameters uniformly with the same width and adds random parameter combinations until
-        comm.Get_size() parameters are created. After that, parameter combinations are scattered to ranks. '''
+        count parameters are created. After that, parameter combinations are scattered to ranks. '''
     random.seed(seed)
-    num_samples_per_parameter = int(comm.Get_size()**(1. / 3.) + 0.1)
+    num_samples_per_parameter = int(count**(1. / 3.) + 0.1)
     sample_width = (max_param - min_param) / (num_samples_per_parameter - 1) if num_samples_per_parameter > 1 else 1e10
     sigma_s_scattering_range = sigma_s_absorbing_range = sigma_a_absorbing_range = np.arange(
         min_param, max_param + 1e-13, sample_width)
@@ -23,12 +24,19 @@ def create_and_scatter_boltzmann_parameters(comm, min_param=0., max_param=8., se
                 for sigma_a_absorbing in sigma_a_absorbing_range:
                     parameters_list.append(
                         [sigma_s_scattering, sigma_s_absorbing, sigma_a_scattering, sigma_a_absorbing])
-    while len(parameters_list) < comm.Get_size():
+    while len(parameters_list) < count:
         parameters_list.append([
             random.uniform(min_param, max_param),
             random.uniform(min_param, max_param), 0.,
             random.uniform(min_param, max_param)
         ])
+    return parameters_list
+
+
+def create_and_scatter_boltzmann_parameters(comm, min_param=0., max_param=8., seed=1):
+    ''' Samples all 3 parameters uniformly with the same width and adds random parameter combinations until
+        comm.Get_size() parameters are created. After that, parameter combinations are scattered to ranks. '''
+    parameters_list = create_boltzmann_parameters(comm.Get_size(), min_param, max_param, seed)
     return comm.scatter(parameters_list, root=0)
 
 
