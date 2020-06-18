@@ -458,7 +458,7 @@ if __name__ == "__main__":
         stokes_rel_errors_new_mus = np.concatenate(stokes_rel_errors_new_mus)
         with open(filename, "a") as ff:
             ff.write(
-                ("{} " * 21 + "\n").format(
+                ("{} " * 12 + "{:.2e} " * 9 + "\n").format(
                     pfield_atol,
                     ofield_atol,
                     stokes_atol,
@@ -484,7 +484,7 @@ if __name__ == "__main__":
             )
             ff.write(f"\nErrors for trained mus:\n {pfield_rel_errors}\n {ofield_rel_errors}\n {stokes_rel_errors}\n")
             ff.write(f"\nErrors for new mus:\n {pfield_rel_errors_new_mus}\n {ofield_rel_errors_new_mus}\n {stokes_rel_errors_new_mus}\n")
-            ff.write(f"\nTimings\n {mean_fom_time} vs. {mean_rom_time}, speedup {mean_fom_time/mean_rom_time}")
+            ff.write(f"\nTimings\n {mean_fom_time} vs. {mean_rom_time}, speedup {mean_fom_time/mean_rom_time}\n")
         print(
             "****", len(pfield_basis), len(ofield_basis), len(stokes_basis), len(pfield_deim_basis), len(ofield_deim_basis), len(stokes_deim_basis),
         )
