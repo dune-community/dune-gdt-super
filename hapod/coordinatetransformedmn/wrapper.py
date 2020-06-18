@@ -109,7 +109,8 @@ class Solver(ParametricObject):
 
 
 class CoordinatetransformedmnModel(Model):
-    def __init__(self, operator, initial_data, t_end, operators=None, products=None, estimator=None, visualizer=None, cache_region=None, name=None):
+    def __init__(self, operator, initial_data, t_end, initial_dt, atol=1e-3, rtol=1e-3, products=None, estimator=None, visualizer=None,
+                 cache_region=None, name=None):
         super().__init__(products=products, estimator=estimator, visualizer=visualizer, cache_region=cache_region, name=name)
         self.__auto_init(locals())
         # self.solution_space = self.initial_data.range
@@ -119,6 +120,7 @@ class CoordinatetransformedmnModel(Model):
         self.rk_b2 = [7 / 24, 1 / 4, 1 / 3, 1 / 8]
         self.rk_c = None  # not explicitly time-dependent atm
         self.rk_q = 2
+        self.solution_space = operator.source
 
     def _solve(self, mu=None, return_output=False, verbose=False):
         """
@@ -129,18 +131,17 @@ class CoordinatetransformedmnModel(Model):
         assert not return_output
         assert len(self.initial_data) == 1
         Alphas = self.initial_data.copy()
-        solver = self.operator.solver
-        NonlinearSnaps = solver.solution_space.empty()
+        NonlinearSnaps = self.solution_space.empty()
         # alpha = self.initial_data.as_vector(mu)
         alpha_n = Alphas.copy()
         t = 0
         times = [t]
-        dt = solver.initial_dt()
-        t_end = solver.t_end
+        dt = self.initial_dt
+        t_end = self.t_end
         first_same_as_last = True
         last_stage_of_previous_step = None
         num_stages = len(self.rk_b1)
-        atol = rtol = 1e-3 if solver.dimDomain == 1 else 1e-2
+        atol, rtol = self.atol, self.rtol
         scale_factor_min = 0.2
         scale_factor_max = 5
         stages = []
