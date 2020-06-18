@@ -8,6 +8,7 @@ from hapod.coordinatetransformedmn.utility import (
     calculate_mean_errors,
     create_coordinatetransformedmn_solver,
 )
+from hapod.coordinatetransformedmn.wrapper import CoordinateTransformedmnOperator, CoordinatetransformedmnModel
 
 
 def coordinatetransformedmn_pod(mu_count, grid_size, l2_tol, testcase, logfile=None):
@@ -18,9 +19,14 @@ def coordinatetransformedmn_pod(mu_count, grid_size, l2_tol, testcase, logfile=N
     mus = create_parameters(testcase, mu_count, min_param=min_param, max_param=max_param)
 
     all_snapshots = None
+    model = None
 
     for mu in mus:
         solver = create_coordinatetransformedmn_solver(grid_size, mu, testcase)
+        operator = CoordinateTransformedmnOperator(solver)
+        if True or model is None:
+            model = CoordinatetransformedmnModel(operator, solver.get_initial_values(), solver.t_end,
+                                                 solver.initial_dt())
 
         if all_snapshots is None:
             all_snapshots = solver.solution_space.empty()
@@ -28,6 +34,8 @@ def coordinatetransformedmn_pod(mu_count, grid_size, l2_tol, testcase, logfile=N
 
         # calculate problem trajectory
         times, snapshots, nonlinear_snapshots = solver.solve(store_operator_evaluations=True)
+        _, U, _ = model.solve(mu)
+        logfile.write(f'Maximum error between solver.solve and model.solve: {np.max(((snapshots - U).norm()))}\n')
         num_snapshots = len(snapshots)
         assert len(times) == num_snapshots
 
@@ -51,7 +59,7 @@ if __name__ == "__main__":
     filename = f"{testcase}_POD_gridsize_{grid_size}_tol_{L2_tol}.log"
     logfile = open(filename, "a")
     basis, _, all_snapshots, mus = coordinatetransformedmn_pod(
-        1, grid_size, convert_L2_l2(L2_tol, grid_size, testcase), testcase, logfile=logfile
+        10, grid_size, convert_L2_l2(L2_tol, grid_size, testcase), testcase, logfile=logfile
     )
     err = convert_L2_l2(np.linalg.norm((all_snapshots - basis.lincomb(all_snapshots.dot(basis))).norm()) / np.sqrt(len(all_snapshots)),
                         grid_size, testcase, input_is_l2=True)
