@@ -29,6 +29,7 @@ import cProfile
 
 
 class BinaryTreeHapodResults:
+
     def __init__(self, tree_depth, epsilon_ast, omega):
         self.params = HapodParameters(tree_depth, epsilon_ast=epsilon_ast, omega=omega)
         self.modes = None
@@ -241,25 +242,28 @@ if __name__ == "__main__":
     ##### read command line arguments, additional settings #####
     argc = len(sys.argv)
     testcase = "single_cell" if argc < 2 else sys.argv[1]
-    t_end = 1e-2 if argc < 3 else float(sys.argv[2])
-    dt = 1e-3 if argc < 4 else float(sys.argv[3])
-    grid_size_x = 20 if argc < 5 else int(sys.argv[4])
-    grid_size_y = 20 if argc < 6 else int(sys.argv[5])
+    t_end = 1e-1 if argc < 3 else float(sys.argv[2])
+    dt = 1e-2 if argc < 4 else float(sys.argv[3])
+    grid_size_x = 60 if argc < 5 else int(sys.argv[4])
+    grid_size_y = 60 if argc < 6 else int(sys.argv[5])
     visualize = True if argc < 7 else bool(sys.argv[6])
     subsampling = True if argc < 8 else bool(sys.argv[7])
-    pol_order = 2
+    pol_order = 1
     chunk_size = 10
     pfield_atol = 1e-3
     ofield_atol = 1e-3
     stokes_atol = 1e-3
-    pfield_deim_atol = 1e-8
-    ofield_deim_atol = 1e-8
-    stokes_deim_atol = 1e-8
+    pfield_deim_atol = 1e-10
+    ofield_deim_atol = 1e-10
+    stokes_deim_atol = 1e-10
     visualize_step = 50
     include_newton_stages = True
     pod_pfield = True
     pod_ofield = True
     pod_stokes = True
+    least_squares_pfield = False
+    least_squares_ofield = True
+    least_squares_stokes = True
     deim_pfield = True
     deim_ofield = True
     deim_stokes = True
@@ -300,7 +304,6 @@ if __name__ == "__main__":
         indices.append(index + 3)
 
     ####### Create training parameters ######
-    # One parameter per process if we are MPI parallel, else 4 parameters
     train_params_per_rank = 1 if mpi.size_world > 1 else 1
     test_params_per_rank = 1 if mpi.size_world > 1 else 1
     num_train_params = train_params_per_rank * mpi.size_world
@@ -310,7 +313,8 @@ if __name__ == "__main__":
     rf = np.sqrt(rf)
     # Compute factors such that mu_i/mu_{i+1} = const and mu_0 = default_value/sqrt(rf), mu_last = default_value*sqrt(rf)
     # factors = np.array([1.])
-    factors = np.array([(rf ** 2) ** (i / (num_train_params - 1)) / rf for i in range(num_train_params)] if num_train_params > 1 else [1.])
+    factors = np.array([(rf**2)**(i / (num_train_params - 1)) / rf
+                        for i in range(num_train_params)] if num_train_params > 1 else [1.])
     # Actually create training parameters.
     # Currently, only tested_param varies, the other two entries are set to the default value
     if tested_param == "Ca":
@@ -333,15 +337,16 @@ if __name__ == "__main__":
 
     ###### Start writing output file #########
 
-    filename = "rom_results_grid{}x{}_tend{}_{}_param{}_pfield_{}_ofield_{}_stokes_{}.txt".format(
+    filename = "rom_results_grid{}x{}_tend{}_dt{}_{}_param{}_pfield_{}_ofield_{}_stokes_{}.txt".format(
         grid_size_x,
         grid_size_y,
         t_end,
+        dt,
         "snapsandstages" if include_newton_stages else "snaps",
         tested_param,
-        f"pod{pfield_atol}" if pod_pfield else "none",
-        f"pod{ofield_atol}" if pod_ofield else "none",
-        f"pod{stokes_atol}" if pod_stokes else "none",
+        (f"pod{pfield_atol}" if pod_pfield else "none") + ("LS" if least_squares_pfield else ""),
+        (f"pod{ofield_atol}" if pod_ofield else "none") + ("LS" if least_squares_ofield else ""),
+        (f"pod{stokes_atol}" if pod_stokes else "none") + ("LS" if least_squares_stokes else ""),
     )
 
     if mpi.rank_world == 0:
@@ -359,9 +364,9 @@ if __name__ == "__main__":
     new_mus = np.reshape(np.array(new_mus), (mpi.size_world, test_params_per_rank)).tolist()
     mus = mpi.comm_world.scatter(mus, root=0)
     new_mus = mpi.comm_world.scatter(new_mus, root=0)
-    solver = CellModelSolver(testcase, t_end, grid_size_x, grid_size_y, pol_order, mus[0])
+    solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])
     num_cells = solver.num_cells
-    m = DuneCellModel(solver, dt, t_end)
+    m = DuneCellModel(solver)
     Us, Us_res, results = binary_tree_hapod(
         m,
         mus,
@@ -423,9 +428,9 @@ if __name__ == "__main__":
         pfield_basis,
         ofield_basis,
         stokes_basis,
-        least_squares_pfield=True if pod_pfield else False,
-        least_squares_ofield=True if pod_ofield else False,
-        least_squares_stokes=True if pod_stokes else False,
+        least_squares_pfield=least_squares_pfield,
+        least_squares_ofield=least_squares_ofield,
+        least_squares_stokes=least_squares_stokes,
         pfield_deim_basis=pfield_deim_basis,
         ofield_deim_basis=ofield_deim_basis,
         stokes_deim_basis=stokes_deim_basis,
@@ -488,20 +493,20 @@ if __name__ == "__main__":
         pfield_rel_errors_new_mus = np.concatenate(pfield_rel_errors_new_mus)
         ofield_rel_errors_new_mus = np.concatenate(ofield_rel_errors_new_mus)
         stokes_rel_errors_new_mus = np.concatenate(stokes_rel_errors_new_mus)
-        # with open(filename, 'a') as ff:
-        #     ff.write("{} {} {} {} {} {} {} {} {} {} {} {} {} {} {}\n".format(
-        #         pfield_atol, ofield_atol, stokes_atol,
-        #         len(pfield_basis), len(ofield_basis), len(stokes_basis),
-        #         mean([err for err in pfield_rel_errors if not np.isnan(err)]),
-        #         mean([err for err in ofield_rel_errors if not np.isnan(err)]),
-        #         mean([err for err in stokes_rel_errors if not np.isnan(err)]),
-        #         # mean([err for err in pfield_rel_errors_new_mus if not np.isnan(err)]),
-        #         # mean([err for err in ofield_rel_errors_new_mus if not np.isnan(err)]),
-        #         # mean([err for err in stokes_rel_errors_new_mus if not np.isnan(err)]),
-        #         mean([norm for norm in pfield_norms if not np.isnan(norm)]),
-        #         mean([norm for norm in ofield_norms if not np.isnan(norm)]),
-        #         mean([norm for norm in stokes_norms if not np.isnan(norm)]),
-        #         ))
+        with open(filename, 'a') as ff:
+            ff.write("{} {} {} {} {} {} {} {} {} {} {} {} {} {} {}\n".format(
+                pfield_atol, ofield_atol, stokes_atol,
+                len(pfield_basis), len(ofield_basis), len(stokes_basis),
+                mean([err for err in pfield_rel_errors if not np.isnan(err)]),
+                mean([err for err in ofield_rel_errors if not np.isnan(err)]),
+                mean([err for err in stokes_rel_errors if not np.isnan(err)]),
+                # mean([err for err in pfield_rel_errors_new_mus if not np.isnan(err)]),
+                # mean([err for err in ofield_rel_errors_new_mus if not np.isnan(err)]),
+                # mean([err for err in stokes_rel_errors_new_mus if not np.isnan(err)]),
+                mean([norm for norm in pfield_norms if not np.isnan(norm)]),
+                mean([norm for norm in ofield_norms if not np.isnan(norm)]),
+                mean([norm for norm in stokes_norms if not np.isnan(norm)]),
+                ))
         print(
             "****",
             len(pfield_basis),
