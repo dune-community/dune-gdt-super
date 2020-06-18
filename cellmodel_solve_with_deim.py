@@ -29,7 +29,6 @@ import cProfile
 
 
 class BinaryTreeHapodResults:
-
     def __init__(self, tree_depth, epsilon_ast, omega):
         self.params = HapodParameters(tree_depth, epsilon_ast=epsilon_ast, omega=omega)
         self.modes = None
@@ -46,13 +45,7 @@ class BinaryTreeHapodResults:
 # that have been processed (on all ranks)
 def pods_on_processor_cores_in_binary_tree_hapod(r, vecs):
     r.max_vectors_before_pod = max(r.max_vectors_before_pod, len(vecs))
-    vecs, svals = local_pod(
-        [vecs],
-        len(vecs),
-        r.params,
-        incremental_gramian=False,
-        orthonormalize=r.orthonormalize,
-    )
+    vecs, svals = local_pod([vecs], len(vecs), r.params, incremental_gramian=False, orthonormalize=r.orthonormalize,)
     r.max_local_modes = max(r.max_local_modes, len(vecs))
     vecs.scal(svals)
     r.gathered_modes, _, r.num_snaps, _ = mpi.comm_proc.gather_on_rank_0(vecs, len(vecs), num_modes_equal=False)
@@ -63,12 +56,7 @@ def pod_on_node_in_binary_tree_hapod(r, chunk_index, num_chunks, mpi):
     r.total_num_snapshots += r.num_snaps
     if chunk_index == 0:
         r.max_vectors_before_pod = max(r.max_vectors_before_pod, len(r.gathered_modes))
-        r.modes, r.svals = local_pod(
-            [r.gathered_modes],
-            r.num_snaps,
-            r.params,
-            orthonormalize=r.orthonormalize,
-        )
+        r.modes, r.svals = local_pod([r.gathered_modes], r.num_snaps, r.params, orthonormalize=r.orthonormalize,)
     else:
         r.max_vectors_before_pod = max(r.max_vectors_before_pod, len(r.modes) + len(r.gathered_modes))
         r.modes, r.svals = local_pod(
@@ -83,13 +71,7 @@ def pod_on_node_in_binary_tree_hapod(r, chunk_index, num_chunks, mpi):
 
 
 def final_hapod_in_binary_tree_hapod(r, mpi):
-    (
-        r.modes,
-        r.svals,
-        r.total_num_snapshots,
-        max_num_input_vecs,
-        max_num_local_modes,
-    ) = binary_tree_hapod_over_ranks(
+    (r.modes, r.svals, r.total_num_snapshots, max_num_input_vecs, max_num_local_modes,) = binary_tree_hapod_over_ranks(
         mpi.comm_rank_0_group,
         r.modes,
         r.total_num_snapshots,
@@ -104,18 +86,18 @@ def final_hapod_in_binary_tree_hapod(r, mpi):
 
 
 def binary_tree_hapod(
-        cellmodel,
-        mus,
-        chunk_size,
-        mpi,
-        tolerances,
-        indices,
-        include_newton_stages=False,
-        omega=0.95,
-        return_snapshots=False,
-        return_newton_residuals=False,
-        incremental_gramian=True,
-        orthonormalize=True,
+    cellmodel,
+    mus,
+    chunk_size,
+    mpi,
+    tolerances,
+    indices,
+    include_newton_stages=False,
+    omega=0.95,
+    return_snapshots=False,
+    return_newton_residuals=False,
+    incremental_gramian=True,
+    orthonormalize=True,
 ):
 
     assert isinstance(cellmodel, CellModel)
@@ -162,13 +144,7 @@ def binary_tree_hapod(
                     new_vecs[k].append(current_values[p]._blocks[k])
             # ... and do one timestep less to ensure that chunk has size chunk_size
             for time_index in range(chunk_size - 1 if chunk_index == 0 else chunk_size):
-                retval = cellmodel.next_time_step(
-                    current_values[p],
-                    time,
-                    mu=mu,
-                    return_stages=include_newton_stages,
-                    return_residuals=True,
-                )
+                retval = cellmodel.next_time_step(current_values[p], time, mu=mu, return_stages=include_newton_stages, return_residuals=True,)
                 current_values[p], time, *retval = retval
                 if include_newton_stages:
                     timestep_stages, *retval = retval
@@ -221,14 +197,10 @@ def binary_tree_hapod(
         for k in indices:
             r = results[k]
             print(f"Hapod for index {k}")
-            print(
-                f"The HAPOD resulted in {len(r.modes)} final modes taken from a total of {r.total_num_snapshots} snapshots!"
-            )
+            print(f"The HAPOD resulted in {len(r.modes)} final modes taken from a total of {r.total_num_snapshots} snapshots!")
             print(f"The maximal number of local modes was {r.max_local_modes}")
             print(f"The maximal number of input vectors to a local POD was: {r.max_vectors_before_pod}")
-        print(
-            f"The maximum amount of memory used on rank 0 was: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1000.0 ** 2} GB"
-        )
+        print(f"The maximum amount of memory used on rank 0 was: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1000.0 ** 2} GB")
     mpi.comm_world.Barrier()
     if not return_snapshots:
         U = None
@@ -246,8 +218,11 @@ if __name__ == "__main__":
     dt = 1e-2 if argc < 4 else float(sys.argv[3])
     grid_size_x = 60 if argc < 5 else int(sys.argv[4])
     grid_size_y = 60 if argc < 6 else int(sys.argv[5])
-    visualize = True if argc < 7 else bool(sys.argv[6])
-    subsampling = True if argc < 8 else bool(sys.argv[7])
+    visualize = True if argc < 7 else (False if sys.argv[6] == "False" else True)
+    subsampling = True if argc < 8 else (False if sys.argv[7] == "False" else True)
+    least_squares_pfield = True if argc < 9 else (False if sys.argv[8] == "False" else True)
+    least_squares_ofield = True if argc < 10 else (False if sys.argv[9] == "False" else True)
+    least_squares_stokes = True if argc < 11 else (False if sys.argv[10] == "False" else True)
     pol_order = 1
     chunk_size = 10
     pfield_atol = 1e-3
@@ -261,9 +236,6 @@ if __name__ == "__main__":
     pod_pfield = True
     pod_ofield = True
     pod_stokes = True
-    least_squares_pfield = False
-    least_squares_ofield = True
-    least_squares_stokes = True
     deim_pfield = True
     deim_ofield = True
     deim_stokes = True
@@ -313,8 +285,7 @@ if __name__ == "__main__":
     rf = np.sqrt(rf)
     # Compute factors such that mu_i/mu_{i+1} = const and mu_0 = default_value/sqrt(rf), mu_last = default_value*sqrt(rf)
     # factors = np.array([1.])
-    factors = np.array([(rf**2)**(i / (num_train_params - 1)) / rf
-                        for i in range(num_train_params)] if num_train_params > 1 else [1.])
+    factors = np.array([(rf ** 2) ** (i / (num_train_params - 1)) / rf for i in range(num_train_params)] if num_train_params > 1 else [1.0])
     # Actually create training parameters.
     # Currently, only tested_param varies, the other two entries are set to the default value
     if tested_param == "Ca":
@@ -353,9 +324,10 @@ if __name__ == "__main__":
         with open(filename, "w") as ff:
             ff.write(
                 f"{filename}\nTrained with {len(mus)} Parameters for {tested_param}: {[param[tested_param] for param in mus]}\n"
-                f"Tested with {len(new_mus)} new Parameters: {[param[tested_param] for param in new_mus]}\n")
+                f"Tested with {len(new_mus)} new Parameters: {[param[tested_param] for param in new_mus]}\n"
+            )
             ff.write(
-                "tol_pf tol_of tol_st n_pf n_of n_st err_pf err_of err_st err_pf_new err_of_new err_st_new norm_pf norm_of norm_st\n"
+                "tol_pf tol_of tol_st tol_deim_pf tol_deim_of tol_deim_st n_pf n_of n_st n_deim_pf n_deim_of n_deim_st mean_err_pf mean_err_of mean_err_st mean_err_pf_new mean_err_of_new mean_err_st_new mean_norm_pf mean_norm_of mean_norm_st\n"
             )
 
     ####### Scatter parameters to MPI ranks #######
@@ -368,16 +340,7 @@ if __name__ == "__main__":
     num_cells = solver.num_cells
     m = DuneCellModel(solver)
     Us, Us_res, results = binary_tree_hapod(
-        m,
-        mus,
-        chunk_size,
-        mpi,
-        hapod_tols,
-        indices,
-        include_newton_stages,
-        omega=0.95,
-        return_snapshots=True,
-        return_newton_residuals=True,
+        m, mus, chunk_size, mpi, hapod_tols, indices, include_newton_stages, omega=0.95, return_snapshots=True, return_newton_residuals=True,
     )
     U = Us[0]
     U_res = Us_res[0]
@@ -493,28 +456,37 @@ if __name__ == "__main__":
         pfield_rel_errors_new_mus = np.concatenate(pfield_rel_errors_new_mus)
         ofield_rel_errors_new_mus = np.concatenate(ofield_rel_errors_new_mus)
         stokes_rel_errors_new_mus = np.concatenate(stokes_rel_errors_new_mus)
-        with open(filename, 'a') as ff:
-            ff.write("{} {} {} {} {} {} {} {} {} {} {} {} {} {} {}\n".format(
-                pfield_atol, ofield_atol, stokes_atol,
-                len(pfield_basis), len(ofield_basis), len(stokes_basis),
-                mean([err for err in pfield_rel_errors if not np.isnan(err)]),
-                mean([err for err in ofield_rel_errors if not np.isnan(err)]),
-                mean([err for err in stokes_rel_errors if not np.isnan(err)]),
-                # mean([err for err in pfield_rel_errors_new_mus if not np.isnan(err)]),
-                # mean([err for err in ofield_rel_errors_new_mus if not np.isnan(err)]),
-                # mean([err for err in stokes_rel_errors_new_mus if not np.isnan(err)]),
-                mean([norm for norm in pfield_norms if not np.isnan(norm)]),
-                mean([norm for norm in ofield_norms if not np.isnan(norm)]),
-                mean([norm for norm in stokes_norms if not np.isnan(norm)]),
-                ))
+        with open(filename, "a") as ff:
+            ff.write(
+                ("{} " * 21 + "\n").format(
+                    pfield_atol,
+                    ofield_atol,
+                    stokes_atol,
+                    pfield_deim_atol,
+                    ofield_deim_atol,
+                    stokes_deim_atol,
+                    len(pfield_basis),
+                    len(ofield_basis),
+                    len(stokes_basis),
+                    len(pfield_deim_basis),
+                    len(ofield_deim_basis),
+                    len(stokes_deim_basis),
+                    mean([err for err in pfield_rel_errors if not np.isnan(err)]),
+                    mean([err for err in ofield_rel_errors if not np.isnan(err)]),
+                    mean([err for err in stokes_rel_errors if not np.isnan(err)]),
+                    mean([err for err in pfield_rel_errors_new_mus if not np.isnan(err)]),
+                    mean([err for err in ofield_rel_errors_new_mus if not np.isnan(err)]),
+                    mean([err for err in stokes_rel_errors_new_mus if not np.isnan(err)]),
+                    mean([norm for norm in pfield_norms if not np.isnan(norm)]),
+                    mean([norm for norm in ofield_norms if not np.isnan(norm)]),
+                    mean([norm for norm in stokes_norms if not np.isnan(norm)]),
+                )
+            )
+            ff.write(f"\nErrors for trained mus:\n {pfield_rel_errors}\n {ofield_rel_errors}\n {stokes_rel_errors}\n")
+            ff.write(f"\nErrors for new mus:\n {pfield_rel_errors_new_mus}\n {ofield_rel_errors_new_mus}\n {stokes_rel_errors_new_mus}\n")
+            ff.write(f"\nTimings\n {mean_fom_time} vs. {mean_rom_time}, speedup {mean_fom_time/mean_rom_time}")
         print(
-            "****",
-            len(pfield_basis),
-            len(ofield_basis),
-            len(stokes_basis),
-            len(pfield_deim_basis),
-            len(ofield_deim_basis),
-            len(stokes_deim_basis),
+            "****", len(pfield_basis), len(ofield_basis), len(stokes_basis), len(pfield_deim_basis), len(ofield_deim_basis), len(stokes_deim_basis),
         )
         print("Trained mus")
         print(pfield_rel_errors)
