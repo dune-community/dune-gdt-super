@@ -92,6 +92,8 @@ class Solver(ParametricObject):
         return self.impl.set_current_time(time)
 
     def set_parameters(self, mu):
+        if type(mu) == np.ndarray:
+            mu = mu.tolist()
         if mu != self._last_mu:
             self._last_mu = mu
             self.impl.set_parameters(mu)
@@ -99,7 +101,6 @@ class Solver(ParametricObject):
     def solve(self, store_operator_evaluations = False, do_not_save=False):
         times, snapshots, nonlinear_snapshots = self.impl.solve(store_operator_evaluations, do_not_save)
         return times, self.solution_space.make_array(snapshots), self.solution_space.make_array(nonlinear_snapshots)
-
 
     def u_from_alpha(self, alpha_vec):
         return DuneXtLaVector(self.impl.u_from_alpha(alpha_vec.impl))
@@ -121,6 +122,7 @@ class CoordinatetransformedmnModel(Model):
         self.rk_c = None  # not explicitly time-dependent atm
         self.rk_q = 2
         self.solution_space = operator.source
+        self.solver = operator.solver
 
     def _solve(self, mu=None, return_output=False, verbose=False):
         """
@@ -128,6 +130,8 @@ class CoordinatetransformedmnModel(Model):
 
         Copied and adapted from C++ (dune/gdt/tools/timestepper/adaptive-rungekutta-kinetic.hh)
         """
+        if mu is not None:
+            self.solver.set_parameters(mu['s'])
         assert not return_output
         assert len(self.initial_data) == 1
         Alphas = self.initial_data.copy()

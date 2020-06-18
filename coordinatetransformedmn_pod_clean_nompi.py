@@ -24,7 +24,7 @@ def coordinatetransformedmn_pod(mu_count, grid_size, l2_tol, testcase, logfile=N
     for mu in mus:
         solver = create_coordinatetransformedmn_solver(grid_size, mu, testcase)
         operator = CoordinateTransformedmnOperator(solver)
-        if True or model is None:
+        if model is None:
             model = CoordinatetransformedmnModel(operator, solver.get_initial_values(), solver.t_end,
                                                  solver.initial_dt())
 
