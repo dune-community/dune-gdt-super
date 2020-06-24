@@ -216,15 +216,9 @@ class CellModelSolver(ParametricObject):
     def apply_inverse_stokes_jacobian(self, V):
         return self.stokes_solution_space.make_array([self.impl.apply_inverse_stokes_jacobian(vec.impl) for vec in V._list])
 
-    def numpy_vecarray_to_xt_listvecarray(self, U):
-        assert isinstance(U, NumpyVectorArray)
-        U_xt = []
-        for i in range(len(U)):
-            vec_i = DuneXtLaVector(CommonDenseVector(U._data.shape[1], 0.0))
-            for j, val in enumerate(U._data[i]):
-                vec_i[j] = val
-            U_xt.append(vec_i.copy())
-        return ListVectorArray(U_xt, DuneXtLaListVectorSpace(U._data.shape[1]))
+    def numpy_vecarray_to_xt_listvecarray(self, U, copy=False):
+        ret = DuneXtLaListVectorSpace.from_memory(U._data)
+        return ret.copy() if copy else ret
 
     def apply_pfield_jacobian(self, U, cell_index, restricted=False):
         if restricted:

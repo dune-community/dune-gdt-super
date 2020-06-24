@@ -71,8 +71,8 @@ class DuneXtLaVector(Vector):
         return self.impl.sup_norm()
 
     def dofs(self, dof_indices):
-        assert 0 <= np.min(dof_indices)
-        assert np.max(dof_indices) < self.dim
+        # assert 0 <= np.min(dof_indices)
+        # assert np.max(dof_indices) < self.dim
         return np.array([self.impl[int(i)] for i in dof_indices])
 
     def amax(self):
