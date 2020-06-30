@@ -14,6 +14,7 @@ from pymor.parameters.functionals import ExpressionParameterFunctional
 from pymor.reductors.basic import ProjectionBasedReductor
 from pymor.vectorarrays.block import BlockVectorSpace
 from pymor.vectorarrays.numpy import NumpyVectorArray, NumpyVectorSpace
+from pymor.vectorarrays.interface import VectorArray
 
 from gdt.vectors import CommonDenseVector
 import gdt.coordinatetransformedmn
@@ -112,6 +113,8 @@ class Solver(ParametricObject):
 class CoordinatetransformedmnModel(Model):
     def __init__(self, operator, initial_data, t_end, initial_dt, atol=1e-3, rtol=1e-3, products=None, estimator=None, visualizer=None,
                  cache_region=None, name=None):
+        if isinstance(initial_data, VectorArray):
+            initial_data = VectorOperator(initial_data)
         super().__init__(products=products, estimator=estimator, visualizer=visualizer, cache_region=cache_region, name=name)
         self.__auto_init(locals())
         # self.solution_space = self.initial_data.range
@@ -133,8 +136,7 @@ class CoordinatetransformedmnModel(Model):
         if mu is not None:
             self.solver.set_parameters(mu['s'])
         assert not return_output
-        assert len(self.initial_data) == 1
-        Alphas = self.initial_data.copy()
+        Alphas = self.initial_data.as_vector()
         NonlinearSnaps = self.solution_space.empty()
         # alpha = self.initial_data.as_vector(mu)
         alpha_n = Alphas.copy()
