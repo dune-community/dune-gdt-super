@@ -125,7 +125,6 @@ class CoordinatetransformedmnModel(Model):
         self.rk_c = None  # not explicitly time-dependent atm
         self.rk_q = 2
         self.solution_space = operator.source
-        self.solver = operator.solver
 
     def _solve(self, mu=None, return_output=False, verbose=False):
         """
@@ -133,8 +132,6 @@ class CoordinatetransformedmnModel(Model):
 
         Copied and adapted from C++ (dune/gdt/tools/timestepper/adaptive-rungekutta-kinetic.hh)
         """
-        if mu is not None:
-            self.solver.set_parameters(mu['s'])
         assert not return_output
         Alphas = self.initial_data.as_vector()
         NonlinearSnaps = self.solution_space.empty()
@@ -239,6 +236,7 @@ class RestrictedCoordinateTransformedmnOperator(RestrictedDuneOperator):
         super(RestrictedCoordinateTransformedmnOperator, self).__init__(solver, self.solver.impl.len_source_dofs(), len(dofs))
 
     def apply(self, Alpha, mu=None):
+        self.solver.set_parameters(mu['s'])
         assert Alpha in self.source
         Alpha = DuneXtLaListVectorSpace.from_numpy(Alpha.to_numpy())
         ret = [DuneXtLaVector(self.solver.impl.apply_restricted_operator(alpha.impl)).to_numpy(True) for alpha in Alpha._list]
@@ -248,6 +246,7 @@ class RestrictedCoordinateTransformedmnOperator(RestrictedDuneOperator):
 class CoordinateTransformedmnOperator(DuneOperator):
     def apply(self, Alpha, mu=None):
         assert Alpha in self.source
+        self.solver.set_parameters(mu['s'])
         ret = [self.solver.impl.apply_operator(alpha.impl) for alpha in Alpha._list]
         # if an Exception is thrown in C++, apply_operator returns a vector of length 0
         for vec in ret:
