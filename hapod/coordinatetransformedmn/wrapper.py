@@ -166,8 +166,10 @@ class CoordinatetransformedmnModel(Model):
                     alpha_tmp = alpha_n.copy()
                     for j in range(0, i):
                         alpha_tmp.axpy(dt * self.rk_A[i][j], stages[j])
-                    stages[i] = self.operator.apply(alpha_tmp, mu=mu)
-                    if stages[i] is None:
+                    try:
+                        stages[i] = self.operator.apply(alpha_tmp, mu=mu)
+                    except OperatorApplyError:
+                        stages[i] = None
                         mixed_error = 1e10
                         skip_error_computation = True
                         time_step_scale_factor = 0.5
@@ -179,8 +181,10 @@ class CoordinatetransformedmnModel(Model):
                     for i in range(0, num_stages - 1):
                         alpha_np1.axpy(dt * self.rk_b1[i], stages[i])
                     # calculate last stage
-                    stages[num_stages - 1] = self.operator.apply(alpha_np1, mu=mu)
-                    if stages[num_stages - 1] is None:
+                    try:
+                        stages[num_stages - 1] = self.operator.apply(alpha_np1, mu=mu)
+                    except OperatorApplyError:
+                        stages[num_stages - 1] = None
                         mixed_error = 1e10
                         time_step_scale_factor = 0.5
                         continue
@@ -198,7 +202,9 @@ class CoordinatetransformedmnModel(Model):
                         # calculate error
                         # TODO: Most operations should be componentwise, fix
                         mixed_error = 0
-                        for a, b in zip(alpha_tmp._list[0], alpha_np1._list[0]):
+                        # for a, b in zip(alpha_tmp._list[0], alpha_np1._list[0]):
+                        #     mixed_error = max(mixed_error, abs(a - b) / (atol + max(abs(a), abs(b)) * rtol))
+                        for a, b in zip(alpha_tmp.to_numpy()[0], alpha_np1.to_numpy()[0]):
                             mixed_error = max(mixed_error, abs(a - b) / (atol + max(abs(a), abs(b)) * rtol))
                         # difference = alpha_tmp - alpha_np1
                         # mixed_error = max(abs(alpha_tmp - alpha_np1) / (atol + max(abs(alpha_tmp), abs(alpha_np1)) * rtol))
@@ -217,11 +223,16 @@ class CoordinatetransformedmnModel(Model):
         return times, Alphas, NonlinearSnaps
 
     def check_for_nan(self, vec_array1, vec_array2):
-        for vec1, vec2 in zip(vec_array1._list, vec_array2._list):
-            for val1, val2 in zip(vec1, vec2):
-                if math.isnan(val1 + val2):
-                    return True
-        return False
+        return not np.all(np.isfinite((vec_array1 + vec_array2).sup_norm()))
+        # for vec1, vec2 in zip(vec_array1._list, vec_array2._list):
+        #     for val1, val2 in zip(vec1, vec2):
+        #         if math.isnan(val1 + val2):
+        #             return True
+        # return False
+
+
+class OperatorApplyError(Exception):
+    pass
 
 
 class RestrictedCoordinateTransformedmnOperator(RestrictedDuneOperator):
@@ -240,6 +251,9 @@ class RestrictedCoordinateTransformedmnOperator(RestrictedDuneOperator):
         assert Alpha in self.source
         Alpha = DuneXtLaListVectorSpace.from_numpy(Alpha.to_numpy())
         ret = [DuneXtLaVector(self.solver.impl.apply_restricted_operator(alpha.impl)).to_numpy(True) for alpha in Alpha._list]
+        for vec in ret:
+            if len(vec) == 0:
+                raise OperatorApplyError
         return self.range.make_array(ret)
 
 
@@ -251,7 +265,7 @@ class CoordinateTransformedmnOperator(DuneOperator):
         # if an Exception is thrown in C++, apply_operator returns a vector of length 0
         for vec in ret:
             if len(vec) == 0:
-                return None
+                raise OperatorApplyError
         return self.range.make_array(ret)
 
     def restricted(self, dofs):
