@@ -301,6 +301,7 @@ if __name__ == "__main__":
         raise NotImplementedError(f"Wrong value of tested_param: {tested_param}")
     ####### Create test parameters ########
     new_mus = []
+    random.seed(123)
     for i in range(num_test_params):
         new_mu = {"Pa": Pa0, "Be": Be0, "Ca": Ca0}
         new_mu[tested_param] = random.uniform(new_mu[tested_param] / rf, new_mu[tested_param] * rf)
