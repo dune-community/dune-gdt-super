@@ -3,6 +3,7 @@ import numpy as np
 import random
 from timeit import default_timer as timer
 import weakref
+from tqdm import tqdm
 
 from pymor.algorithms.projection import project
 from pymor.core.base import abstractmethod
@@ -150,76 +151,78 @@ class CoordinatetransformedmnModel(Model):
         stages = []
         for _ in range(num_stages):
             stages.append(alpha_n.copy())
-        while t < t_end:
-            max_dt = t_end - t
-            dt = min(dt, max_dt)
-            mixed_error = 1e10
-            time_step_scale_factor = 1.0
-            first_stage_to_compute = 0
-            if first_same_as_last and last_stage_of_previous_step is not None:
-                stages[0] = last_stage_of_previous_step
-                first_stage_to_compute = 1
-            while not mixed_error < 1.0:
-                skip_error_computation = False
+        with tqdm(total=t_end) as progress:
+            while t < t_end:
+                max_dt = t_end - t
+                dt = min(dt, max_dt)
+                mixed_error = 1e10
+                time_step_scale_factor = 1.0
+                first_stage_to_compute = 0
+                if first_same_as_last and last_stage_of_previous_step is not None:
+                    stages[0] = last_stage_of_previous_step
+                    first_stage_to_compute = 1
+                while not mixed_error < 1.0:
+                    skip_error_computation = False
+                    dt *= time_step_scale_factor
+                    for i in range(first_stage_to_compute, num_stages - 1):
+                        alpha_tmp = alpha_n.copy()
+                        for j in range(0, i):
+                            alpha_tmp.axpy(dt * self.rk_A[i][j], stages[j])
+                        try:
+                            stages[i] = self.operator.apply(alpha_tmp, mu=mu)
+                        except OperatorApplyError:
+                            stages[i] = None
+                            mixed_error = 1e10
+                            skip_error_computation = True
+                            time_step_scale_factor = 0.5
+                            break
+
+                    if not skip_error_computation:
+                        # compute alpha^{n+1}
+                        alpha_np1 = alpha_n.copy()
+                        for i in range(0, num_stages - 1):
+                            alpha_np1.axpy(dt * self.rk_b1[i], stages[i])
+                        # calculate last stage
+                        try:
+                            stages[num_stages - 1] = self.operator.apply(alpha_np1, mu=mu)
+                        except OperatorApplyError:
+                            stages[num_stages - 1] = None
+                            mixed_error = 1e10
+                            time_step_scale_factor = 0.5
+                            continue
+
+                        # calculate second approximations of alpha at timestep n+1.
+                        alpha_tmp = alpha_n.copy()
+                        for i in range(0, num_stages):
+                            alpha_tmp.axpy(dt * self.rk_b2[i], stages[i])
+
+                        nan_found = self.check_for_nan(alpha_tmp, alpha_np1)
+                        if nan_found:
+                            mixed_error = 1e10
+                            time_step_scale_factor = 0.5
+                        else:
+                            # calculate error
+                            # TODO: Most operations should be componentwise, fix
+                            mixed_error = 0
+                            # for a, b in zip(alpha_tmp._list[0], alpha_np1._list[0]):
+                            #     mixed_error = max(mixed_error, abs(a - b) / (atol + max(abs(a), abs(b)) * rtol))
+                            for a, b in zip(alpha_tmp.to_numpy()[0], alpha_np1.to_numpy()[0]):
+                                mixed_error = max(mixed_error, abs(a - b) / (atol + max(abs(a), abs(b)) * rtol))
+                            # difference = alpha_tmp - alpha_np1
+                            # mixed_error = max(abs(alpha_tmp - alpha_np1) / (atol + max(abs(alpha_tmp), abs(alpha_np1)) * rtol))
+                            # scale dt to get the estimated optimal time step length
+                            time_step_scale_factor = min(max(0.8 * (1.0 / mixed_error) ** (1.0 / (self.rk_q + 1.0)), scale_factor_min), scale_factor_max)
+                alpha_n = alpha_np1.copy()
+                Alphas.append(alpha_n)
+                for nonlinear_snap in stages[1:]:
+                    NonlinearSnaps.append(nonlinear_snap)
+                last_stage_of_previous_step = stages[num_stages - 1]
+                if verbose:
+                    print(f"t={t}, dt={dt}")
+                progress.update(dt)
+                t += dt
+                times.append(t)
                 dt *= time_step_scale_factor
-                for i in range(first_stage_to_compute, num_stages - 1):
-                    alpha_tmp = alpha_n.copy()
-                    for j in range(0, i):
-                        alpha_tmp.axpy(dt * self.rk_A[i][j], stages[j])
-                    try:
-                        stages[i] = self.operator.apply(alpha_tmp, mu=mu)
-                    except OperatorApplyError:
-                        stages[i] = None
-                        mixed_error = 1e10
-                        skip_error_computation = True
-                        time_step_scale_factor = 0.5
-                        break
-
-                if not skip_error_computation:
-                    # compute alpha^{n+1}
-                    alpha_np1 = alpha_n.copy()
-                    for i in range(0, num_stages - 1):
-                        alpha_np1.axpy(dt * self.rk_b1[i], stages[i])
-                    # calculate last stage
-                    try:
-                        stages[num_stages - 1] = self.operator.apply(alpha_np1, mu=mu)
-                    except OperatorApplyError:
-                        stages[num_stages - 1] = None
-                        mixed_error = 1e10
-                        time_step_scale_factor = 0.5
-                        continue
-
-                    # calculate second approximations of alpha at timestep n+1.
-                    alpha_tmp = alpha_n.copy()
-                    for i in range(0, num_stages):
-                        alpha_tmp.axpy(dt * self.rk_b2[i], stages[i])
-
-                    nan_found = self.check_for_nan(alpha_tmp, alpha_np1)
-                    if nan_found:
-                        mixed_error = 1e10
-                        time_step_scale_factor = 0.5
-                    else:
-                        # calculate error
-                        # TODO: Most operations should be componentwise, fix
-                        mixed_error = 0
-                        # for a, b in zip(alpha_tmp._list[0], alpha_np1._list[0]):
-                        #     mixed_error = max(mixed_error, abs(a - b) / (atol + max(abs(a), abs(b)) * rtol))
-                        for a, b in zip(alpha_tmp.to_numpy()[0], alpha_np1.to_numpy()[0]):
-                            mixed_error = max(mixed_error, abs(a - b) / (atol + max(abs(a), abs(b)) * rtol))
-                        # difference = alpha_tmp - alpha_np1
-                        # mixed_error = max(abs(alpha_tmp - alpha_np1) / (atol + max(abs(alpha_tmp), abs(alpha_np1)) * rtol))
-                        # scale dt to get the estimated optimal time step length
-                        time_step_scale_factor = min(max(0.8 * (1.0 / mixed_error) ** (1.0 / (self.rk_q + 1.0)), scale_factor_min), scale_factor_max)
-            alpha_n = alpha_np1.copy()
-            Alphas.append(alpha_n)
-            for nonlinear_snap in stages[1:]:
-                NonlinearSnaps.append(nonlinear_snap)
-            last_stage_of_previous_step = stages[num_stages - 1]
-            if verbose:
-                print(f"t={t}, dt={dt}")
-            t += dt
-            times.append(t)
-            dt *= time_step_scale_factor
         return times, Alphas, NonlinearSnaps
 
     def check_for_nan(self, vec_array1, vec_array2):
