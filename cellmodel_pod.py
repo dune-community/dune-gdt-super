@@ -2,7 +2,6 @@ import resource
 import sys
 from timeit import default_timer as timer
 
-import numpy as np
 from pymor.algorithms.pod import pod
 
 from hapod.mpi import MPIWrapper

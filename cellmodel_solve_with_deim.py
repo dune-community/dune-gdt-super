@@ -1,4 +1,3 @@
-from numbers import Number
 from timeit import default_timer as timer
 import random
 import resource
@@ -6,13 +5,11 @@ import sys
 import numpy as np
 from statistics import mean
 
-from pymor.algorithms.pod import pod
 from hapod.cellmodel.wrapper import (
     CellModelSolver,
     DuneCellModel,
     CellModel,
     CellModel,
-    ProjectedSystemOperator,
     CellModelReductor,
 )
 from hapod.mpi import MPIWrapper

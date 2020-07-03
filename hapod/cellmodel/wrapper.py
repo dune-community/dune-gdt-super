@@ -11,23 +11,22 @@ from pymor.algorithms.projection import project
 from pymor.core.base import abstractmethod
 from pymor.models.interface import Model
 from pymor.operators.interface import Operator
-from pymor.operators.constructions import VectorOperator, ConstantOperator, LincombOperator, LinearOperator, FixedParameterOperator, ProjectedOperator
-from pymor.parameters.base import Mu, Parameters, ParametricObject
+from pymor.operators.constructions import VectorOperator, ProjectedOperator
+from pymor.parameters.base import Parameters, ParametricObject
 from pymor.operators.ei import EmpiricalInterpolatedOperator, ProjectedEmpiciralInterpolatedOperator
-from pymor.parameters.functionals import ExpressionParameterFunctional
 from pymor.reductors.basic import ProjectionBasedReductor
 from pymor.vectorarrays.block import BlockVectorSpace
-from pymor.vectorarrays.list import Vector, ListVectorSpace, ListVectorArray
 from pymor.vectorarrays.numpy import NumpyVectorArray, NumpyVectorSpace
 from pymor.vectorarrays.interface import VectorArray
 
 from hapod.xt import DuneXtLaVector, DuneXtLaListVectorSpace
 
 import gdt.cellmodel
-from gdt.vectors import CommonDenseVector
 
 # Parameters are Be, Ca, Pa
 CELLMODEL_PARAMETER_TYPE = Parameters({"Be": 1, "Ca": 1, "Pa": 1})
+
+NEWTON_PARAMS = {"stagnation_threshold": 0.99, "stagnation_window": 2, "maxiter": 10000, "relax": 1., "rtol": 1e-14, "atol": 1e-11, "error_measure": "residual"}
 
 
 class CellModelSolver(ParametricObject):
@@ -716,9 +715,9 @@ class CellModel(Model):
         initial_pfield,
         initial_ofield,
         initial_stokes,
-        newton_params_pfield={},
-        newton_params_ofield={},
-        newton_params_stokes={},
+        newton_params_pfield=NEWTON_PARAMS,
+        newton_params_ofield=NEWTON_PARAMS,
+        newton_params_stokes=NEWTON_PARAMS,
         least_squares_pfield=False,
         least_squares_ofield=False,
         least_squares_stokes=False,
@@ -896,7 +895,6 @@ class DuneCellModel(CellModel):
         initial_pfield = VectorOperator(solver.pfield_solution_space.make_array([solver.pfield_vector(0)]))
         initial_ofield = VectorOperator(solver.ofield_solution_space.make_array([solver.ofield_vector(0)]))
         initial_stokes = VectorOperator(solver.stokes_solution_space.make_array([solver.stokes_vector()]))
-        newton_params = {"atol": 1e-11, "rtol": 1e-14, "stagnation_threshold": 0.99, "stagnation_window": 3}
         self.dt = solver.dt
         self.t_end = solver.t_end
         super().__init__(
@@ -908,9 +906,9 @@ class DuneCellModel(CellModel):
             initial_pfield,
             initial_ofield,
             initial_stokes,
-            newton_params_pfield=newton_params,
-            newton_params_ofield=newton_params,
-            newton_params_stokes=newton_params,
+            newton_params_pfield=NEWTON_PARAMS,
+            newton_params_ofield=NEWTON_PARAMS,
+            newton_params_stokes=NEWTON_PARAMS,
             name=name,
         )
         self.parameters_own = CELLMODEL_PARAMETER_TYPE
@@ -1060,7 +1058,7 @@ class ProjectedFixedComponentEmpiciralInterpolatedOperator(Operator):
         return ProjectedEmpiciralInterpolatedOperator(fixed_restricted_op, self.interpolation_matrix,
                                                       source_basis_dofs, self.projected_collateral_basis,
                                                       self.triangular, self.solver_options, f'{self.name}_fixed_component')
-                                                      
+
 
 class CellModelReductor(ProjectionBasedReductor):
     def __init__(
@@ -1155,15 +1153,14 @@ class CellModelReductor(ProjectionBasedReductor):
         raise NotImplementedError
 
     def build_rom(self, projected_operators, estimator):
-        params = {"stagnation_threshold": 0.99, "stagnation_window": 3, "maxiter": 10000, "relax": 1, "rtol": 1e-14, "atol": 1e-11}
         return self.fom.with_(
             new_type=CellModel,
             least_squares_pfield=self.least_squares_pfield,
             least_squares_ofield=self.least_squares_ofield,
             least_squares_stokes=self.least_squares_stokes,
-            newton_params_pfield=params,
-            newton_params_ofield=params,
-            newton_params_stokes=params,
+            newton_params_pfield=NEWTON_PARAMS,
+            newton_params_ofield=NEWTON_PARAMS,
+            newton_params_stokes=NEWTON_PARAMS,
             **projected_operators,
         )
 
