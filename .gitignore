@@ -26,3 +26,6 @@ coordinatetransformedmn_sigma_*
 *.vtu
 rom_results*
 *_timings.txt
+*.cprof
+*.orig
+gdt/*.so

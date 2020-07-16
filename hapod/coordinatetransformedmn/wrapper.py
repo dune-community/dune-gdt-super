@@ -1,20 +1,10 @@
 import math
 import numpy as np
-import random
-from timeit import default_timer as timer
-import weakref
 from tqdm import tqdm
 
-from pymor.algorithms.projection import project
-from pymor.core.base import abstractmethod
 from pymor.models.interface import Model
-from pymor.operators.interface import Operator
-from pymor.operators.constructions import VectorOperator, ConstantOperator, LincombOperator, LinearOperator, FixedParameterOperator
-from pymor.parameters.base import Mu, Parameters, ParametricObject
-from pymor.parameters.functionals import ExpressionParameterFunctional
-from pymor.reductors.basic import ProjectionBasedReductor
-from pymor.vectorarrays.block import BlockVectorSpace
-from pymor.vectorarrays.numpy import NumpyVectorArray, NumpyVectorSpace
+from pymor.operators.constructions import VectorOperator
+from pymor.parameters.base import ParametricObject
 from pymor.vectorarrays.interface import VectorArray
 
 from gdt.vectors import CommonDenseVector
@@ -34,7 +24,18 @@ IMPL_TYPES = (CommonDenseVector,)
 # - Checkerboard test: (sigma_s_scattering, sigma_s_absorbing, sigma_a_scattering, sigma_a_absorbing)
 # PARAMETER_TYPE = Parameters({'s': 4})
 
-TESTCASES_1D = ["HFM50SourceBeam", "PMM50SourceBeam", "M50SourceBeam"]
+TESTCASES_1D = [
+    "HFM50SourceBeam",
+    "PMM50SourceBeam",
+    "M50SourceBeam",
+    "HFM50PlaneSource",
+    "PMM10PlaneSource",
+    "PMM20PlaneSource",
+    "PMM30PlaneSource",
+    "PMM40PlaneSource",
+    "PMM50PlaneSource",
+    "M50PlaneSource",
+]
 TESTCASES_2D = []
 TESTCASES_3D = ["HFM66Checkerboard3d", "PMM128Checkerboard3d", "M3Checkerboard3d"]
 AVAILABLE_TESTCASES = TESTCASES_1D + TESTCASES_2D + TESTCASES_3D
@@ -48,6 +49,20 @@ class Solver(ParametricObject):
             self.impl = gdt.coordinatetransformedmn.PMM50SourceBeamSolver(*args)
         elif testcase == "M50SourceBeam":
             self.impl = gdt.coordinatetransformedmn.M50SourceBeamSolver(*args)
+        elif testcase == "HFM50PlaneSource":
+            self.impl = gdt.coordinatetransformedmn.HFM50PlaneSourceSolver(*args)
+        elif testcase == "PMM10PlaneSource":
+            self.impl = gdt.coordinatetransformedmn.PMM10PlaneSourceSolver(*args)
+        elif testcase == "PMM20PlaneSource":
+            self.impl = gdt.coordinatetransformedmn.PMM20PlaneSourceSolver(*args)
+        elif testcase == "PMM30PlaneSource":
+            self.impl = gdt.coordinatetransformedmn.PMM30PlaneSourceSolver(*args)
+        elif testcase == "PMM40PlaneSource":
+            self.impl = gdt.coordinatetransformedmn.PMM40PlaneSourceSolver(*args)
+        elif testcase == "PMM50PlaneSource":
+            self.impl = gdt.coordinatetransformedmn.PMM50PlaneSourceSolver(*args)
+        elif testcase == "M50PlaneSource":
+            self.impl = gdt.coordinatetransformedmn.M50PlaneSourceSolver(*args)
         elif testcase == "HFM66Checkerboard3d":
             self.impl = gdt.coordinatetransformedmn.HFM66CheckerboardSolver3d(*args)
         elif testcase == "PMM128Checkerboard3d":
@@ -80,7 +95,7 @@ class Solver(ParametricObject):
     def linear(self):
         return self.impl.linear()
 
-    def next_n_steps(self, n, initial_dt, store_operator_evaluations = False):
+    def next_n_steps(self, n, initial_dt, store_operator_evaluations=False):
         times, snapshots, nonlinear_snapshots, next_dt = self.impl.next_n_steps(n, initial_dt, store_operator_evaluations)
         return times, self.solution_space.make_array(snapshots), self.solution_space.make_array(nonlinear_snapshots), next_dt
 
@@ -100,7 +115,7 @@ class Solver(ParametricObject):
             self._last_mu = mu
             self.impl.set_parameters(mu)
 
-    def solve(self, store_operator_evaluations = False, do_not_save=False):
+    def solve(self, store_operator_evaluations=False, do_not_save=False):
         times, snapshots, nonlinear_snapshots = self.impl.solve(store_operator_evaluations, do_not_save)
         return times, self.solution_space.make_array(snapshots), self.solution_space.make_array(nonlinear_snapshots)
 
@@ -112,8 +127,20 @@ class Solver(ParametricObject):
 
 
 class CoordinatetransformedmnModel(Model):
-    def __init__(self, operator, initial_data, t_end, initial_dt, atol=1e-3, rtol=1e-3, products=None, estimator=None, visualizer=None,
-                 cache_region=None, name=None):
+    def __init__(
+        self,
+        operator,
+        initial_data,
+        t_end,
+        initial_dt,
+        atol=1e-2,
+        rtol=1e-2,
+        products=None,
+        estimator=None,
+        visualizer=None,
+        cache_region=None,
+        name=None,
+    ):
         if isinstance(initial_data, VectorArray):
             initial_data = VectorOperator(initial_data)
         super().__init__(products=products, estimator=estimator, visualizer=visualizer, cache_region=cache_region, name=name)
@@ -127,12 +154,13 @@ class CoordinatetransformedmnModel(Model):
         self.rk_q = 2
         self.solution_space = operator.source
 
-    def _solve(self, mu=None, return_output=False, verbose=False):
+    def _solve(self, mu=None, return_output=False, verbose=False, include_intermediate_alphas=False):
         """
         Solve with adaptive Runge-Kutta-Scheme (Bogacki-Shampine).
 
         Copied and adapted from C++ (dune/gdt/tools/timestepper/adaptive-rungekutta-kinetic.hh)
         """
+        print(mu)
         assert not return_output
         Alphas = self.initial_data.as_vector()
         NonlinearSnaps = self.solution_space.empty()
@@ -146,11 +174,15 @@ class CoordinatetransformedmnModel(Model):
         last_stage_of_previous_step = None
         num_stages = len(self.rk_b1)
         atol, rtol = self.atol, self.rtol
+        # if Alphas.dim < 1000:
+            # atol, rtol = 1e-4, 1e-4
+        # print(atol, " ", rtol)
         scale_factor_min = 0.2
         scale_factor_max = 5
         stages = []
         for _ in range(num_stages):
             stages.append(alpha_n.copy())
+        intermediate_results = []
         with tqdm(total=t_end) as progress:
             while t < t_end:
                 max_dt = t_end - t
@@ -162,6 +194,7 @@ class CoordinatetransformedmnModel(Model):
                     stages[0] = last_stage_of_previous_step
                     first_stage_to_compute = 1
                 while not mixed_error < 1.0:
+                    intermediate_results.clear()
                     skip_error_computation = False
                     dt *= time_step_scale_factor
                     for i in range(first_stage_to_compute, num_stages - 1):
@@ -176,6 +209,8 @@ class CoordinatetransformedmnModel(Model):
                             skip_error_computation = True
                             time_step_scale_factor = 0.5
                             break
+                        if include_intermediate_alphas:
+                            intermediate_results.append(alpha_tmp.copy())
 
                     if not skip_error_computation:
                         # compute alpha^{n+1}
@@ -195,6 +230,8 @@ class CoordinatetransformedmnModel(Model):
                         alpha_tmp = alpha_n.copy()
                         for i in range(0, num_stages):
                             alpha_tmp.axpy(dt * self.rk_b2[i], stages[i])
+                        if include_intermediate_alphas:
+                            intermediate_results.append(alpha_tmp)
 
                         nan_found = self.check_for_nan(alpha_tmp, alpha_np1)
                         if nan_found:
@@ -202,18 +239,23 @@ class CoordinatetransformedmnModel(Model):
                             time_step_scale_factor = 0.5
                         else:
                             # calculate error
-                            # TODO: Most operations should be componentwise, fix
                             mixed_error = 0
                             # for a, b in zip(alpha_tmp._list[0], alpha_np1._list[0]):
-                            #     mixed_error = max(mixed_error, abs(a - b) / (atol + max(abs(a), abs(b)) * rtol))
+                            # mixed_error = max(mixed_error, abs(a - b) / (atol + max(abs(a), abs(b)) * rtol))
                             for a, b in zip(alpha_tmp.to_numpy()[0], alpha_np1.to_numpy()[0]):
                                 mixed_error = max(mixed_error, abs(a - b) / (atol + max(abs(a), abs(b)) * rtol))
+                            # print(mixed_error)
                             # difference = alpha_tmp - alpha_np1
                             # mixed_error = max(abs(alpha_tmp - alpha_np1) / (atol + max(abs(alpha_tmp), abs(alpha_np1)) * rtol))
                             # scale dt to get the estimated optimal time step length
-                            time_step_scale_factor = min(max(0.8 * (1.0 / mixed_error) ** (1.0 / (self.rk_q + 1.0)), scale_factor_min), scale_factor_max)
+                            time_step_scale_factor = min(
+                                max(0.8 * (1.0 / mixed_error) ** (1.0 / (self.rk_q + 1.0)), scale_factor_min), scale_factor_max
+                            )
                 alpha_n = alpha_np1.copy()
                 Alphas.append(alpha_n)
+                if include_intermediate_alphas:
+                    for res in intermediate_results:
+                        Alphas.append(res)
                 for nonlinear_snap in stages[1:]:
                     NonlinearSnaps.append(nonlinear_snap)
                 last_stage_of_previous_step = stages[num_stages - 1]
@@ -228,9 +270,9 @@ class CoordinatetransformedmnModel(Model):
     def check_for_nan(self, vec_array1, vec_array2):
         return not np.all(np.isfinite((vec_array1 + vec_array2).sup_norm()))
         # for vec1, vec2 in zip(vec_array1._list, vec_array2._list):
-        #     for val1, val2 in zip(vec1, vec2):
-        #         if math.isnan(val1 + val2):
-        #             return True
+        # for val1, val2 in zip(vec1, vec2):
+        # if math.isnan(val1 + val2):
+        # return True
         # return False
 
 
@@ -250,7 +292,7 @@ class RestrictedCoordinateTransformedmnOperator(RestrictedDuneOperator):
         super(RestrictedCoordinateTransformedmnOperator, self).__init__(solver, self.solver.impl.len_source_dofs(), len(dofs))
 
     def apply(self, Alpha, mu=None):
-        self.solver.set_parameters(mu['s'])
+        self.solver.set_parameters(mu["s"])
         assert Alpha in self.source
         Alpha = DuneXtLaListVectorSpace.from_numpy(Alpha.to_numpy())
         ret = [DuneXtLaVector(self.solver.impl.apply_restricted_operator(alpha.impl)).to_numpy(True) for alpha in Alpha._list]
@@ -263,7 +305,7 @@ class RestrictedCoordinateTransformedmnOperator(RestrictedDuneOperator):
 class CoordinateTransformedmnOperator(DuneOperator):
     def apply(self, Alpha, mu=None):
         assert Alpha in self.source
-        self.solver.set_parameters(mu['s'])
+        self.solver.set_parameters(mu["s"])
         ret = [self.solver.impl.apply_operator(alpha.impl) for alpha in Alpha._list]
         # if an Exception is thrown in C++, apply_operator returns a vector of length 0
         for vec in ret:

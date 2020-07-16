@@ -40,10 +40,10 @@ def create_and_scatter_boltzmann_parameters(comm, min_param=0., max_param=8., se
     return comm.scatter(parameters_list, root=0)
 
 
-def create_boltzmann_solver(dimension, gridsize, mu, linear=True):
-    return wrapper.Solver(dimension,
+def create_boltzmann_solver(testcase, gridsize, mu, dt=-1):
+    return wrapper.Solver(testcase,
         "boltzmann_sigma_s_s_" + str(mu[0]) + "_a_" + str(mu[1]) + "sigma_t_s_" + str(mu[2]) + "_a_" + str(mu[3]),
-        2000000, gridsize, False, False, *mu, linear)
+        2000000, gridsize, False, False, mu, dt)
 
 
 def solver_statistics(solver, chunk_size, with_half_steps=True):
@@ -57,9 +57,9 @@ def solver_statistics(solver, chunk_size, with_half_steps=True):
     return num_chunks, num_time_steps
 
 
-def calculate_trajectory_error(final_modes, dimension, grid_size, mu, with_half_steps=True):
+def calculate_trajectory_error(final_modes, testcase, grid_size, mu, with_half_steps=True):
     error = 0
-    solver = create_boltzmann_solver(dimension, grid_size, mu)
+    solver = create_boltzmann_solver(testcase, grid_size, mu)
     while not solver.finished():
         next_vectors = solver.next_n_timesteps(1, with_half_steps)
         next_vectors_np = NumpyVectorSpace(next_vectors[0].dim).from_data(next_vectors.data)
@@ -68,13 +68,13 @@ def calculate_trajectory_error(final_modes, dimension, grid_size, mu, with_half_
 
 
 def calculate_total_projection_error(final_modes,
-                                     dimension,
+                                     testcase,
                                      grid_size,
                                      mu,
                                      total_num_snapshots,
                                      mpi_wrapper,
                                      with_half_steps=True):
-    trajectory_error = calculate_trajectory_error(final_modes, dimension, grid_size, mu, with_half_steps)
+    trajectory_error = calculate_trajectory_error(final_modes, testcase, grid_size, mu, with_half_steps)
     trajectory_errors = mpi_wrapper.comm_world.gather(trajectory_error, root=0)
     error = 0
     if mpi_wrapper.rank_world == 0:
@@ -82,11 +82,11 @@ def calculate_total_projection_error(final_modes,
     return error
 
 
-def calculate_error(final_modes, dimension, grid_size, mu, total_num_snapshots, mpi_wrapper, with_half_steps=True, logfile=None):
+def calculate_error(final_modes, testcase, grid_size, mu, total_num_snapshots, mpi_wrapper, with_half_steps=True, logfile=None):
     ''' Calculates projection error. As we cannot store all snapshots due to memory restrictions, the
         problem is solved again and the error calculated on the fly'''
     start = timer()
-    err = calculate_total_projection_error(final_modes, dimension, grid_size, mu, total_num_snapshots, mpi_wrapper,
+    err = calculate_total_projection_error(final_modes, testcase, grid_size, mu, total_num_snapshots, mpi_wrapper,
                                            with_half_steps)
     err = err if grid_size == 0 else err / grid_size
     elapsed = timer() - start

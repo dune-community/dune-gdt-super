@@ -3,7 +3,6 @@ import random
 from timeit import default_timer as timer
 
 import numpy as np
-from pymor.vectorarrays.numpy import NumpyVectorSpace
 
 from hapod.boltzmann.utility import create_boltzmann_parameters
 from hapod.coordinatetransformedmn import wrapper
@@ -34,6 +33,9 @@ def convert_L2_l2(tol, grid_size, testcase, input_is_l2=False):
     """
     if "SourceBeam" in testcase:
         vol_domain = 3.0
+        num_elements = grid_size
+    elif "PlaneSource" in testcase:
+        vol_domain = 2.4
         num_elements = grid_size
     elif "Checkerboard3d" in testcase:
         vol_domain = 7.0 ** 3
@@ -67,7 +69,7 @@ def create_sourcebeam_parameters(count, min_param, max_param, seed=1):
 
 
 def create_parameters(testcase, count, min_param=1.0, max_param=8.0, seed=1):
-    if "Checkerboard" in testcase:
+    if "Checkerboard" in testcase or "PlaneSource" in testcase:
         return create_boltzmann_parameters(count, min_param, max_param, seed)
     elif "SourceBeam" in testcase:
         return create_sourcebeam_parameters(count, min_param, max_param, seed)
