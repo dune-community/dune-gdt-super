@@ -17,18 +17,20 @@ from hapod.boltzmann.utility import solver_statistics, create_boltzmann_solver
 from hapod.coordinatetransformedmn.utility import convert_L2_l2
 
 
-def calculate_errors_for_parameter(mu, basis, solver, testcase, grid_size, nt, deim_dofs, deim_cb, hyper_reduction, visualize=True):
+def calculate_errors_for_parameter(
+    mu, basis, solver, testcase, grid_size, L2_tol, L2_deim_tol, nt, deim_dofs, deim_cb, hyper_reduction, visualize=True
+):
 
     time_hd = time_red = abs_red_err = rel_red_err = abs_proj_err = rel_proj_err = 0.0
     # solve without saving solution to measure time
-    fom = DuneModel(nt, solver.dt, testcase, "", 0, grid_size, False, True, mu)
+    fom = DuneModel(nt, solver.dt, testcase, "", 0, grid_size, False, True, mu, solver.dt)
     parsed_mu = fom.parameters.parse(mu)
     start = timer()
     fom.solve(parsed_mu, return_half_steps=False)
     time_hd = timer() - start
 
     # now create Model that saves time steps to calculate error
-    fom = DuneModel(nt, solver.dt, testcase, "", 2000000, grid_size, False, False, mu)
+    fom = DuneModel(nt, solver.dt, testcase, "", 2000000, grid_size, False, False, mu, solver.dt)
     assert hyper_reduction in ("none", "projection", "deim")
     op = None
     if hyper_reduction == "projection":
@@ -48,21 +50,25 @@ def calculate_errors_for_parameter(mu, basis, solver, testcase, grid_size, nt, d
     # reconstruct high-dimensional solution, calculate l^2 error (and visualize if requested)
     step_n = 1
     curr_step = 0
-    solver = create_boltzmann_solver(testcase, grid_size, mu, dt)
     solver.reset()  # resets some static variables in C++
+    solver.set_parameters(mu)
     while not solver.finished():
         next_U = solver.next_n_timesteps(step_n, False)
         next_U_rb = reductor.reconstruct(u_rb[curr_step : curr_step + len(next_U)])
         differences_red = next_U - next_U_rb
         abs_red_err += np.sum(differences_red.l2_norm2())
         rel_red_err += np.sum((differences_red.l2_norm() / next_U.l2_norm()))
-        differences_proj = next_U - basis.lincomb(next_U.dot(basis))
+        next_U_proj = basis.lincomb(next_U.dot(basis))
+        differences_proj = next_U - next_U_proj
         abs_proj_err += np.sum(differences_proj.l2_norm2())
         rel_proj_err += np.sum(differences_proj.l2_norm() / next_U.l2_norm())
         if visualize:
             for step in range(len(next_U)):
                 solver.visualize(next_U._list[step], f"full_{testcase}_{grid_size}_{mu}_{curr_step + step}")
-                solver.visualize(next_U_rb._list[step], f"red_{testcase}_{grid_size}_{mu}_{curr_step + step}")
+                solver.visualize(next_U_proj._list[step], f"projected_{testcase}_{grid_size}_{mu}_{curr_step + step}")
+                solver.visualize(
+                    next_U_rb._list[step], f"red_{testcase}_{grid_size}_{L2_tol}_{L2_deim_tol}_{mu}_{curr_step + step}"
+                )
         curr_step += len(next_U)
     return time_hd, time_red, abs_red_err, rel_red_err, abs_proj_err, rel_proj_err, curr_step
 
@@ -73,6 +79,8 @@ def calculate_errors(
     solver,
     testcase,
     grid_size,
+    L2_tol,
+    L2_deim_tol,
     chunk_size,
     mu,
     seed=MPI.COMM_WORLD.Get_rank(),
@@ -81,7 +89,6 @@ def calculate_errors(
     deim_dofs=None,
     deim_cb=None,
     hyper_reduction="deim",
-    dt=-1
 ):
     """Calculates model reduction and projection error for random parameter"""
 
@@ -109,7 +116,9 @@ def calculate_errors(
         abs_proj_err_trained,
         rel_proj_err_trained,
         num_snapshots_mu,
-    ) = calculate_errors_for_parameter(mu, basis, solver, testcase, grid_size, nt, deim_dofs, deim_cb, hyper_reduction)
+    ) = calculate_errors_for_parameter(
+        mu, basis, solver, testcase, grid_size, L2_tol, L2_deim_tol, nt, deim_dofs, deim_cb, hyper_reduction
+    )
     time_hd += time_hd_mu
     time_red += time_red_mu
     abs_red_errs_trained = mpi.comm_world.gather(abs_red_err_trained, root=0)
@@ -127,8 +136,16 @@ def calculate_errors(
     abs_red_err = rel_red_err = abs_proj_err = rel_proj_err = 0.0
     for _ in range(params_per_rank):
         mu = [random.uniform(0.0, 8.0), random.uniform(0.0, 8.0), 0.0, random.uniform(0.0, 8.0)]
-        time_hd_mu, time_red_mu, abs_red_err_mu, rel_red_err_mu, abs_proj_err_mu, rel_proj_err_mu, num_snapshots_mu = calculate_errors_for_parameter(
-            mu, basis, solver, testcase, grid_size, nt, deim_dofs, deim_cb, hyper_reduction
+        (
+            time_hd_mu,
+            time_red_mu,
+            abs_red_err_mu,
+            rel_red_err_mu,
+            abs_proj_err_mu,
+            rel_proj_err_mu,
+            num_snapshots_mu,
+        ) = calculate_errors_for_parameter(
+            mu, basis, solver, testcase, grid_size, L2_tol, L2_deim_tol, nt, deim_dofs, deim_cb, hyper_reduction
         )
         num_snapshots += num_snapshots_mu
         time_hd += time_hd_mu
@@ -173,7 +190,21 @@ if __name__ == "__main__":
     )
     logfile = open(filename, "a")
     start = timer()
-    (basis, eval_basis, _, _, total_num_snaps, total_num_evals, mu, mpi, _, _, _, _, solver) = boltzmann_binary_tree_hapod(
+    (
+        basis,
+        eval_basis,
+        _,
+        _,
+        total_num_snaps,
+        total_num_evals,
+        mu,
+        mpi,
+        _,
+        _,
+        _,
+        _,
+        solver,
+    ) = boltzmann_binary_tree_hapod(
         testcase,
         grid_size,
         chunk_size,
@@ -182,7 +213,7 @@ if __name__ == "__main__":
         omega=omega,
         calc_eval_basis=True,
         logfile=logfile,
-        dt=0.00261333/10.
+        dt=-1,
     )
     elapsed_basis_gen = timer() - start
     basis, win = mpi.shared_memory_bcast_modes(basis, returnlistvectorarray=True)
@@ -196,7 +227,18 @@ if __name__ == "__main__":
 
     # the function returns arrays of l^2 errors, each entry representing results for one snapshot
     mean_time_hd, mean_time_red, errors = calculate_errors(
-        basis, mpi, solver, testcase, grid_size, chunk_size, mu, deim_dofs=deim_dofs, deim_cb=deim_cb, hyper_reduction="deim",dt=0.00261333/10.
+        basis,
+        mpi,
+        solver,
+        testcase,
+        grid_size,
+        L2_tol,
+        L2_deim_tol,
+        chunk_size,
+        mu,
+        deim_dofs=deim_dofs,
+        deim_cb=deim_cb,
+        hyper_reduction="deim",
     )
 
     # convert absolute errors back to L^2 errors (relative errors are equal in L^2 and l^2 norm)
@@ -211,5 +253,7 @@ if __name__ == "__main__":
         logfile.write("abs_red_trained rel_red_trained abs_proj_trained rel_proj_trained ")
         logfile.write("abs_red_new rel_red_new abs_proj_new rel_proj_new\n")
         logfile.write(("{:.2e} " * len(errors) + "\n").format(*errors))
-        logfile.write("Basis size and collateral basis size were %g and %g, respectively.\n" % (len(basis), len(deim_cb)))
+        logfile.write(
+            "Basis size and collateral basis size were %g and %g, respectively.\n" % (len(basis), len(deim_cb))
+        )
     logfile.close()

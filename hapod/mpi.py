@@ -23,6 +23,7 @@ def idle_wait(comm, root=0):
                 time.sleep(sleep_seconds)
         comm.recv(source=root, tag=comm.rank)
 
+
 class MPIWrapper:
     """Stores MPI communicators for all ranks (world), for all ranks on a single compute node (proc)
        and for all ranks that have rank 0 on their compute node (rank_0_group).
@@ -42,7 +43,9 @@ class MPIWrapper:
 
         # create communicator containing rank 0 processes from each processor
         self.contained_in_rank_0_group = 1 if self.rank_proc == 0 else 0
-        self.comm_rank_0_group = BoltzmannMPICommunicator(self.comm_world.Split(self.contained_in_rank_0_group, self.rank_world))
+        self.comm_rank_0_group = BoltzmannMPICommunicator(
+            self.comm_world.Split(self.contained_in_rank_0_group, self.rank_world)
+        )
         self.size_rank_0_group = self.comm_rank_0_group.size
         self.rank_rank_0_group = self.comm_rank_0_group.rank
 
@@ -115,7 +118,11 @@ class BoltzmannMPICommunicator(MPICommunicator, MPI.Intracomm):
     def send_modes(self, dest, modes, svals, num_snaps_in_leafs):
         comm = self.comm
         rank = comm.Get_rank()
-        comm.send([len(modes), len(svals) if svals is not None else 0, num_snaps_in_leafs, modes[0].dim], dest=dest, tag=rank + 1000)
+        comm.send(
+            [len(modes), len(svals) if svals is not None else 0, num_snaps_in_leafs, modes[0].dim],
+            dest=dest,
+            tag=rank + 1000,
+        )
         comm.Send(modes.data, dest=dest, tag=rank + 2000)
         if svals is not None:
             comm.Send(svals, dest=dest, tag=rank + 3000)
@@ -177,7 +184,11 @@ class BoltzmannMPICommunicator(MPICommunicator, MPI.Intracomm):
             else:
                 vectors = []
                 for i in range(len(offsets) - 1):
-                    vectors.append(DuneXtLaListVectorSpace.from_numpy(vectors_gathered[offsets_svals[i] : offsets_svals[i + 1]], ensure_copy=True))
+                    vectors.append(
+                        DuneXtLaListVectorSpace.from_numpy(
+                            vectors_gathered[offsets_svals[i] : offsets_svals[i + 1]], ensure_copy=True
+                        )
+                    )
                 vectors_gathered = vectors
                 if svals is not None:
                     svals = []

@@ -1,4 +1,3 @@
-
 class MPICommunicator(object):
 
     rank = None
@@ -11,4 +10,3 @@ class MPICommunicator(object):
     @abstractmethod
     def recv_modes(self, source):
         pass
-

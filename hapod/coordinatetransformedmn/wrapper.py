@@ -96,8 +96,15 @@ class Solver(ParametricObject):
         return self.impl.linear()
 
     def next_n_steps(self, n, initial_dt, store_operator_evaluations=False):
-        times, snapshots, nonlinear_snapshots, next_dt = self.impl.next_n_steps(n, initial_dt, store_operator_evaluations)
-        return times, self.solution_space.make_array(snapshots), self.solution_space.make_array(nonlinear_snapshots), next_dt
+        times, snapshots, nonlinear_snapshots, next_dt = self.impl.next_n_steps(
+            n, initial_dt, store_operator_evaluations
+        )
+        return (
+            times,
+            self.solution_space.make_array(snapshots),
+            self.solution_space.make_array(nonlinear_snapshots),
+            next_dt,
+        )
 
     def num_timesteps(self):
         return self.impl.num_timesteps()
@@ -143,7 +150,9 @@ class CoordinatetransformedmnModel(Model):
     ):
         if isinstance(initial_data, VectorArray):
             initial_data = VectorOperator(initial_data)
-        super().__init__(products=products, estimator=estimator, visualizer=visualizer, cache_region=cache_region, name=name)
+        super().__init__(
+            products=products, estimator=estimator, visualizer=visualizer, cache_region=cache_region, name=name
+        )
         self.__auto_init(locals())
         # self.solution_space = self.initial_data.range
         # Bogacki-Shampine parameters
@@ -175,7 +184,7 @@ class CoordinatetransformedmnModel(Model):
         num_stages = len(self.rk_b1)
         atol, rtol = self.atol, self.rtol
         # if Alphas.dim < 1000:
-            # atol, rtol = 1e-4, 1e-4
+        # atol, rtol = 1e-4, 1e-4
         # print(atol, " ", rtol)
         scale_factor_min = 0.2
         scale_factor_max = 5
@@ -249,7 +258,8 @@ class CoordinatetransformedmnModel(Model):
                             # mixed_error = max(abs(alpha_tmp - alpha_np1) / (atol + max(abs(alpha_tmp), abs(alpha_np1)) * rtol))
                             # scale dt to get the estimated optimal time step length
                             time_step_scale_factor = min(
-                                max(0.8 * (1.0 / mixed_error) ** (1.0 / (self.rk_q + 1.0)), scale_factor_min), scale_factor_max
+                                max(0.8 * (1.0 / mixed_error) ** (1.0 / (self.rk_q + 1.0)), scale_factor_min),
+                                scale_factor_max,
                             )
                 alpha_n = alpha_np1.copy()
                 Alphas.append(alpha_n)
@@ -289,13 +299,18 @@ class RestrictedCoordinateTransformedmnOperator(RestrictedDuneOperator):
         self.dofs = dofs
         dofs_as_list = [int(i) for i in dofs]
         self.solver.impl.prepare_restricted_operator(dofs_as_list)
-        super(RestrictedCoordinateTransformedmnOperator, self).__init__(solver, self.solver.impl.len_source_dofs(), len(dofs))
+        super(RestrictedCoordinateTransformedmnOperator, self).__init__(
+            solver, self.solver.impl.len_source_dofs(), len(dofs)
+        )
 
     def apply(self, Alpha, mu=None):
         self.solver.set_parameters(mu["s"])
         assert Alpha in self.source
         Alpha = DuneXtLaListVectorSpace.from_numpy(Alpha.to_numpy())
-        ret = [DuneXtLaVector(self.solver.impl.apply_restricted_operator(alpha.impl)).to_numpy(True) for alpha in Alpha._list]
+        ret = [
+            DuneXtLaVector(self.solver.impl.apply_restricted_operator(alpha.impl)).to_numpy(True)
+            for alpha in Alpha._list
+        ]
         for vec in ret:
             if len(vec) == 0:
                 raise OperatorApplyError

@@ -17,13 +17,23 @@ class HapodParameters:
 
     def get_epsilon_alpha(self, num_snaps_in_leafs, root_of_tree=False):
         if not root_of_tree:
-            epsilon_alpha = self.epsilon_ast * np.sqrt((1.0 - self.omega ** 2) * num_snaps_in_leafs / (self.rooted_tree_depth - 1))
+            epsilon_alpha = self.epsilon_ast * np.sqrt(
+                (1.0 - self.omega ** 2) * num_snaps_in_leafs / (self.rooted_tree_depth - 1)
+            )
         else:
             epsilon_alpha = self.epsilon_ast * self.omega * np.sqrt(num_snaps_in_leafs)
         return epsilon_alpha
 
 
-def local_pod(inputs, num_snaps_in_leafs, parameters, root_of_tree=False, orthonormalize=True, product=None, incremental_gramian=True):
+def local_pod(
+    inputs,
+    num_snaps_in_leafs,
+    parameters,
+    root_of_tree=False,
+    orthonormalize=True,
+    product=None,
+    incremental_gramian=True,
+):
     """
     Calculates a POD in the HAPOD tree. The input is a list where each element is either a vectorarray or
     a pair of (orthogonal) vectorarray and singular values from an earlier POD. If incremental_gramian is True, the
@@ -106,10 +116,19 @@ def local_pod(inputs, num_snaps_in_leafs, parameters, root_of_tree=False, orthon
         modes = inputs[0][0].empty()
         for i in range(len(inputs)):
             modes.append(inputs[i][0])
-        return pod(modes, product=product, atol=0.0, rtol=0.0, l2_err=epsilon_alpha, orth_tol=1e-10 if orthonormalize else np.inf)
+        return pod(
+            modes,
+            product=product,
+            atol=0.0,
+            rtol=0.0,
+            l2_err=epsilon_alpha,
+            orth_tol=1e-10 if orthonormalize else np.inf,
+        )
 
 
-def incremental_hapod_over_ranks(comm, modes, num_snaps_in_leafs, parameters, svals=None, last_hapod=False, incremental_gramian=True):
+def incremental_hapod_over_ranks(
+    comm, modes, num_snaps_in_leafs, parameters, svals=None, last_hapod=False, incremental_gramian=True
+):
     """ A incremental HAPOD with modes and possibly svals stored on ranks of the MPI communicator comm.
         May be used as part of a larger HAPOD tree, in that case you need to specify whether this
         part of the tree contains the root node (last_hapod=True)"""
@@ -129,7 +148,10 @@ def incremental_hapod_over_ranks(comm, modes, num_snaps_in_leafs, parameters, sv
                 max_vecs_before_pod = max(max_vecs_before_pod, len(modes) + len(modes_on_source))
                 total_num_snapshots += total_num_snapshots_on_source
                 modes, svals = local_pod(
-                    [[modes, svals], [modes_on_source, svals_on_source] if len(svals_on_source) > 0 else modes_on_source],
+                    [
+                        [modes, svals],
+                        [modes_on_source, svals_on_source] if len(svals_on_source) > 0 else modes_on_source,
+                    ],
                     total_num_snapshots,
                     parameters,
                     incremental_gramian=incremental_gramian,
@@ -154,7 +176,15 @@ def binary_tree_depth(comm):
 
 
 def binary_tree_hapod_over_ranks(
-    comm, modes, num_snaps_in_leafs, parameters, svals=None, last_hapod=False, incremental_gramian=True, product=None, orthonormalize=True
+    comm,
+    modes,
+    num_snaps_in_leafs,
+    parameters,
+    svals=None,
+    last_hapod=False,
+    incremental_gramian=True,
+    product=None,
+    orthonormalize=True,
 ):
     """ A HAPOD with modes and possibly svals stored on ranks of the MPI communicator comm. A binary tree
         of MPI ranks is used as HAPOD tree.
@@ -181,7 +211,10 @@ def binary_tree_hapod_over_ranks(
                     max_vecs_before_pod = max(max_vecs_before_pod, len(modes) + len(modes_on_source))
                     total_num_snapshots += total_num_snapshots_on_source
                     modes, svals = local_pod(
-                        [[modes, svals], [modes_on_source, svals_on_source] if len(svals_on_source) > 0 else modes_on_source],
+                        [
+                            [modes, svals],
+                            [modes_on_source, svals_on_source] if len(svals_on_source) > 0 else modes_on_source,
+                        ],
                         total_num_snapshots,
                         parameters,
                         orthonormalize=orthonormalize,

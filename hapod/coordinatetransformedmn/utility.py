@@ -52,7 +52,9 @@ def create_sourcebeam_parameters(count, min_param, max_param, seed=1):
     random.seed(seed)
     num_samples_per_parameter = int(count ** (1.0 / 3.0) + 0.1)
     sample_width = (max_param - min_param) / (num_samples_per_parameter - 1) if num_samples_per_parameter > 1 else 1e10
-    sigma_a_left_range = sigma_s_left_range = sigma_s_right_range = np.arange(min_param, max_param + 1e-13, sample_width)
+    sigma_a_left_range = sigma_s_left_range = sigma_s_right_range = np.arange(
+        min_param, max_param + 1e-13, sample_width
+    )
     sigma_a_right_range = sigma_s_middle_range = [0.0]
     parameters_list = []
     for sigma_a_left in sigma_a_left_range:
@@ -60,10 +62,18 @@ def create_sourcebeam_parameters(count, min_param, max_param, seed=1):
             for sigma_s_left in sigma_s_left_range:
                 for sigma_s_middle in sigma_s_middle_range:
                     for sigma_s_right in sigma_s_right_range:
-                        parameters_list.append([sigma_a_left, sigma_a_right, sigma_s_left, sigma_s_middle, sigma_s_right])
+                        parameters_list.append(
+                            [sigma_a_left, sigma_a_right, sigma_s_left, sigma_s_middle, sigma_s_right]
+                        )
     while len(parameters_list) < count:
         parameters_list.append(
-            [random.uniform(min_param, max_param), 0.0, random.uniform(min_param, max_param), 0.0, random.uniform(min_param, max_param)]
+            [
+                random.uniform(min_param, max_param),
+                0.0,
+                random.uniform(min_param, max_param),
+                0.0,
+                random.uniform(min_param, max_param),
+            ]
         )
     return parameters_list
 
@@ -93,7 +103,9 @@ def calculate_trajectory_l2_errors(final_modes, grid_size, mu, testcase, final_e
     dt = solver.initial_dt()
     abs_error_alpha = rel_error_alpha = abs_error_u = rel_error_u = abs_error_alpha_evals = rel_error_alpha_evals = 0
     while not solver.finished():
-        _, snapshots_alpha, nonlinear_snapshots_alpha, dt = solver.next_n_steps(n, dt, store_operator_evaluations=(final_eval_modes is not None))
+        _, snapshots_alpha, nonlinear_snapshots_alpha, dt = solver.next_n_steps(
+            n, dt, store_operator_evaluations=(final_eval_modes is not None)
+        )
         projected_snapshots_alpha = final_modes.lincomb(snapshots_alpha.dot(final_modes))
         # compute projection error
         differences_alpha = snapshots_alpha - projected_snapshots_alpha
@@ -101,7 +113,9 @@ def calculate_trajectory_l2_errors(final_modes, grid_size, mu, testcase, final_e
         rel_error_alpha += np.sum(differences_alpha.l2_norm() / snapshots_alpha.l2_norm())
         del differences_alpha
         # convert to u coordinates
-        projected_snapshots_u = solver.solution_space.make_array([solver.u_from_alpha(vec) for vec in projected_snapshots_alpha._list])
+        projected_snapshots_u = solver.solution_space.make_array(
+            [solver.u_from_alpha(vec) for vec in projected_snapshots_alpha._list]
+        )
         del projected_snapshots_alpha
         snapshots_u = solver.solution_space.make_array([solver.u_from_alpha(vec) for vec in snapshots_alpha._list])
         del snapshots_alpha
@@ -125,7 +139,9 @@ def calculate_trajectory_l2_errors(final_modes, grid_size, mu, testcase, final_e
     return ret
 
 
-def calculate_total_l2_projection_error(final_modes, grid_size, mu, testcase, num_snapshots, mpi_wrapper, final_eval_modes=None, num_evals=None):
+def calculate_total_l2_projection_error(
+    final_modes, grid_size, mu, testcase, num_snapshots, mpi_wrapper, final_eval_modes=None, num_evals=None
+):
     # errors = [abs_error_alpha, rel_error_alpha, abs_error_u, rel_error_u, abs_error_alpha_eval, rel_error_alpha_eval]
     errors = calculate_trajectory_l2_errors(final_modes, grid_size, mu, testcase, final_eval_modes=final_eval_modes)
     gathered_errors = mpi_wrapper.comm_world.gather(errors, root=0)
@@ -143,7 +159,16 @@ def calculate_total_l2_projection_error(final_modes, grid_size, mu, testcase, nu
 
 
 def calculate_mean_errors(
-    final_modes, grid_size, mu, testcase, total_num_snapshots, mpi_wrapper, final_eval_modes=None, num_evals=None, logfile=None, selected=False
+    final_modes,
+    grid_size,
+    mu,
+    testcase,
+    total_num_snapshots,
+    mpi_wrapper,
+    final_eval_modes=None,
+    num_evals=None,
+    logfile=None,
+    selected=False,
 ):
     """
     Calculates mean projection errors.
@@ -164,7 +189,14 @@ def calculate_mean_errors(
     """
     start = timer()
     errors = calculate_total_l2_projection_error(
-        final_modes, grid_size, mu, testcase, total_num_snapshots, mpi_wrapper, final_eval_modes=final_eval_modes, num_evals=num_evals
+        final_modes,
+        grid_size,
+        mu,
+        testcase,
+        total_num_snapshots,
+        mpi_wrapper,
+        final_eval_modes=final_eval_modes,
+        num_evals=num_evals,
     )
     elapsed = timer() - start
     errors.insert(2, convert_L2_l2(errors[0], grid_size, testcase, True))
