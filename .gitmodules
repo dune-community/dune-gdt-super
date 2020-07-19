@@ -40,9 +40,6 @@
 [submodule "scripts"]
 	path = scripts
 	url = https://github.com/wwu-numerik/scripts.git
-[submodule "dune-python"]
-	path = dune-python
-	url = https://github.com/dune-mirrors/dune-python.git
 [submodule "dune-testtools"]
 	path = dune-testtools
 	url = https://github.com/dune-community/dune-testtools.git
