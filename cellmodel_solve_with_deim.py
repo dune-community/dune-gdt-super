@@ -1,3 +1,4 @@
+import math
 from timeit import default_timer as timer
 import random
 import resource
@@ -41,6 +42,7 @@ class BinaryTreeHapodResults:
 # results.num_snaps (on rank 0) contains the total number of snapshots
 # that have been processed (on all ranks)
 def pods_on_processor_cores_in_binary_tree_hapod(r, vecs):
+    print("start processor pod: ", mpi.rank_world)
     r.max_vectors_before_pod = max(r.max_vectors_before_pod, len(vecs))
     vecs, svals = local_pod([vecs], len(vecs), r.params, incremental_gramian=False, orthonormalize=r.orthonormalize,)
     r.max_local_modes = max(r.max_local_modes, len(vecs))
@@ -50,6 +52,7 @@ def pods_on_processor_cores_in_binary_tree_hapod(r, vecs):
 
 # perform a POD with gathered modes on rank 0 on each processor/node
 def pod_on_node_in_binary_tree_hapod(r, chunk_index, num_chunks, mpi):
+    print("start node pod: ", mpi.rank_world)
     r.total_num_snapshots += r.num_snaps
     if chunk_index == 0:
         r.max_vectors_before_pod = max(r.max_vectors_before_pod, len(r.gathered_modes))
@@ -68,6 +71,7 @@ def pod_on_node_in_binary_tree_hapod(r, chunk_index, num_chunks, mpi):
 
 
 def final_hapod_in_binary_tree_hapod(r, mpi):
+    print("start final pod: ", mpi.rank_world)
     (r.modes, r.svals, r.total_num_snapshots, max_num_input_vecs, max_num_local_modes,) = binary_tree_hapod_over_ranks(
         mpi.comm_rank_0_group,
         r.modes,
@@ -95,6 +99,7 @@ def binary_tree_hapod(
     return_newton_residuals=False,
     incremental_gramian=True,
     orthonormalize=True,
+    logfile=None,
 ):
 
     assert isinstance(cellmodel, CellModel)
@@ -141,7 +146,9 @@ def binary_tree_hapod(
                     new_vecs[k].append(current_values[p]._blocks[k])
             # ... and do one timestep less to ensure that chunk has size chunk_size
             for time_index in range(chunk_size - 1 if chunk_index == 0 else chunk_size):
-                retval = cellmodel.next_time_step(current_values[p], time, mu=mu, return_stages=include_newton_stages, return_residuals=True,)
+                retval = cellmodel.next_time_step(
+                    current_values[p], time, mu=mu, return_stages=include_newton_stages, return_residuals=True,
+                )
                 current_values[p], time, *retval = retval
                 if include_newton_stages:
                     timestep_stages, *retval = retval
@@ -190,14 +197,19 @@ def binary_tree_hapod(
             r.max_local_modes = max(r.max_local_modes)
 
     # write statistics to file
-    if mpi.rank_world == 0:
-        for k in indices:
-            r = results[k]
-            print(f"Hapod for index {k}")
-            print(f"The HAPOD resulted in {len(r.modes)} final modes taken from a total of {r.total_num_snapshots} snapshots!")
-            print(f"The maximal number of local modes was {r.max_local_modes}")
-            print(f"The maximal number of input vectors to a local POD was: {r.max_vectors_before_pod}")
-        print(f"The maximum amount of memory used on rank 0 was: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1000.0 ** 2} GB")
+    if logfile is not None and mpi.rank_world == 0:
+        with open(logfile, "a") as ff:
+            for k in indices:
+                r = results[k]
+                ff.write(f"Hapod for index {k}\n")
+                ff.write(
+                    f"The HAPOD resulted in {len(r.modes)} final modes taken from a total of {r.total_num_snapshots} snapshots!\n"
+                )
+                ff.write(f"The maximal number of local modes was {r.max_local_modes}\n")
+                ff.write(f"The maximal number of input vectors to a local POD was: {r.max_vectors_before_pod}\n")
+            ff.write(
+                f"The maximum amount of memory used on rank 0 was: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1000.0 ** 2} GB\n"
+            )
     mpi.comm_world.Barrier()
     if not return_snapshots:
         U = None
@@ -217,9 +229,9 @@ if __name__ == "__main__":
     grid_size_y = 60 if argc < 6 else int(sys.argv[5])
     visualize = True if argc < 7 else (False if sys.argv[6] == "False" else True)
     subsampling = True if argc < 8 else (False if sys.argv[7] == "False" else True)
-    least_squares_pfield = True if argc < 9 else (False if sys.argv[8] == "False" else True)
-    least_squares_ofield = True if argc < 10 else (False if sys.argv[9] == "False" else True)
-    least_squares_stokes = True if argc < 11 else (False if sys.argv[10] == "False" else True)
+    deim_pfield = True if argc < 9 else (False if sys.argv[8] == "False" else True)
+    deim_ofield = True if argc < 10 else (False if sys.argv[9] == "False" else True)
+    deim_stokes = True if argc < 11 else (False if sys.argv[10] == "False" else True)
     include_newton_stages = False if argc < 12 else (False if sys.argv[11] == "False" else True)
     pol_order = 1
     chunk_size = 10
@@ -233,10 +245,10 @@ if __name__ == "__main__":
     pod_pfield = True
     pod_ofield = True
     pod_stokes = True
-    deim_pfield = True
-    deim_ofield = True
-    deim_stokes = True
-    tested_param = "Ca"
+    least_squares_pfield = True
+    least_squares_ofield = True
+    least_squares_stokes = True
+    excluded_param = "Be"
     # default values for parameters
     Ca0 = 0.1
     Be0 = 0.3
@@ -277,55 +289,84 @@ if __name__ == "__main__":
     test_params_per_rank = 1 if mpi.size_world > 1 else 1
     num_train_params = train_params_per_rank * mpi.size_world
     num_test_params = test_params_per_rank * mpi.size_world
+    # we have two parameters and want to sample both of these parameters with the same number of values
+    values_per_parameter_train = int(math.sqrt(num_train_params))
+    values_per_parameter_test = int(math.sqrt(num_test_params))
+
     # Factor of largest to smallest training parameter
     rf = 10
     rf = np.sqrt(rf)
+    lower_bound_Ca = Ca0 / rf
+    upper_bound_Ca = Ca0 * rf
+    lower_bound_Be = Be0 / rf
+    upper_bound_Be = Be0 * rf
+    lower_bound_Pa = Pa0 / rf
+    upper_bound_Pa = Pa0 * rf
     # Compute factors such that mu_i/mu_{i+1} = const and mu_0 = default_value/sqrt(rf), mu_last = default_value*sqrt(rf)
     # factors = np.array([1.])
-    factors = np.array([(rf ** 2) ** (i / (num_train_params - 1)) / rf for i in range(num_train_params)] if num_train_params > 1 else [1.0])
+    factors = np.array(
+        [(rf ** 2) ** (i / (values_per_parameter_train - 1)) / rf for i in range(values_per_parameter_train)]
+        if values_per_parameter_train > 1
+        else [1.0]
+    )
     # Actually create training parameters.
-    # Currently, only tested_param varies, the other two entries are set to the default value
-    if tested_param == "Ca":
-        for Ca in factors * Ca0:
-            mus.append({"Pa": Pa0, "Be": Be0, "Ca": Ca})
-    elif tested_param == "Be":
+    # Currently, only two parameters vary, the other one is set to the default value
+    random.seed(123)
+    if excluded_param == "Ca":
         for Be in factors * Be0:
-            mus.append({"Pa": Pa0, "Be": Be, "Ca": Ca0})
-    elif tested_param == "Pa":
-        for Pa in factors * Pa0:
-            mus.append({"Pa": Pa, "Be": Be0, "Ca": Ca0})
+            for Pa in factors * Pa0:
+                mus.append({"Pa": Pa, "Be": Be, "Ca": Ca0})
+    elif excluded_param == "Be":
+        for Ca in factors * Ca0:
+            for Pa in factors * Pa0:
+                mus.append({"Pa": Pa, "Be": Be0, "Ca": Ca})
+    elif excluded_param == "Pa":
+        for Ca in factors * Ca0:
+            for Be in factors * Be0:
+                mus.append({"Pa": Pa0, "Be": Be, "Ca": Ca})
     else:
-        raise NotImplementedError(f"Wrong value of tested_param: {tested_param}")
+        raise NotImplementedError(f"Wrong value of excluded_param: {excluded_param}")
+    while len(mus) < num_train_params:
+        mus.append(
+            {
+                "Pa": Pa0 if excluded_param == "Pa" else random.uniform(lower_bound_Pa, upper_bound_Pa),
+                "Be": Be0 if excluded_param == "Be" else random.uniform(lower_bound_Be, upper_bound_Be),
+                "Ca": Ca0 if excluded_param == "Ca" else random.uniform(lower_bound_Ca, upper_bound_Ca),
+            }
+        )
     ####### Create test parameters ########
     new_mus = []
-    random.seed(123)
     for i in range(num_test_params):
-        new_mu = {"Pa": Pa0, "Be": Be0, "Ca": Ca0}
-        new_mu[tested_param] = random.uniform(new_mu[tested_param] / rf, new_mu[tested_param] * rf)
-        new_mus.append(new_mu)
+        new_mus.append(
+            {
+                "Pa": Pa0 if excluded_param == "Pa" else random.uniform(lower_bound_Pa, upper_bound_Pa),
+                "Be": Be0 if excluded_param == "Be" else random.uniform(lower_bound_Be, upper_bound_Be),
+                "Ca": Ca0 if excluded_param == "Ca" else random.uniform(lower_bound_Ca, upper_bound_Ca),
+            }
+        )
 
     ###### Start writing output file #########
 
-    filename = "rom_results_grid{}x{}_tend{}_dt{}_{}_param{}_pfield_{}_ofield_{}_stokes_{}.txt".format(
+    filename = "rom_grid{}x{}_tend{}_dt{}_{}_without{}_pfield{}_ofield{}_stokes{}.txt".format(
         grid_size_x,
         grid_size_y,
         t_end,
         dt,
         "snapsandstages" if include_newton_stages else "snaps",
-        tested_param,
-        (f"pod{pfield_atol}" if pod_pfield else "none") + ("LS" if least_squares_pfield else ""),
-        (f"pod{ofield_atol}" if pod_ofield else "none") + ("LS" if least_squares_ofield else ""),
-        (f"pod{stokes_atol}" if pod_stokes else "none") + ("LS" if least_squares_stokes else ""),
+        excluded_param,
+        (f"pod{pfield_atol:.0e}" if pod_pfield else "pod0")
+        + (f"deim{pfield_deim_atol:.0e}" if deim_pfield else "deim0"),
+        (f"pod{ofield_atol:.0e}" if pod_ofield else "pod0")
+        + (f"deim{ofield_deim_atol:.0e}" if deim_ofield else "deim0"),
+        (f"pod{stokes_atol:.0e}" if pod_stokes else "pod0")
+        + (f"deim{stokes_deim_atol:.0e}" if deim_stokes else "deim0"),
     )
 
     if mpi.rank_world == 0:
         with open(filename, "w") as ff:
             ff.write(
-                f"{filename}\nTrained with {len(mus)} Parameters for {tested_param}: {[param[tested_param] for param in mus]}\n"
-                f"Tested with {len(new_mus)} new Parameters: {[param[tested_param] for param in new_mus]}\n"
-            )
-            ff.write(
-                "tol_pf tol_of tol_st tol_deim_pf tol_deim_of tol_deim_st n_pf n_of n_st n_deim_pf n_deim_of n_deim_st mean_err_pf mean_err_of mean_err_st mean_err_pf_new mean_err_of_new mean_err_st_new mean_norm_pf mean_norm_of mean_norm_st\n"
+                f"{filename}\nTrained with {len(mus)} Parameters: {mus}\n"
+                f"Tested with {len(new_mus)} new Parameters: {new_mus}\n"
             )
 
     ####### Scatter parameters to MPI ranks #######
@@ -337,27 +378,29 @@ if __name__ == "__main__":
     solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])
     num_cells = solver.num_cells
     m = DuneCellModel(solver)
-    Us, Us_res, results = binary_tree_hapod(
-        m, mus, chunk_size, mpi, hapod_tols, indices, include_newton_stages, omega=0.95, return_snapshots=True, return_newton_residuals=True,
+    Us, _, results = binary_tree_hapod(
+        m,
+        mus,
+        chunk_size,
+        mpi,
+        hapod_tols,
+        indices,
+        include_newton_stages,
+        omega=0.95,
+        return_snapshots=True,
+        return_newton_residuals=False,
+        logfile=filename,
     )
     U = Us[0]
-    U_res = Us_res[0]
+    # U_res = Us_res[0]
     for p in range(1, len(mus)):
         U.append(Us[p])
-        for q in range(3):
-            U_res[q].append(Us_res[p][q])
+    #     for q in range(3):
+    #         U_res[q].append(Us_res[p][q])
+    del Us
     for k in indices:
         r = results[k]
         r.modes, r.win = mpi.shared_memory_bcast_modes(r.modes, returnlistvectorarray=True)
-
-    # solve full-order model for new param
-    start = timer()
-    U_new_mu = m.solve(mu=new_mus[0], return_stages=False)
-    for p in range(1, len(new_mus)):
-        U_new_mu.append(m.solve(mu=new_mus[p], return_stages=False))
-    mean_fom_time = (timer() - start) / len(new_mus)
-    # Be, Ca, Pa = (float(new_mu['Be']), float(new_mu['Ca']), float(new_mu['Pa']))
-    # m.visualize(U_new_mu, prefix=f"fullorder_Be{Be}_Ca{Ca}_Pa{Pa}", subsampling=subsampling, every_nth=visualize_step)
 
     pfield_basis = results[0].modes if pod_pfield else None
     ofield_basis = results[1].modes if pod_ofield else None
@@ -366,24 +409,16 @@ if __name__ == "__main__":
     ofield_deim_basis = results[4].modes if deim_ofield else None
     stokes_deim_basis = results[5].modes if deim_stokes else None
 
-    # pfield_deim_basis, _ = pod(
-    #     U_res[0], product=None, atol=0.0, rtol=0.0, l2_err=pfield_deim_atol / np.sqrt(len(U)),
-    # )
-    # ofield_deim_basis, _ = pod(
-    #     U_res[1], product=None, atol=0.0, rtol=0.0, l2_err=ofield_deim_atol / np.sqrt(len(U)),
-    # )
-    # stokes_deim_basis, _ = pod(
-    #     U_res[2], product=None, atol=0.0, rtol=0.0, l2_err=stokes_deim_atol / np.sqrt(len(U)),
-    # )
-
-    reduced_prefix = "param{}_{}_pfield_{}_ofield_{}_stokes_{}".format(
-        tested_param,
+    reduced_prefix = "without{}_{}_pfield_{}_ofield_{}_stokes_{}".format(
+        excluded_param,
         "snapsandstages" if include_newton_stages else "snaps",
-        f"pod{len(pfield_basis)}" if pod_pfield else "none",
-        f"pod{len(ofield_basis)}" if pod_ofield else "none",
-        f"pod{len(stokes_basis)}" if pod_stokes else "none",
+        (f"pod{pfield_atol:.0e}" if pod_pfield else "pod0")
+        + (f"deim{pfield_deim_atol:.0e}" if deim_pfield else "deim0"),
+        (f"pod{ofield_atol:.0e}" if pod_ofield else "pod0")
+        + (f"deim{ofield_deim_atol:.0e}" if deim_ofield else "deim0"),
+        (f"pod{stokes_atol:.0e}" if pod_stokes else "pod0")
+        + (f"deim{stokes_deim_atol:.0e}" if deim_stokes else "deim0"),
     )
-
     reductor = CellModelReductor(
         m,
         pfield_basis,
@@ -404,11 +439,41 @@ if __name__ == "__main__":
         u.append(rom.solve(mus[p], return_stages=False))
     U_rom = reductor.reconstruct(u)
 
+    ################## calculate errors for trained parameters #######################
+    pfield_abs_errors = (U._blocks[0] - U_rom._blocks[0]).norm()
+    ofield_abs_errors = (U._blocks[1] - U_rom._blocks[1]).norm()
+    stokes_abs_errors = (U._blocks[2] - U_rom._blocks[2]).norm()
+    pfield_rel_errors = (U._blocks[0] - U_rom._blocks[0]).norm() / U._blocks[0].norm()
+    ofield_rel_errors = (U._blocks[1] - U_rom._blocks[1]).norm() / U._blocks[1].norm()
+    stokes_rel_errors = (U._blocks[2] - U_rom._blocks[2]).norm() / U._blocks[2].norm()
+    pfield_norms = U._blocks[0].norm()
+    ofield_norms = U._blocks[1].norm()
+    stokes_norms = U._blocks[2].norm()
+    pfield_abs_errors = mpi.comm_world.gather(pfield_abs_errors, root=0)
+    ofield_abs_errors = mpi.comm_world.gather(ofield_abs_errors, root=0)
+    stokes_abs_errors = mpi.comm_world.gather(stokes_abs_errors, root=0)
+    pfield_rel_errors = mpi.comm_world.gather(pfield_rel_errors, root=0)
+    ofield_rel_errors = mpi.comm_world.gather(ofield_rel_errors, root=0)
+    stokes_rel_errors = mpi.comm_world.gather(stokes_rel_errors, root=0)
+    pfield_norms = mpi.comm_world.gather(pfield_norms, root=0)
+    ofield_norms = mpi.comm_world.gather(ofield_norms, root=0)
+    stokes_norms = mpi.comm_world.gather(stokes_norms, root=0)
+    del U, U_rom
+
     ################## test new parameters #######################
+    # solve full-order model for new param
+    start = timer()
+    U_new_mu = m.solve(mu=new_mus[0], return_stages=False)
+    for p in range(1, len(new_mus)):
+        U_new_mu.append(m.solve(mu=new_mus[p], return_stages=False))
+    mean_fom_time = (timer() - start) / len(new_mus)
+    # Be, Ca, Pa = (float(new_mu['Be']), float(new_mu['Ca']), float(new_mu['Pa']))
+    # m.visualize(U_new_mu, prefix=f"fullorder_Be{Be}_Ca{Ca}_Pa{Pa}", subsampling=subsampling, every_nth=visualize_step)
+
     # solve reduced model for new params
     start = timer()
-    # cProfile.run('u_new_mu = rom.solve(new_mus[0], return_stages=False)')
-    u_new_mu = rom.solve(new_mus[0], return_stages=False)
+    cProfile.run("u_new_mu = rom.solve(new_mus[0], return_stages=False)", f"rom{mpi.rank_world}.cprof")
+    # u_new_mu = rom.solve(new_mus[0], return_stages=False)
     for p in range(1, len(new_mus)):
         u_new_mu.append(rom.solve(new_mus[p], return_stages=False))
     mean_rom_time = (timer() - start) / len(new_mus)
@@ -420,29 +485,26 @@ if __name__ == "__main__":
     #     subsampling=subsampling,
     #     every_nth=visualize_step)
 
-    # calculate_errors
-    pfield_rel_errors = (U._blocks[0] - U_rom._blocks[0]).norm() / U._blocks[0].norm()
-    ofield_rel_errors = (U._blocks[1] - U_rom._blocks[1]).norm() / U._blocks[1].norm()
-    stokes_rel_errors = (U._blocks[2] - U_rom._blocks[2]).norm() / U._blocks[2].norm()
-    pfield_norms = U._blocks[0].norm()
-    ofield_norms = U._blocks[1].norm()
-    stokes_norms = U._blocks[2].norm()
+    # calculate_errors for new mus
+    pfield_abs_errors_new_mu = (U_new_mu._blocks[0] - U_rom_new_mu._blocks[0]).norm()
+    ofield_abs_errors_new_mu = (U_new_mu._blocks[1] - U_rom_new_mu._blocks[1]).norm()
+    stokes_abs_errors_new_mu = (U_new_mu._blocks[2] - U_rom_new_mu._blocks[2]).norm()
     pfield_rel_errors_new_mu = (U_new_mu._blocks[0] - U_rom_new_mu._blocks[0]).norm() / U_new_mu._blocks[0].norm()
     ofield_rel_errors_new_mu = (U_new_mu._blocks[1] - U_rom_new_mu._blocks[1]).norm() / U_new_mu._blocks[1].norm()
     stokes_rel_errors_new_mu = (U_new_mu._blocks[2] - U_rom_new_mu._blocks[2]).norm() / U_new_mu._blocks[2].norm()
-    pfield_rel_errors = mpi.comm_world.gather(pfield_rel_errors, root=0)
-    ofield_rel_errors = mpi.comm_world.gather(ofield_rel_errors, root=0)
-    stokes_rel_errors = mpi.comm_world.gather(stokes_rel_errors, root=0)
-    pfield_norms = mpi.comm_world.gather(pfield_norms, root=0)
-    ofield_norms = mpi.comm_world.gather(ofield_norms, root=0)
-    stokes_norms = mpi.comm_world.gather(stokes_norms, root=0)
     mean_fom_time = mpi.comm_world.gather(mean_fom_time, root=0)
     mean_rom_time = mpi.comm_world.gather(mean_rom_time, root=0)
+    pfield_abs_errors_new_mus = mpi.comm_world.gather(pfield_abs_errors_new_mu, root=0)
+    ofield_abs_errors_new_mus = mpi.comm_world.gather(ofield_abs_errors_new_mu, root=0)
+    stokes_abs_errors_new_mus = mpi.comm_world.gather(stokes_abs_errors_new_mu, root=0)
     pfield_rel_errors_new_mus = mpi.comm_world.gather(pfield_rel_errors_new_mu, root=0)
     ofield_rel_errors_new_mus = mpi.comm_world.gather(ofield_rel_errors_new_mu, root=0)
     stokes_rel_errors_new_mus = mpi.comm_world.gather(stokes_rel_errors_new_mu, root=0)
 
     if mpi.rank_world == 0:
+        pfield_abs_errors = np.concatenate(pfield_abs_errors)
+        ofield_abs_errors = np.concatenate(ofield_abs_errors)
+        stokes_abs_errors = np.concatenate(stokes_abs_errors)
         pfield_rel_errors = np.concatenate(pfield_rel_errors)
         ofield_rel_errors = np.concatenate(ofield_rel_errors)
         stokes_rel_errors = np.concatenate(stokes_rel_errors)
@@ -451,13 +513,19 @@ if __name__ == "__main__":
         stokes_norms = np.concatenate(stokes_norms)
         mean_fom_time = np.mean(mean_fom_time)
         mean_rom_time = np.mean(mean_rom_time)
+        pfield_abs_errors_new_mus = np.concatenate(pfield_abs_errors_new_mus)
+        ofield_abs_errors_new_mus = np.concatenate(ofield_abs_errors_new_mus)
+        stokes_abs_errors_new_mus = np.concatenate(stokes_abs_errors_new_mus)
         pfield_rel_errors_new_mus = np.concatenate(pfield_rel_errors_new_mus)
         ofield_rel_errors_new_mus = np.concatenate(ofield_rel_errors_new_mus)
         stokes_rel_errors_new_mus = np.concatenate(stokes_rel_errors_new_mus)
-        np.set_printoptions(formatter={'float': '{:.2e}'.format})
+        np.set_printoptions(formatter={"float": "{:.2e}".format})
         with open(filename, "a") as ff:
             ff.write(
-                ("{} " * 12 + "{:.2e} " * 9 + "\n").format(
+                "tol_pf tol_of tol_st tol_deim_pf tol_deim_of tol_deim_st n_pf n_of n_st n_deim_pf n_deim_of n_deim_st mean_err_pf mean_err_of mean_err_st mean_rel_err_pf mean_rel_err_of mean_rel_err_st mean_err_pf_new mean_err_of_new mean_err_st_new mean_rel_err_pf_new mean_rel_err_of_new mean_rel_err_st_new mean_norm_pf mean_norm_of mean_norm_st\n"
+            )
+            ff.write(
+                ("{} " * 12 + "{:.2e} " * 15 + "\n").format(
                     pfield_atol,
                     ofield_atol,
                     stokes_atol,
@@ -467,12 +535,18 @@ if __name__ == "__main__":
                     len(pfield_basis),
                     len(ofield_basis),
                     len(stokes_basis),
-                    len(pfield_deim_basis),
-                    len(ofield_deim_basis),
-                    len(stokes_deim_basis),
+                    len(pfield_deim_basis) if pfield_deim_basis else 0,
+                    len(ofield_deim_basis) if ofield_deim_basis else 0,
+                    len(stokes_deim_basis) if stokes_deim_basis else 0,
+                    mean([err for err in pfield_abs_errors if not np.isnan(err)]),
+                    mean([err for err in ofield_abs_errors if not np.isnan(err)]),
+                    mean([err for err in stokes_abs_errors if not np.isnan(err)]),
                     mean([err for err in pfield_rel_errors if not np.isnan(err)]),
                     mean([err for err in ofield_rel_errors if not np.isnan(err)]),
                     mean([err for err in stokes_rel_errors if not np.isnan(err)]),
+                    mean([err for err in pfield_abs_errors_new_mus if not np.isnan(err)]),
+                    mean([err for err in ofield_abs_errors_new_mus if not np.isnan(err)]),
+                    mean([err for err in stokes_abs_errors_new_mus if not np.isnan(err)]),
                     mean([err for err in pfield_rel_errors_new_mus if not np.isnan(err)]),
                     mean([err for err in ofield_rel_errors_new_mus if not np.isnan(err)]),
                     mean([err for err in stokes_rel_errors_new_mus if not np.isnan(err)]),
@@ -481,11 +555,27 @@ if __name__ == "__main__":
                     mean([norm for norm in stokes_norms if not np.isnan(norm)]),
                 )
             )
-            ff.write(f"\nErrors for trained mus:\n {pfield_rel_errors}\n {ofield_rel_errors}\n {stokes_rel_errors}\n")
-            ff.write(f"\nErrors for new mus:\n {pfield_rel_errors_new_mus}\n {ofield_rel_errors_new_mus}\n {stokes_rel_errors_new_mus}\n")
+            ff.write(
+                f"\Absolute errors for trained mus:\n {pfield_abs_errors}\n {ofield_abs_errors}\n {stokes_abs_errors}\n"
+            )
+            ff.write(
+                f"\Absolute errors for new mus:\n {pfield_abs_errors_new_mus}\n {ofield_abs_errors_new_mus}\n {stokes_abs_errors_new_mus}\n"
+            )
+            ff.write(
+                f"\nRelative errors for trained mus:\n {pfield_rel_errors}\n {ofield_rel_errors}\n {stokes_rel_errors}\n"
+            )
+            ff.write(
+                f"\nRelative errors for new mus:\n {pfield_rel_errors_new_mus}\n {ofield_rel_errors_new_mus}\n {stokes_rel_errors_new_mus}\n"
+            )
             ff.write(f"\nTimings\n {mean_fom_time} vs. {mean_rom_time}, speedup {mean_fom_time/mean_rom_time}\n")
         print(
-            "****", len(pfield_basis), len(ofield_basis), len(stokes_basis), len(pfield_deim_basis), len(ofield_deim_basis), len(stokes_deim_basis),
+            "****",
+            len(pfield_basis),
+            len(ofield_basis),
+            len(stokes_basis),
+            len(pfield_deim_basis) if pfield_deim_basis is not None else 0,
+            len(ofield_deim_basis) if ofield_deim_basis is not None else 0,
+            len(stokes_deim_basis) if stokes_deim_basis is not None else 0,
         )
         print("Trained mus")
         print(pfield_rel_errors)

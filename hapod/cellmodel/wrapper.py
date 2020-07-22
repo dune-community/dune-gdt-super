@@ -428,6 +428,7 @@ class MutableStateFixedComponentJacobianOperator(Operator):
         self.source = operator.fixed_component_source
         self.range = operator.range
         self.linear = True
+        self._parameters = {} # mu is already fixed, so no parameters
 
     def apply(self, U, mu=None):
         assert U in self.source
@@ -1128,9 +1129,9 @@ class CellModelReductor(ProjectionBasedReductor):
         stokes_basis,
         check_orthonormality=None,
         check_tol=None,
-        least_squares_pfield=False,
-        least_squares_ofield=False,
-        least_squares_stokes=False,
+        least_squares_pfield=True,
+        least_squares_ofield=True,
+        least_squares_stokes=True,
         pfield_deim_basis=None,
         ofield_deim_basis=None,
         stokes_deim_basis=None,
