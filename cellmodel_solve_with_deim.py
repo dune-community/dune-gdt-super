@@ -220,6 +220,7 @@ if __name__ == "__main__":
     least_squares_pfield = True if argc < 9 else (False if sys.argv[8] == "False" else True)
     least_squares_ofield = True if argc < 10 else (False if sys.argv[9] == "False" else True)
     least_squares_stokes = True if argc < 11 else (False if sys.argv[10] == "False" else True)
+    include_newton_stages = False if argc < 12 else (False if sys.argv[11] == "False" else True)
     pol_order = 1
     chunk_size = 10
     pfield_atol = 1e-3
@@ -229,7 +230,6 @@ if __name__ == "__main__":
     ofield_deim_atol = 1e-10
     stokes_deim_atol = 1e-10
     visualize_step = 50
-    include_newton_stages = True
     pod_pfield = True
     pod_ofield = True
     pod_stokes = True
@@ -454,6 +454,7 @@ if __name__ == "__main__":
         pfield_rel_errors_new_mus = np.concatenate(pfield_rel_errors_new_mus)
         ofield_rel_errors_new_mus = np.concatenate(ofield_rel_errors_new_mus)
         stokes_rel_errors_new_mus = np.concatenate(stokes_rel_errors_new_mus)
+        np.set_printoptions(formatter={'float': '{:.2e}'.format})
         with open(filename, "a") as ff:
             ff.write(
                 ("{} " * 12 + "{:.2e} " * 9 + "\n").format(
@@ -495,4 +496,4 @@ if __name__ == "__main__":
         print(ofield_rel_errors_new_mus)
         print(stokes_rel_errors_new_mus)
         print("Timings")
-        print(f"{mean_fom_time} vs. {mean_rom_time}, speedup {mean_fom_time/mean_rom_time}")
+        print(f"{mean_fom_time:.2f} vs. {mean_rom_time:.2f}, speedup {mean_fom_time/mean_rom_time:.2f}")
