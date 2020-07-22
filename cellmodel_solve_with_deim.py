@@ -233,14 +233,14 @@ if __name__ == "__main__":
     deim_ofield = True if argc < 10 else (False if sys.argv[9] == "False" else True)
     deim_stokes = True if argc < 11 else (False if sys.argv[10] == "False" else True)
     include_newton_stages = False if argc < 12 else (False if sys.argv[11] == "False" else True)
+    pfield_atol = 1e-3 if argc < 13 else float(sys.argv[12])
+    ofield_atol = 1e-3 if argc < 14 else float(sys.argv[13])
+    stokes_atol = 1e-3 if argc < 15 else float(sys.argv[14])
+    pfield_deim_atol = 1e-10 if argc < 16 else float(sys.argv[15])
+    ofield_deim_atol = 1e-10 if argc < 17 else float(sys.argv[16])
+    stokes_deim_atol = 1e-10 if argc < 18 else float(sys.argv[17])
     pol_order = 1
     chunk_size = 10
-    pfield_atol = 1e-3
-    ofield_atol = 1e-3
-    stokes_atol = 1e-3
-    pfield_deim_atol = 1e-10
-    ofield_deim_atol = 1e-10
-    stokes_deim_atol = 1e-10
     visualize_step = 50
     pod_pfield = True
     pod_ofield = True
