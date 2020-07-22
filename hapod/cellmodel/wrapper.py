@@ -13,7 +13,7 @@ from pymor.models.interface import Model
 from pymor.operators.interface import Operator
 from pymor.operators.constructions import VectorOperator, ConstantOperator, LincombOperator, LinearOperator, FixedParameterOperator, ProjectedOperator
 from pymor.parameters.base import Mu, Parameters, ParametricObject
-from pymor.operators.ei import EmpiricalInterpolatedOperator
+from pymor.operators.ei import EmpiricalInterpolatedOperator, ProjectedEmpiciralInterpolatedOperator
 from pymor.parameters.functionals import ExpressionParameterFunctional
 from pymor.reductors.basic import ProjectionBasedReductor
 from pymor.vectorarrays.block import BlockVectorSpace
@@ -389,7 +389,7 @@ class MutableStateComponentJacobianOperator(MutableStateComponentOperator):
     def _fixed_component_jacobian(self, U, mu=None):
         assert len(U) == 1
         assert mu == None or mu == self._last_mu
-        return MutableStateFixedComponentJacobianOperator(self, self._last_component_value, self._last_mu, U._list[0])
+        return MutableStateFixedComponentJacobianOperator(self, self._last_component_value, self._last_mu, U)
 
 
 class MutableStateFixedComponentJacobianOperator(Operator):
@@ -419,7 +419,7 @@ class MutableStateFixedComponentJacobianOperator(Operator):
             NumpyVectorArray(value.dofs(source_dofs[restricted_operator.mutable_state_index[i]]), NumpyVectorSpace(len(self.component_value)))
             for i, value in enumerate(self.component_value)
         ]
-        restricted_jacobian_value = [self.jacobian_value[i] for i in restricted_source_dofs]
+        restricted_jacobian_value = NumpyVectorSpace.make_array(self.jacobian_value.dofs(restricted_source_dofs))
         ret_op = self.with_(operator=restricted_operator, component_value=restricted_component_value, jacobian_value=restricted_jacobian_value)
         return ret_op, restricted_source_dofs
 
@@ -450,8 +450,8 @@ class CellModelRestrictedPfieldOperator(MutableStateComponentJacobianOperator):
             self.solver.prepare_pfield_operator(self.cell_index, restricted=True)
 
     def _change_jacobian_state(self, jacobian_value):
-        assert len(jacobian_value) == len(self._fixed_component_source_dofs)
-        self.solver.set_pfield_jacobian_state_dofs(jacobian_value, self.cell_index)
+        assert jacobian_value.dim == len(self._fixed_component_source_dofs)
+        self.solver.set_pfield_jacobian_state_dofs(jacobian_value.to_numpy().ravel(), self.cell_index)
 
     def _need_to_invalidate_jacobian_state(self, component_value_changed, mu_changed):
         return component_value_changed or mu_changed
@@ -498,7 +498,7 @@ class CellModelPfieldOperator(MutableStateComponentJacobianOperator):
             self.solver.prepare_pfield_operator(self.cell_index)
 
     def _change_jacobian_state(self, jacobian_value):
-        self.solver.set_pfield_jacobian_state(jacobian_value, self.cell_index)
+        self.solver.set_pfield_jacobian_state(jacobian_value._list[0], self.cell_index)
 
     def _need_to_invalidate_jacobian_state(self, component_value_changed, mu_changed):
         return component_value_changed or mu_changed
@@ -550,8 +550,8 @@ class CellModelRestrictedOfieldOperator(MutableStateComponentJacobianOperator):
             self.solver.prepare_ofield_operator(self.cell_index, restricted=True)
 
     def _change_jacobian_state(self, jacobian_value):
-        assert len(jacobian_value) == len(self._fixed_component_source_dofs)
-        self.solver.set_ofield_jacobian_state_dofs(jacobian_value, self.cell_index)
+        assert jacobian_value.dim == len(self._fixed_component_source_dofs)
+        self.solver.set_ofield_jacobian_state_dofs(jacobian_value.to_numpy().ravel(), self.cell_index)
 
     def _need_to_invalidate_jacobian_state(self, component_value_changed, mu_changed):
         return component_value_changed or mu_changed
@@ -598,7 +598,7 @@ class CellModelOfieldOperator(MutableStateComponentJacobianOperator):
             self.solver.prepare_ofield_operator(self.cell_index)
 
     def _change_jacobian_state(self, jacobian_value):
-        self.solver.set_ofield_jacobian_state(jacobian_value, self.cell_index)
+        self.solver.set_ofield_jacobian_state(jacobian_value._list[0], self.cell_index)
 
     def _need_to_invalidate_jacobian_state(self, component_value_changed, mu_changed):
         return component_value_changed or mu_changed
@@ -1026,6 +1026,41 @@ class FixedComponentEmpiricalInterpolatedOperator(EmpiricalInterpolatedOperator)
             self._operator = ei_operator.operator.fix_components(idx, U)
             self.source = self.operator.source
 
+
+class ProjectedFixedComponentEmpiciralInterpolatedOperator(Operator):
+    """A projected |EmpiricalInterpolatedOperator|."""
+
+    def __init__(self, restricted_operator, interpolation_matrix, source_basis_dofs,
+                 projected_collateral_basis, triangular, solver_options=None, name=None):
+
+        name = name or f'{restricted_operator.name}_projected'
+
+        self.__auto_init(locals())
+        self.source = BlockVectorSpace(NumpyVectorSpace(len(sbd)) for sbd in source_basis_dofs)
+        self.range = projected_collateral_basis.space
+        self.linear = restricted_operator.linear
+
+    def apply(self, U, mu=None):
+        raise NotImplementedError
+
+    def jacobian(self, U, mu=None):
+        raise NotImplementedError
+
+    def fix_components(self, idx, U):
+        restricted_op = self.restricted_operator
+        if idx != restricted_op.mutable_state_index:
+            raise NotImplementedError
+        U_dofs = [self.source_basis_dofs[j].lincomb(U[i].to_numpy())
+                  for i, j in enumerate(idx)]
+        fixed_restricted_op = restricted_op.fix_components(idx, U_dofs)
+        fixed_source_indices = [i for i in range(len(self.source.subspaces)) if i not in idx]
+        if len(fixed_source_indices) != 1:
+            raise NotImplementedError
+        source_basis_dofs = self.source_basis_dofs[fixed_source_indices[0]]
+        return ProjectedEmpiciralInterpolatedOperator(fixed_restricted_op, self.interpolation_matrix,
+                                                      source_basis_dofs, self.projected_collateral_basis,
+                                                      self.triangular, self.solver_options, f'{self.name}_fixed_component')
+                                                      
 
 class CellModelReductor(ProjectionBasedReductor):
     def __init__(
