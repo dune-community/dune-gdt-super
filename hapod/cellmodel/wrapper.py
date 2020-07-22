@@ -1094,8 +1094,15 @@ class CellModelReductor(ProjectionBasedReductor):
         if self.pfield_deim_basis:
             pfield_dofs, pfield_deim_basis, _ = deim(self.pfield_deim_basis, pod=False)
             pfield_op = EmpiricalInterpolatedOperatorWithFixComponent(pfield_op, pfield_dofs, pfield_deim_basis, False)
-            pfield_op = ProjectedSystemOperator(
-                pfield_op, pfield_basis if not self.least_squares_pfield else None, [pfield_basis, pfield_basis, ofield_basis, stokes_basis]
+            projected_collateral_basis = (pfield_deim_basis if self.least_squares_pfield else
+                                          NumpyVectorSpace.make_array(pfield_deim_basis.dot(pfield_basis)))
+            source_basis_dofs = [NumpyVectorSpace.make_array(pfield_basis.dofs(pfield_op.source_dofs[0])),
+                                 NumpyVectorSpace.make_array(pfield_basis.dofs(pfield_op.source_dofs[1])),
+                                 NumpyVectorSpace.make_array(ofield_basis.dofs(pfield_op.source_dofs[2])),
+                                 NumpyVectorSpace.make_array(stokes_basis.dofs(pfield_op.source_dofs[3]))]
+            pfield_op = ProjectedFixedComponentEmpiciralInterpolatedOperator(
+                 pfield_op.restricted_operator, pfield_op.interpolation_matrix, source_basis_dofs,
+                 projected_collateral_basis, False
             )
         else:
             pfield_op = ProjectedSystemOperator(
@@ -1104,8 +1111,15 @@ class CellModelReductor(ProjectionBasedReductor):
         if self.ofield_deim_basis:
             ofield_dofs, ofield_deim_basis, _ = deim(self.ofield_deim_basis, pod=False)
             ofield_op = EmpiricalInterpolatedOperatorWithFixComponent(ofield_op, ofield_dofs, ofield_deim_basis, False)
-            ofield_op = ProjectedSystemOperator(
-                ofield_op, ofield_basis if not self.least_squares_ofield else None, [ofield_basis, pfield_basis, ofield_basis, stokes_basis]
+            projected_collateral_basis = (ofield_deim_basis if self.least_squares_ofield else
+                                          NumpyVectorSpace.make_array(ofield_deim_basis.dot(ofield_basis)))
+            source_basis_dofs = [NumpyVectorSpace.make_array(ofield_basis.dofs(ofield_op.source_dofs[0])),
+                                 NumpyVectorSpace.make_array(pfield_basis.dofs(ofield_op.source_dofs[1])),
+                                 NumpyVectorSpace.make_array(ofield_basis.dofs(ofield_op.source_dofs[2])),
+                                 NumpyVectorSpace.make_array(stokes_basis.dofs(ofield_op.source_dofs[3]))]
+            ofield_op = ProjectedFixedComponentEmpiciralInterpolatedOperator(
+                 ofield_op.restricted_operator, ofield_op.interpolation_matrix, source_basis_dofs,
+                 projected_collateral_basis, False
             )
         else:
             ofield_op = ProjectedSystemOperator(
