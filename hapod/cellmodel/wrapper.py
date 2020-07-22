@@ -1094,22 +1094,37 @@ class CellModelReductor(ProjectionBasedReductor):
         if self.pfield_deim_basis:
             pfield_dofs, pfield_deim_basis, _ = deim(self.pfield_deim_basis, pod=False)
             pfield_op = EmpiricalInterpolatedOperatorWithFixComponent(pfield_op, pfield_dofs, pfield_deim_basis, False)
+            pfield_op = ProjectedSystemOperator(
+                pfield_op, pfield_basis if not self.least_squares_pfield else None, [pfield_basis, pfield_basis, ofield_basis, stokes_basis]
+            )
+        else:
+            pfield_op = ProjectedSystemOperator(
+                pfield_op, pfield_basis if not self.least_squares_pfield else None, [pfield_basis, pfield_basis, ofield_basis, stokes_basis]
+            )
         if self.ofield_deim_basis:
             ofield_dofs, ofield_deim_basis, _ = deim(self.ofield_deim_basis, pod=False)
             ofield_op = EmpiricalInterpolatedOperatorWithFixComponent(ofield_op, ofield_dofs, ofield_deim_basis, False)
+            ofield_op = ProjectedSystemOperator(
+                ofield_op, ofield_basis if not self.least_squares_ofield else None, [ofield_basis, pfield_basis, ofield_basis, stokes_basis]
+            )
+        else:
+            ofield_op = ProjectedSystemOperator(
+                ofield_op, ofield_basis if not self.least_squares_ofield else None, [ofield_basis, pfield_basis, ofield_basis, stokes_basis]
+            )
         if self.stokes_deim_basis:
             stokes_dofs, stokes_deim_basis, _ = deim(self.stokes_deim_basis, pod=False)
             stokes_op = EmpiricalInterpolatedOperatorWithFixComponent(stokes_op, stokes_dofs, stokes_deim_basis, False)
-        projected_operators = {
-            "pfield_op": ProjectedSystemOperator(
-                pfield_op, pfield_basis if not self.least_squares_pfield else None, [pfield_basis, pfield_basis, ofield_basis, stokes_basis]
-            ),
-            "ofield_op": ProjectedSystemOperator(
-                ofield_op, ofield_basis if not self.least_squares_ofield else None, [ofield_basis, pfield_basis, ofield_basis, stokes_basis]
-            ),
-            "stokes_op": ProjectedSystemOperator(
+            stokes_op = ProjectedSystemOperator(
                 stokes_op, stokes_basis if not self.least_squares_stokes else None, [stokes_basis, pfield_basis, ofield_basis]
-            ),
+            )
+        else:
+            stokes_op = ProjectedSystemOperator(
+                stokes_op, stokes_basis if not self.least_squares_stokes else None, [stokes_basis, pfield_basis, ofield_basis]
+            )
+        projected_operators = {
+            "pfield_op": pfield_op,
+            "ofield_op": ofield_op,
+            "stokes_op": stokes_op,
             "initial_pfield": project(fom.initial_pfield, pfield_basis, None),
             "initial_ofield": project(fom.initial_ofield, ofield_basis, None),
             "initial_stokes": project(fom.initial_stokes, stokes_basis, None),
