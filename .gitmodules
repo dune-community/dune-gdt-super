@@ -45,7 +45,7 @@
 	url = https://github.com/dune-community/dune-testtools.git
 [submodule "dune-alugrid"]
 	path = dune-alugrid
-	url = https://gitlab.dune-project.org/extensions/dune-alugrid.git
+	url = https://zivgitlab.uni-muenster.de/ag-ohlberger/dune-community/dune-alugrid
 [submodule "dune-uggrid"]
 	path = dune-uggrid
 	url = https://github.com/dune-mirrors/dune-uggrid.git
