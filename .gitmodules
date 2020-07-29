@@ -10,10 +10,6 @@
 	path = dune-geometry
 	url = https://github.com/dune-mirrors/dune-geometry.git
         ignore = dirty
-[submodule "dune-fem"]
-	path = dune-fem
-	url = https://github.com/dune-mirrors/dune-fem.git
-        ignore = dirty
 [submodule "local/bin"]
 	path = bin
 	url = https://github.com/dune-community/local-bin.git
@@ -28,9 +24,6 @@
 [submodule "dune-istl"]
 	path = dune-istl
 	url = https://github.com/dune-mirrors/dune-istl.git
-[submodule "dune-pdelab"]
-	path = dune-pdelab
-	url = https://github.com/dune-mirrors/dune-pdelab.git
 [submodule "dune-typetree"]
 	path = dune-typetree
 	url = https://github.com/dune-mirrors/dune-typetree.git
