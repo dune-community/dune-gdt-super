@@ -1,14 +1,14 @@
 [submodule "dune-common"]
 	path = dune-common
-	url = https://github.com/dune-community/dune-common.git
+	url = https://github.com/dune-mirrors/dune-common.git
         ignore = dirty
 [submodule "dune-grid"]
 	path = dune-grid
-	url = https://github.com/dune-community/dune-grid.git
+	url = https://github.com/dune-mirrors/dune-grid.git
         ignore = dirty
 [submodule "dune-geometry"]
 	path = dune-geometry
-	url = https://github.com/dune-community/dune-geometry.git
+	url = https://github.com/dune-mirrors/dune-geometry.git
         ignore = dirty
 [submodule "dune-fem"]
 	path = dune-fem
