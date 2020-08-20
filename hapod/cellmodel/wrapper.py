@@ -1153,7 +1153,7 @@ class CellModelReductor(ProjectionBasedReductor):
             pfield_dofs, pfield_deim_basis, _ = deim(self.pfield_deim_basis, pod=False)
             pfield_op = EmpiricalInterpolatedOperatorWithFixComponent(pfield_op, pfield_dofs, pfield_deim_basis, False)
             projected_collateral_basis = (
-                pfield_deim_basis
+                NumpyVectorSpace.make_array(np.eye(len(pfield_deim_basis)))   # assumes that pfield_deim_basis is ONB!!!
                 if self.least_squares_pfield
                 else NumpyVectorSpace.make_array(pfield_deim_basis.dot(pfield_basis))
             )
@@ -1180,7 +1180,7 @@ class CellModelReductor(ProjectionBasedReductor):
             ofield_dofs, ofield_deim_basis, _ = deim(self.ofield_deim_basis, pod=False)
             ofield_op = EmpiricalInterpolatedOperatorWithFixComponent(ofield_op, ofield_dofs, ofield_deim_basis, False)
             projected_collateral_basis = (
-                ofield_deim_basis
+                NumpyVectorSpace.make_array(np.eye(len(ofield_deim_basis)))   # assumes that ofield_deim_basis is ONB!!!
                 if self.least_squares_ofield
                 else NumpyVectorSpace.make_array(ofield_deim_basis.dot(ofield_basis))
             )
@@ -1207,7 +1207,7 @@ class CellModelReductor(ProjectionBasedReductor):
             stokes_dofs, stokes_deim_basis, _ = deim(self.stokes_deim_basis, pod=False)
             stokes_op = EmpiricalInterpolatedOperatorWithFixComponent(stokes_op, stokes_dofs, stokes_deim_basis, False)
             projected_collateral_basis = (
-                stokes_deim_basis
+                NumpyVectorSpace.make_array(np.eye(len(stokes_deim_basis)))   # assumes that stokes_deim_basis is ONB!!!
                 if self.least_squares_stokes
                 else NumpyVectorSpace.make_array(stokes_deim_basis.dot(stokes_basis))
             )
