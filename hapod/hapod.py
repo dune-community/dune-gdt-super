@@ -30,7 +30,7 @@ def local_pod(
     num_snaps_in_leafs,
     parameters,
     root_of_tree=False,
-    orthonormalize=True,
+    orth_tol=1e-10,
     product=None,
     incremental_gramian=True,
 ):
@@ -45,7 +45,7 @@ def local_pod(
     num_snaps_in_leafs: The number of snapshots below the current node in the HAPOD tree
     parameters: An object of type HapodParameters
     root_of_tree: Whether this is the root of the HAPOD tree
-    orthonormalize: Whether to reorthonormalize the resulting modes
+    orth_tol: Whether to reorthonormalize the resulting modes
     incremental_gramian: Whether to build the gramian incrementally using information from the singular values
 
     Returns
@@ -108,8 +108,10 @@ def local_pod(
         del modes
         del EVECS
 
-        if orthonormalize:
-            final_modes = gram_schmidt(final_modes, product=product, copy=False)
+        if final_modes.dim > 0 and len(final_modes) > 0 and np.isfinite(orth_tol):
+            err = np.max(np.abs(final_modes.inner(final_modes, product) - np.eye(len(final_modes))))
+            if err >= orth_tol:
+                gram_schmidt(final_modes, product=product, atol=0., rtol=0., copy=False)
 
         return final_modes, svals
     else:
@@ -122,7 +124,7 @@ def local_pod(
             atol=0.0,
             rtol=0.0,
             l2_err=epsilon_alpha,
-            orth_tol=1e-10 if orthonormalize else np.inf,
+            orth_tol=orth_tol,
         )
 
 
@@ -184,7 +186,7 @@ def binary_tree_hapod_over_ranks(
     last_hapod=False,
     incremental_gramian=True,
     product=None,
-    orthonormalize=True,
+    orth_tol=1e-10,
 ):
     """ A HAPOD with modes and possibly svals stored on ranks of the MPI communicator comm. A binary tree
         of MPI ranks is used as HAPOD tree.
@@ -217,7 +219,7 @@ def binary_tree_hapod_over_ranks(
                         ],
                         total_num_snapshots,
                         parameters,
-                        orthonormalize=orthonormalize,
+                        orth_tol=orth_tol,
                         incremental_gramian=incremental_gramian,
                         product=product,
                         root_of_tree=((len(ranks) == 2) and last_hapod),

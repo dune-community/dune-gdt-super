@@ -44,7 +44,7 @@ class BinaryTreeHapodResults:
 def pods_on_processor_cores_in_binary_tree_hapod(r, vecs):
     print("start processor pod: ", mpi.rank_world)
     r.max_vectors_before_pod = max(r.max_vectors_before_pod, len(vecs))
-    vecs, svals = local_pod([vecs], len(vecs), r.params, incremental_gramian=False, orthonormalize=r.orthonormalize,)
+    vecs, svals = local_pod([vecs], len(vecs), r.params, incremental_gramian=False, orth_tol=r.orth_tol,)
     r.max_local_modes = max(r.max_local_modes, len(vecs))
     vecs.scal(svals)
     r.gathered_modes, _, r.num_snaps, _ = mpi.comm_proc.gather_on_rank_0(vecs, len(vecs), num_modes_equal=False)
@@ -56,14 +56,14 @@ def pod_on_node_in_binary_tree_hapod(r, chunk_index, num_chunks, mpi):
     r.total_num_snapshots += r.num_snaps
     if chunk_index == 0:
         r.max_vectors_before_pod = max(r.max_vectors_before_pod, len(r.gathered_modes))
-        r.modes, r.svals = local_pod([r.gathered_modes], r.num_snaps, r.params, orthonormalize=r.orthonormalize,)
+        r.modes, r.svals = local_pod([r.gathered_modes], r.num_snaps, r.params, orth_tol=r.orth_tol,)
     else:
         r.max_vectors_before_pod = max(r.max_vectors_before_pod, len(r.modes) + len(r.gathered_modes))
         r.modes, r.svals = local_pod(
             [[r.modes, r.svals], r.gathered_modes],
             r.total_num_snapshots,
             r.params,
-            orthonormalize=r.orthonormalize,
+            orth_tol=r.orth_tol,
             incremental_gramian=r.incremental_gramian,
             root_of_tree=(chunk_index == num_chunks - 1 and mpi.size_rank_0_group == 1),
         )
@@ -80,7 +80,7 @@ def final_hapod_in_binary_tree_hapod(r, mpi):
         svals=r.svals,
         last_hapod=True,
         incremental_gramian=r.incremental_gramian,
-        orthonormalize=r.orthonormalize,
+        orth_tol=r.orth_tol,
     )
     r.max_vectors_before_pod = max(r.max_vectors_before_pod, max_num_input_vecs)
     r.max_local_modes = max(r.max_local_modes, max_num_local_modes)
@@ -98,7 +98,7 @@ def binary_tree_hapod(
     return_snapshots=False,
     return_newton_residuals=False,
     incremental_gramian=True,
-    orthonormalize=True,
+    orth_tol=1e-10,
     logfile=None,
 ):
 
@@ -119,7 +119,7 @@ def binary_tree_hapod(
     results = [BinaryTreeHapodResults(tree_depth, tol, omega) for tol in tolerances]
     # add some more properties to the results classes
     for r in results:
-        r.orthonormalize = orthonormalize
+        r.orth_tol = orth_tol
         r.incremental_gramian = incremental_gramian
 
     # store initial values
@@ -556,10 +556,10 @@ if __name__ == "__main__":
                 )
             )
             ff.write(
-                f"\Absolute errors for trained mus:\n {pfield_abs_errors}\n {ofield_abs_errors}\n {stokes_abs_errors}\n"
+                f"\nAbsolute errors for trained mus:\n {pfield_abs_errors}\n {ofield_abs_errors}\n {stokes_abs_errors}\n"
             )
             ff.write(
-                f"\Absolute errors for new mus:\n {pfield_abs_errors_new_mus}\n {ofield_abs_errors_new_mus}\n {stokes_abs_errors_new_mus}\n"
+                f"\nAbsolute errors for new mus:\n {pfield_abs_errors_new_mus}\n {ofield_abs_errors_new_mus}\n {stokes_abs_errors_new_mus}\n"
             )
             ff.write(
                 f"\nRelative errors for trained mus:\n {pfield_rel_errors}\n {ofield_rel_errors}\n {stokes_rel_errors}\n"

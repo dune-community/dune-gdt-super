@@ -80,7 +80,7 @@ class MPIWrapper:
         modes_numpy = np.ndarray(buffer=buf, dtype="d", shape=(modes_length, vector_length))
         if self.rank_proc == 0:
             if self.rank_world == 0:
-                self.comm_rank_0_group.comm.Bcast([modes.data, MPI.DOUBLE], root=0)
+                self.comm_rank_0_group.comm.Bcast([modes.to_numpy(), MPI.DOUBLE], root=0)
                 for i, v in enumerate(modes._list):
                     modes_numpy[i, :] = v.data[:]
                     del v
@@ -167,14 +167,14 @@ class BoltzmannMPICommunicator(MPICommunicator, MPI.Intracomm):
                 offsets = [0]
                 for j, count in enumerate(counts):
                     offsets.append(offsets[j] + count)
-                comm.Gatherv(vectorarray.data, [vectors_gathered, counts, offsets[0:-1], MPI.DOUBLE], root=0)
+                comm.Gatherv(vectorarray.to_numpy(), [vectors_gathered, counts, offsets[0:-1], MPI.DOUBLE], root=0)
                 if svals is not None:
                     offsets_svals = [0]
                     for j, count in enumerate(counts_svals):
                         offsets_svals.append(offsets_svals[j] + count)
                     comm.Gatherv(svals, [svals_gathered, counts_svals, offsets_svals[0:-1], MPI.DOUBLE], root=0)
             else:
-                comm.Gatherv(vectorarray.data, None, root=0)
+                comm.Gatherv(vectorarray.to_numpy(), None, root=0)
                 if svals is not None:
                     comm.Gatherv(svals, None, root=0)
         del vectorarray
