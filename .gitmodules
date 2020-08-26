@@ -1,18 +1,14 @@
 [submodule "dune-common"]
 	path = dune-common
-	url = https://github.com/dune-community/dune-common.git
+	url = https://github.com/dune-mirrors/dune-common.git
         ignore = dirty
 [submodule "dune-grid"]
 	path = dune-grid
-	url = https://github.com/dune-community/dune-grid.git
+	url = https://github.com/dune-mirrors/dune-grid.git
         ignore = dirty
 [submodule "dune-geometry"]
 	path = dune-geometry
-	url = https://github.com/dune-community/dune-geometry.git
-        ignore = dirty
-[submodule "dune-fem"]
-	path = dune-fem
-	url = https://github.com/dune-mirrors/dune-fem.git
+	url = https://github.com/dune-mirrors/dune-geometry.git
         ignore = dirty
 [submodule "local/bin"]
 	path = bin
@@ -28,9 +24,6 @@
 [submodule "dune-istl"]
 	path = dune-istl
 	url = https://github.com/dune-mirrors/dune-istl.git
-[submodule "dune-pdelab"]
-	path = dune-pdelab
-	url = https://github.com/dune-mirrors/dune-pdelab.git
 [submodule "dune-typetree"]
 	path = dune-typetree
 	url = https://github.com/dune-mirrors/dune-typetree.git
@@ -45,7 +38,7 @@
 	url = https://github.com/dune-community/dune-testtools.git
 [submodule "dune-alugrid"]
 	path = dune-alugrid
-	url = https://gitlab.dune-project.org/extensions/dune-alugrid.git
+	url = https://zivgitlab.uni-muenster.de/ag-ohlberger/dune-community/dune-alugrid.git
 [submodule "dune-uggrid"]
 	path = dune-uggrid
 	url = https://github.com/dune-mirrors/dune-uggrid.git
