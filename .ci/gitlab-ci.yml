@@ -15,7 +15,7 @@ variables:
         DOCKER_HOST: tcp://docker:2375/
         DOCKER_DRIVER: overlay2
     before_script:
-        - apk --update add openssh-client rsync git file bash python3
+        - apk --update add py3-pip openssh-client rsync git file bash python3
         - pip3 install -U docker jinja2 docopt
         - echo $DOCKER_PW | docker login --username="$DOCKER_USER" --password-stdin
         - git submodule update --init .ci/shared
