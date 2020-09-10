@@ -58,6 +58,16 @@ class DuneXtLaVector(Vector):
     def dot(self, other):
         return self.impl.dot(other.impl)
 
+    def inner(self, other, product=None):
+        assert product is None, "Not implemented"
+        return self.dot(other)
+
+    def norm(self):
+        return self.l2_norm()
+
+    def norm2(self):
+        return self.l2_norm2()
+
     def l1_norm(self):
         return self.impl.l1_norm()
 
