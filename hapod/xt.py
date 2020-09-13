@@ -17,6 +17,10 @@ class DuneXtLaVector(Vector):
         # else:
         #    return np.frombuffer(self.impl.buffer(), dtype=np.double)
 
+    @property
+    def data(self):
+        return np.frombuffer(self.impl.buffer(), dtype=np.double)
+
     def __eq__(self, other):
         return type(self) == type(other) and self.impl == other.impl
 
@@ -41,10 +45,6 @@ class DuneXtLaVector(Vector):
     @property
     def subtype(self):
         return (type(self.impl), self.impl.dim)
-
-    @property
-    def data(self):
-        return np.frombuffer(self.impl.buffer(), dtype=np.double)
 
     def copy(self, deep=False):
         return DuneXtLaVector(self.impl.copy())

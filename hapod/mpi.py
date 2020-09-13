@@ -82,7 +82,7 @@ class MPIWrapper:
             if self.rank_world == 0:
                 self.comm_rank_0_group.comm.Bcast([modes.to_numpy(), MPI.DOUBLE], root=0)
                 for i, v in enumerate(modes._list):
-                    modes_numpy[i, :] = v.data[:]
+                    modes_numpy[i, :] = v.to_numpy()[:]
                     del v
             else:
                 self.comm_rank_0_group.Bcast([modes_numpy, MPI.DOUBLE], root=0)
@@ -123,7 +123,7 @@ class BoltzmannMPICommunicator(MPICommunicator, MPI.Intracomm):
             dest=dest,
             tag=rank + 1000,
         )
-        comm.Send(modes.data, dest=dest, tag=rank + 2000)
+        comm.Send(modes.to_numpy(), dest=dest, tag=rank + 2000)
         if svals is not None:
             comm.Send(svals, dest=dest, tag=rank + 3000)
 
@@ -155,7 +155,7 @@ class BoltzmannMPICommunicator(MPICommunicator, MPI.Intracomm):
         offsets_svals = []
         # if we have the same number of modes on each rank, we can use Gather, else we have to use Gatherv
         if num_modes_equal:
-            comm.Gather(vectorarray.data, vectors_gathered, root=0)
+            comm.Gather(vectorarray.to_numpy(), vectors_gathered, root=0)
             if svals is not None:
                 comm.Gather(svals, svals_gathered, root=0)
         else:
