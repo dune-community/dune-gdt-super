@@ -42,7 +42,7 @@ def coordinatetransformedmn_hapod(
     omega=0.95,
     logfile=None,
     incremental_gramian=True,
-    orthonormalize=True,
+    orth_tol=1e-10,
     use_binary_tree_hapod=True,
     trajectory_strategy=TrajectoryStrategy.USE_FULL_TRAJECTORY,
     n=None,
@@ -129,7 +129,7 @@ def coordinatetransformedmn_hapod(
                 num_snapshots_in_leafs[i],
                 hapod_params[i],
                 incremental_gramian=False,
-                orthonormalize=orthonormalize,
+                orth_tol=orth_tol,
                 root_of_tree=(rooted_tree_depth == 1),
             )
             max_num_local_modes[i] = len(modes[i])
@@ -160,7 +160,7 @@ def coordinatetransformedmn_hapod(
                     num_snapshots_in_chunk[i],
                     hapod_params[i],
                     incremental_gramian=False,
-                    orthonormalize=orthonormalize,
+                    orth_tol=orth_tol,
                     root_of_tree=False,
                 )
                 max_num_local_modes[i] = max(max_num_local_modes[i], len(next_modes[i]))
@@ -179,7 +179,7 @@ def coordinatetransformedmn_hapod(
                         pod_inputs,
                         num_snapshots_in_leafs[i],
                         hapod_params[i],
-                        orthonormalize=orthonormalize,
+                        orth_tol=orth_tol,
                         incremental_gramian=incremental_gramian,
                         root_of_tree=(mpi.size_proc == mpi.size_world and solvers_finished),
                     )
@@ -217,7 +217,7 @@ def coordinatetransformedmn_hapod(
                         svals=svals[i],
                         last_hapod=root_of_tree_cond,
                         incremental_gramian=incremental_gramian,
-                        orthonormalize=orthonormalize,
+                        orth_tol=orth_tol,
                     )
                     max_num_input_vecs[i] = max(max_num_input_vecs[i], num_input_vecs)
                     max_num_local_modes[i] = max(max_num_local_modes[i], num_local_modes)
@@ -232,7 +232,7 @@ def coordinatetransformedmn_hapod(
                             pod_inputs,
                             num_snapshots_in_leafs[i],
                             hapod_params[i],
-                            orthonormalize=orthonormalize,
+                            orth_tol=orth_tol,
                             incremental_gramian=incremental_gramian,
                             root_of_tree=root_of_tree_cond,
                         )

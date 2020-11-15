@@ -53,9 +53,9 @@ def check_solve(grid_size, testcase, verbose=False):
         raise NotImplementedError("Unknown testcase!")
     solver = Solver(testcase, prefix, 1000000000, grid_size, False, not verbose, parameters)
     operator = CoordinateTransformedmnOperator(solver)
-    model = CoordinatetransformedmnModel(operator, solver.get_initial_values(), solver.t_end)
-    times_python, results_python, nonlinear_python = model._solve(verbose=verbose)
-    times_cpp, results_cpp, nonlinear_cpp = solver.solve(store_operator_evaluations=True)
+    model = CoordinatetransformedmnModel(operator, solver.get_initial_values(), solver.t_end, solver.initial_dt(), atol=1e-3, rtol=1e-3)
+    times_python, results_python, nonlinear_python = model._solve(verbose=verbose, mu=parameters)
+    times_cpp, results_cpp, nonlinear_cpp = solver.solve(store_operator_evaluations=True, mu=parameters)
     check_solver_results(comm_world, times_python, results_python, nonlinear_python, times_cpp, results_cpp, nonlinear_cpp)
     if comm_world.rank == 0:
         print("Checking whether next_n_steps works as expected...", end="", flush=True)

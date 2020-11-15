@@ -15,7 +15,7 @@ class DuneXtLaVector(Vector):
         # if ensure_copy:
         return np.frombuffer(self.impl.buffer(), dtype=np.double).copy()
         # else:
-        #    return np.frombuffer(self.impl.buffer(), dtype=np.double)
+            # return np.frombuffer(self.impl.buffer(), dtype=np.double)
 
     @property
     def data(self):

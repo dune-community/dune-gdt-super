@@ -23,7 +23,7 @@ def boltzmann_binary_tree_hapod(
     omega=0.95,
     logfile=None,
     incremental_gramian=True,
-    orthonormalize=True,
+    orth_tol=1e-10,
     calc_eval_basis=False,
     dt=-1.0,
 ):
@@ -67,7 +67,7 @@ def boltzmann_binary_tree_hapod(
 
         # calculate POD of timestep vectors on each core
         timestep_vectors, timestep_svals = local_pod(
-            [timestep_vectors], num_snapshots, hapod_params, incremental_gramian=False, orthonormalize=orthonormalize
+            [timestep_vectors], num_snapshots, hapod_params, incremental_gramian=False, orth_tol=orth_tol
         )
         timestep_vectors.scal(timestep_svals)
         gathered_vectors, _, num_snapshots_in_this_chunk, _ = mpi.comm_proc.gather_on_rank_0(
@@ -80,7 +80,7 @@ def boltzmann_binary_tree_hapod(
             total_num_snapshots += num_snapshots_in_this_chunk
             if i == 0:
                 modes, svals = local_pod(
-                    [gathered_vectors], num_snapshots_in_this_chunk, hapod_params, orthonormalize=orthonormalize
+                    [gathered_vectors], num_snapshots_in_this_chunk, hapod_params, orth_tol=orth_tol
                 )
             else:
                 max_vectors_before_pod = max(max_vectors_before_pod, len(modes) + len(gathered_vectors))
@@ -88,7 +88,7 @@ def boltzmann_binary_tree_hapod(
                     [[modes, svals], gathered_vectors],
                     total_num_snapshots,
                     hapod_params,
-                    orthonormalize=orthonormalize,
+                    orth_tol=orth_tol,
                     incremental_gramian=incremental_gramian,
                     root_of_tree=(i == num_chunks - 1 and mpi.size_rank_0_group == 1),
                 )
@@ -101,7 +101,7 @@ def boltzmann_binary_tree_hapod(
                 num_evals,
                 eval_hapod_params,
                 incremental_gramian=False,
-                orthonormalize=orthonormalize,
+                orth_tol=orth_tol,
             )
             lf_eval_vectors.scal(lf_eval_svals)
             gathered_eval_vectors, _, num_evals_in_this_chunk, _ = mpi.comm_proc.gather_on_rank_0(
@@ -117,7 +117,7 @@ def boltzmann_binary_tree_hapod(
                         [gathered_eval_vectors],
                         num_evals_in_this_chunk,
                         eval_hapod_params,
-                        orthonormalize=orthonormalize,
+                        orth_tol=orth_tol,
                     )
                 else:
                     max_eval_vectors_before_pod = max(
@@ -127,7 +127,7 @@ def boltzmann_binary_tree_hapod(
                         [[eval_modes, eval_svals], gathered_eval_vectors],
                         total_num_evals,
                         eval_hapod_params,
-                        orthonormalize=orthonormalize,
+                        orth_tol=orth_tol,
                         incremental_gramian=incremental_gramian,
                         root_of_tree=(i == num_chunks - 1 and mpi.size_rank_0_group == 1),
                     )
@@ -151,7 +151,7 @@ def boltzmann_binary_tree_hapod(
             svals=svals,
             last_hapod=True,
             incremental_gramian=incremental_gramian,
-            orthonormalize=orthonormalize,
+            orth_tol=orth_tol,
         )
         max_vectors_before_pod = max(max_vectors_before_pod, max_vectors_before_pod_in_hapod)
         max_local_modes = max(max_local_modes, max_local_modes_in_hapod)
@@ -172,7 +172,7 @@ def boltzmann_binary_tree_hapod(
                 svals=eval_svals,
                 last_hapod=True,
                 incremental_gramian=incremental_gramian,
-                orthonormalize=orthonormalize,
+                orth_tol=orth_tol,
             )
             max_eval_vectors_before_pod = max(max_eval_vectors_before_pod, max_eval_vectors_before_pod_in_hapod)
             max_local_eval_modes = max(max_local_eval_modes, max_local_eval_modes_in_hapod)

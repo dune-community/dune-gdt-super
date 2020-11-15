@@ -122,7 +122,9 @@ class Solver(ParametricObject):
             self._last_mu = mu
             self.impl.set_parameters(mu)
 
-    def solve(self, store_operator_evaluations=False, do_not_save=False):
+    def solve(self, store_operator_evaluations=False, do_not_save=False, mu=None):
+        if mu is not None:
+            self.set_parameters(mu)
         times, snapshots, nonlinear_snapshots = self.impl.solve(store_operator_evaluations, do_not_save)
         return times, self.solution_space.make_array(snapshots), self.solution_space.make_array(nonlinear_snapshots)
 
@@ -304,7 +306,8 @@ class RestrictedCoordinateTransformedmnOperator(RestrictedDuneOperator):
         )
 
     def apply(self, Alpha, mu=None):
-        self.solver.set_parameters(mu["s"])
+        if mu is not None:
+            self.solver.set_parameters(mu)
         assert Alpha in self.source
         Alpha = DuneXtLaListVectorSpace.from_numpy(Alpha.to_numpy())
         ret = [
@@ -320,7 +323,8 @@ class RestrictedCoordinateTransformedmnOperator(RestrictedDuneOperator):
 class CoordinateTransformedmnOperator(DuneOperator):
     def apply(self, Alpha, mu=None):
         assert Alpha in self.source
-        self.solver.set_parameters(mu["s"])
+        if mu is not None:
+            self.solver.set_parameters(mu)
         ret = [self.solver.impl.apply_operator(alpha.impl) for alpha in Alpha._list]
         # if an Exception is thrown in C++, apply_operator returns a vector of length 0
         for vec in ret:
