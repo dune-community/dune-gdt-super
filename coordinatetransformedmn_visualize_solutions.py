@@ -25,7 +25,7 @@ def visualize_solutions(grid_size, testcase, use_python_solve):
     if use_python_solve:
         operator = CoordinateTransformedmnOperator(solver)
         model = CoordinatetransformedmnModel(operator, solver.get_initial_values(), solver.t_end)
-        times, results = model._solve()
+        times, results = model.compute()
         for i, vec in enumerate(results._list):
             solver.visualize(vec, f"{prefix}_{i}")
     else:

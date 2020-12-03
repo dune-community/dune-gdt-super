@@ -4,8 +4,6 @@ import random
 import resource
 import sys
 import numpy as np
-import time
-import pickle
 from statistics import mean
 
 from hapod.cellmodel.wrapper import (
@@ -110,6 +108,12 @@ def binary_tree_hapod(
     assert len(pod_indices) <= 3
     assert len(deim_indices) <= 3
 
+    # setup timings
+    timings = {}
+    timings['data'] = 0.
+    for k in indices:
+        timings[f'POD{k}'] = 0.
+
     # calculate rooted tree depth
     mpi = MPIWrapper()
     num_chunks, _ = solver_statistics(cellmodel, chunk_size, with_half_steps=False)
@@ -148,9 +152,11 @@ def binary_tree_hapod(
                     new_vecs[k].append(current_values[p]._blocks[k])
             # ... and do one timestep less to ensure that chunk has size chunk_size
             for time_index in range(chunk_size - 1 if chunk_index == 0 else chunk_size):
+                t1 = timer()
                 retval = cellmodel.next_time_step(
                     current_values[p], time, mu=mu, return_stages=include_newton_stages, return_residuals=True,
                 )
+                timings['data']  += timer() - t1
                 current_values[p], time, *retval = retval
                 if include_newton_stages:
                     timestep_stages, *retval = retval
@@ -180,16 +186,20 @@ def binary_tree_hapod(
 
         # calculate POD of timestep vectors on each core
         for k in indices:
+            t1 = timer()
             pods_on_processor_cores_in_binary_tree_hapod(results[k], new_vecs[k])
             if mpi.rank_proc == 0:
                 # perform another pod on rank 0 with gathered modes and modes from the last chunk
                 pod_on_node_in_binary_tree_hapod(results[k], chunk_index, num_chunks, mpi)
+            timings[f'POD{k}'] += timer() - t1
 
     # Finally, perform a HAPOD over a binary tree of nodes
     for k in indices:
         r = results[k]
         if mpi.rank_proc == 0:
+            t1 = timer()
             final_hapod_in_binary_tree_hapod(r, mpi)
+            timings[f'POD{k}'] += timer() - t1
 
         # calculate max number of local modes
         r.max_vectors_before_pod = mpi.comm_world.gather(r.max_vectors_before_pod, root=0)
@@ -201,6 +211,7 @@ def binary_tree_hapod(
     # write statistics to file
     if logfile is not None and mpi.rank_world == 0:
         with open(logfile, "a") as ff:
+            ff.write(f"Data computation took {timings['data']} s.\n")
             for k in indices:
                 r = results[k]
                 ff.write(f"Hapod for index {k}\n")
@@ -209,6 +220,7 @@ def binary_tree_hapod(
                 )
                 ff.write(f"The maximal number of local modes was {r.max_local_modes}\n")
                 ff.write(f"The maximal number of input vectors to a local POD was: {r.max_vectors_before_pod}\n")
+                ff.write("PODs took {} s.\n".format(timings[f"POD{k}"]))
             ff.write(
                 f"The maximum amount of memory used on rank 0 was: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1000.0 ** 2} GB\n"
             )
@@ -436,158 +448,158 @@ if __name__ == "__main__":
     rom = reductor.reduce()
 
     ################## solve reduced model for trained parameters ####################
-    print("Hello", flush=True)
-    time.sleep(10)
+    # print("Hello", flush=True)
+    # time.sleep(10)
     u = rom.solve(mus[0], return_stages=False)
     for p in range(1, len(mus)):
         u.append(rom.solve(mus[p], return_stages=False))
     U_rom = reductor.reconstruct(u)
 
     ################## calculate errors for trained parameters #######################
-   #  pfield_abs_errors = (U._blocks[0] - U_rom._blocks[0]).norm()
-   #  ofield_abs_errors = (U._blocks[1] - U_rom._blocks[1]).norm()
-   #  stokes_abs_errors = (U._blocks[2] - U_rom._blocks[2]).norm()
-   #  pfield_rel_errors = (U._blocks[0] - U_rom._blocks[0]).norm() / U._blocks[0].norm()
-   #  ofield_rel_errors = (U._blocks[1] - U_rom._blocks[1]).norm() / U._blocks[1].norm()
-   #  stokes_rel_errors = (U._blocks[2] - U_rom._blocks[2]).norm() / U._blocks[2].norm()
-   #  pfield_norms = U._blocks[0].norm()
-   #  ofield_norms = U._blocks[1].norm()
-   #  stokes_norms = U._blocks[2].norm()
-   #  pfield_abs_errors = mpi.comm_world.gather(pfield_abs_errors, root=0)
-   #  ofield_abs_errors = mpi.comm_world.gather(ofield_abs_errors, root=0)
-   #  stokes_abs_errors = mpi.comm_world.gather(stokes_abs_errors, root=0)
-   #  pfield_rel_errors = mpi.comm_world.gather(pfield_rel_errors, root=0)
-   #  ofield_rel_errors = mpi.comm_world.gather(ofield_rel_errors, root=0)
-   #  stokes_rel_errors = mpi.comm_world.gather(stokes_rel_errors, root=0)
-   #  pfield_norms = mpi.comm_world.gather(pfield_norms, root=0)
-   #  ofield_norms = mpi.comm_world.gather(ofield_norms, root=0)
-   #  stokes_norms = mpi.comm_world.gather(stokes_norms, root=0)
-   #  del U, U_rom
+    pfield_abs_errors = (U._blocks[0] - U_rom._blocks[0]).norm()
+    ofield_abs_errors = (U._blocks[1] - U_rom._blocks[1]).norm()
+    stokes_abs_errors = (U._blocks[2] - U_rom._blocks[2]).norm()
+    pfield_rel_errors = (U._blocks[0] - U_rom._blocks[0]).norm() / U._blocks[0].norm()
+    ofield_rel_errors = (U._blocks[1] - U_rom._blocks[1]).norm() / U._blocks[1].norm()
+    stokes_rel_errors = (U._blocks[2] - U_rom._blocks[2]).norm() / U._blocks[2].norm()
+    pfield_norms = U._blocks[0].norm()
+    ofield_norms = U._blocks[1].norm()
+    stokes_norms = U._blocks[2].norm()
+    pfield_abs_errors = mpi.comm_world.gather(pfield_abs_errors, root=0)
+    ofield_abs_errors = mpi.comm_world.gather(ofield_abs_errors, root=0)
+    stokes_abs_errors = mpi.comm_world.gather(stokes_abs_errors, root=0)
+    pfield_rel_errors = mpi.comm_world.gather(pfield_rel_errors, root=0)
+    ofield_rel_errors = mpi.comm_world.gather(ofield_rel_errors, root=0)
+    stokes_rel_errors = mpi.comm_world.gather(stokes_rel_errors, root=0)
+    pfield_norms = mpi.comm_world.gather(pfield_norms, root=0)
+    ofield_norms = mpi.comm_world.gather(ofield_norms, root=0)
+    stokes_norms = mpi.comm_world.gather(stokes_norms, root=0)
+    del U, U_rom
 
     ################## test new parameters #######################
-   # # solve full-order model for new param
-   # start = timer()
-   # U_new_mu = m.solve(mu=new_mus[0], return_stages=False)
-   # for p in range(1, len(new_mus)):
-   #     U_new_mu.append(m.solve(mu=new_mus[p], return_stages=False))
-   # mean_fom_time = (timer() - start) / len(new_mus)
-   # # Be, Ca, Pa = (float(new_mu['Be']), float(new_mu['Ca']), float(new_mu['Pa']))
-   # # m.visualize(U_new_mu, prefix=f"fullorder_Be{Be}_Ca{Ca}_Pa{Pa}", subsampling=subsampling, every_nth=visualize_step)
+    # solve full-order model for new param
+    start = timer()
+    U_new_mu = m.solve(mu=new_mus[0], return_stages=False)
+    for p in range(1, len(new_mus)):
+        U_new_mu.append(m.solve(mu=new_mus[p], return_stages=False))
+    mean_fom_time = (timer() - start) / len(new_mus)
+    # Be, Ca, Pa = (float(new_mu['Be']), float(new_mu['Ca']), float(new_mu['Pa']))
+    # m.visualize(U_new_mu, prefix=f"fullorder_Be{Be}_Ca{Ca}_Pa{Pa}", subsampling=subsampling, every_nth=visualize_step)
 
-   # # solve reduced model for new params
-   # start = timer()
-   # #cProfile.run("u_new_mu = rom.solve(new_mus[0], return_stages=False)", f"rom{mpi.rank_world}.cprof")
-   # u_new_mu = rom.solve(new_mus[0], return_stages=False)
-   # for p in range(1, len(new_mus)):
-   #     u_new_mu.append(rom.solve(new_mus[p], return_stages=False))
-   # mean_rom_time = (timer() - start) / len(new_mus)
-   # U_rom_new_mu = reductor.reconstruct(u_new_mu)
-   # # Be, Ca, Pa = (float(new_mu['Be']), float(new_mu['Ca']), float(new_mu['Pa']))
-   # # m.visualize(
-   # #     U_rom_new_mu,
-   # #     prefix=f"{reduced_prefix}_Be{Be}_Ca{Ca}_Pa{Pa}",
-   # #     subsampling=subsampling,
-   # #     every_nth=visualize_step)
+    # solve reduced model for new params
+    start = timer()
+    # cProfile.run("u_new_mu = rom.solve(new_mus[0], return_stages=False)", f"rom{mpi.rank_world}.cprof")
+    u_new_mu = rom.solve(new_mus[0], return_stages=False)
+    for p in range(1, len(new_mus)):
+        u_new_mu.append(rom.solve(new_mus[p], return_stages=False))
+    mean_rom_time = (timer() - start) / len(new_mus)
+    U_rom_new_mu = reductor.reconstruct(u_new_mu)
+    # Be, Ca, Pa = (float(new_mu['Be']), float(new_mu['Ca']), float(new_mu['Pa']))
+    # m.visualize(
+    #     U_rom_new_mu,
+    #     prefix=f"{reduced_prefix}_Be{Be}_Ca{Ca}_Pa{Pa}",
+    #     subsampling=subsampling,
+    #     every_nth=visualize_step)
 
-   # # calculate_errors for new mus
-   # pfield_abs_errors_new_mu = (U_new_mu._blocks[0] - U_rom_new_mu._blocks[0]).norm()
-   # ofield_abs_errors_new_mu = (U_new_mu._blocks[1] - U_rom_new_mu._blocks[1]).norm()
-   # stokes_abs_errors_new_mu = (U_new_mu._blocks[2] - U_rom_new_mu._blocks[2]).norm()
-   # pfield_rel_errors_new_mu = (U_new_mu._blocks[0] - U_rom_new_mu._blocks[0]).norm() / U_new_mu._blocks[0].norm()
-   # ofield_rel_errors_new_mu = (U_new_mu._blocks[1] - U_rom_new_mu._blocks[1]).norm() / U_new_mu._blocks[1].norm()
-   # stokes_rel_errors_new_mu = (U_new_mu._blocks[2] - U_rom_new_mu._blocks[2]).norm() / U_new_mu._blocks[2].norm()
-   # mean_fom_time = mpi.comm_world.gather(mean_fom_time, root=0)
-   # mean_rom_time = mpi.comm_world.gather(mean_rom_time, root=0)
-   #  pfield_abs_errors_new_mus = mpi.comm_world.gather(pfield_abs_errors_new_mu, root=0)
-   #  ofield_abs_errors_new_mus = mpi.comm_world.gather(ofield_abs_errors_new_mu, root=0)
-   #  stokes_abs_errors_new_mus = mpi.comm_world.gather(stokes_abs_errors_new_mu, root=0)
-   #  pfield_rel_errors_new_mus = mpi.comm_world.gather(pfield_rel_errors_new_mu, root=0)
-   #  ofield_rel_errors_new_mus = mpi.comm_world.gather(ofield_rel_errors_new_mu, root=0)
-   #  stokes_rel_errors_new_mus = mpi.comm_world.gather(stokes_rel_errors_new_mu, root=0)
+    # calculate_errors for new mus
+    pfield_abs_errors_new_mu = (U_new_mu._blocks[0] - U_rom_new_mu._blocks[0]).norm()
+    ofield_abs_errors_new_mu = (U_new_mu._blocks[1] - U_rom_new_mu._blocks[1]).norm()
+    stokes_abs_errors_new_mu = (U_new_mu._blocks[2] - U_rom_new_mu._blocks[2]).norm()
+    pfield_rel_errors_new_mu = (U_new_mu._blocks[0] - U_rom_new_mu._blocks[0]).norm() / U_new_mu._blocks[0].norm()
+    ofield_rel_errors_new_mu = (U_new_mu._blocks[1] - U_rom_new_mu._blocks[1]).norm() / U_new_mu._blocks[1].norm()
+    stokes_rel_errors_new_mu = (U_new_mu._blocks[2] - U_rom_new_mu._blocks[2]).norm() / U_new_mu._blocks[2].norm()
+    mean_fom_time = mpi.comm_world.gather(mean_fom_time, root=0)
+    mean_rom_time = mpi.comm_world.gather(mean_rom_time, root=0)
+    pfield_abs_errors_new_mus = mpi.comm_world.gather(pfield_abs_errors_new_mu, root=0)
+    ofield_abs_errors_new_mus = mpi.comm_world.gather(ofield_abs_errors_new_mu, root=0)
+    stokes_abs_errors_new_mus = mpi.comm_world.gather(stokes_abs_errors_new_mu, root=0)
+    pfield_rel_errors_new_mus = mpi.comm_world.gather(pfield_rel_errors_new_mu, root=0)
+    ofield_rel_errors_new_mus = mpi.comm_world.gather(ofield_rel_errors_new_mu, root=0)
+    stokes_rel_errors_new_mus = mpi.comm_world.gather(stokes_rel_errors_new_mu, root=0)
 
-   # if mpi.rank_world == 0:
-   #     pfield_abs_errors = np.concatenate(pfield_abs_errors)
-   #     ofield_abs_errors = np.concatenate(ofield_abs_errors)
-   #     stokes_abs_errors = np.concatenate(stokes_abs_errors)
-   #     pfield_rel_errors = np.concatenate(pfield_rel_errors)
-   #     ofield_rel_errors = np.concatenate(ofield_rel_errors)
-   #     stokes_rel_errors = np.concatenate(stokes_rel_errors)
-   #     pfield_norms = np.concatenate(pfield_norms)
-   #     ofield_norms = np.concatenate(ofield_norms)
-   #     stokes_norms = np.concatenate(stokes_norms)
-        # mean_fom_time = np.mean(mean_fom_time)
-        # mean_rom_time = np.mean(mean_rom_time)
-        # pfield_abs_errors_new_mus = np.concatenate(pfield_abs_errors_new_mus)
-        # ofield_abs_errors_new_mus = np.concatenate(ofield_abs_errors_new_mus)
-        # stokes_abs_errors_new_mus = np.concatenate(stokes_abs_errors_new_mus)
-        # pfield_rel_errors_new_mus = np.concatenate(pfield_rel_errors_new_mus)
-        # ofield_rel_errors_new_mus = np.concatenate(ofield_rel_errors_new_mus)
-        # stokes_rel_errors_new_mus = np.concatenate(stokes_rel_errors_new_mus)
-        # np.set_printoptions(formatter={"float": "{:.2e}".format})
-        # with open(filename, "a") as ff:
-        #     ff.write(
-        #         "tol_pf tol_of tol_st tol_deim_pf tol_deim_of tol_deim_st n_pf n_of n_st n_deim_pf n_deim_of n_deim_st mean_err_pf mean_err_of mean_err_st mean_rel_err_pf mean_rel_err_of mean_rel_err_st mean_err_pf_new mean_err_of_new mean_err_st_new mean_rel_err_pf_new mean_rel_err_of_new mean_rel_err_st_new mean_norm_pf mean_norm_of mean_norm_st\n"
-        #     )
-        #     ff.write(
-        #         ("{} " * 12 + "{:.2e} " * 15 + "\n").format(
-        #             pfield_atol,
-        #             ofield_atol,
-        #             stokes_atol,
-        #             pfield_deim_atol,
-        #             ofield_deim_atol,
-        #             stokes_deim_atol,
-        #             len(pfield_basis),
-        #             len(ofield_basis),
-        #             len(stokes_basis),
-        #             len(pfield_deim_basis) if pfield_deim_basis else 0,
-        #             len(ofield_deim_basis) if ofield_deim_basis else 0,
-        #             len(stokes_deim_basis) if stokes_deim_basis else 0,
-        #             mean([err for err in pfield_abs_errors if not np.isnan(err)]),
-        #             mean([err for err in ofield_abs_errors if not np.isnan(err)]),
-        #             mean([err for err in stokes_abs_errors if not np.isnan(err)]),
-        #             mean([err for err in pfield_rel_errors if not np.isnan(err)]),
-        #             mean([err for err in ofield_rel_errors if not np.isnan(err)]),
-        #             mean([err for err in stokes_rel_errors if not np.isnan(err)]),
-        #             mean([err for err in pfield_abs_errors_new_mus if not np.isnan(err)]),
-        #             mean([err for err in ofield_abs_errors_new_mus if not np.isnan(err)]),
-        #             mean([err for err in stokes_abs_errors_new_mus if not np.isnan(err)]),
-        #             mean([err for err in pfield_rel_errors_new_mus if not np.isnan(err)]),
-        #             mean([err for err in ofield_rel_errors_new_mus if not np.isnan(err)]),
-        #             mean([err for err in stokes_rel_errors_new_mus if not np.isnan(err)]),
-        #             mean([norm for norm in pfield_norms if not np.isnan(norm)]),
-        #             mean([norm for norm in ofield_norms if not np.isnan(norm)]),
-        #             mean([norm for norm in stokes_norms if not np.isnan(norm)]),
-        #         )
-        #     )
-        #     ff.write(
-        #         f"\nAbsolute errors for trained mus:\n {pfield_abs_errors}\n {ofield_abs_errors}\n {stokes_abs_errors}\n"
-        #     )
-        #     ff.write(
-        #         f"\nAbsolute errors for new mus:\n {pfield_abs_errors_new_mus}\n {ofield_abs_errors_new_mus}\n {stokes_abs_errors_new_mus}\n"
-        #     )
-        #     ff.write(
-        #         f"\nRelative errors for trained mus:\n {pfield_rel_errors}\n {ofield_rel_errors}\n {stokes_rel_errors}\n"
-        #     )
-        #     ff.write(
-        #         f"\nRelative errors for new mus:\n {pfield_rel_errors_new_mus}\n {ofield_rel_errors_new_mus}\n {stokes_rel_errors_new_mus}\n"
-        #     )
-        #     ff.write(f"\nTimings\n {mean_fom_time} vs. {mean_rom_time}, speedup {mean_fom_time/mean_rom_time}\n")
-        # print(
-        #     "****",
-        #     len(pfield_basis),
-        #     len(ofield_basis),
-        #     len(stokes_basis),
-        #     len(pfield_deim_basis) if pfield_deim_basis is not None else 0,
-        #     len(ofield_deim_basis) if ofield_deim_basis is not None else 0,
-        #     len(stokes_deim_basis) if stokes_deim_basis is not None else 0,
-        # )
-        # print("Trained mus")
-        # print(pfield_rel_errors)
-        # print(ofield_rel_errors)
-        # print(stokes_rel_errors)
-        # print("New mus")
-        # print(pfield_rel_errors_new_mus)
-        # print(ofield_rel_errors_new_mus)
-        # print(stokes_rel_errors_new_mus)
-        # print("Timings")
-        # print(f"{mean_fom_time:.2f} vs. {mean_rom_time:.2f}, speedup {mean_fom_time/mean_rom_time:.2f}")
+    if mpi.rank_world == 0:
+        pfield_abs_errors = np.concatenate(pfield_abs_errors)
+        ofield_abs_errors = np.concatenate(ofield_abs_errors)
+        stokes_abs_errors = np.concatenate(stokes_abs_errors)
+        pfield_rel_errors = np.concatenate(pfield_rel_errors)
+        ofield_rel_errors = np.concatenate(ofield_rel_errors)
+        stokes_rel_errors = np.concatenate(stokes_rel_errors)
+        pfield_norms = np.concatenate(pfield_norms)
+        ofield_norms = np.concatenate(ofield_norms)
+        stokes_norms = np.concatenate(stokes_norms)
+        mean_fom_time = np.mean(mean_fom_time)
+        mean_rom_time = np.mean(mean_rom_time)
+        pfield_abs_errors_new_mus = np.concatenate(pfield_abs_errors_new_mus)
+        ofield_abs_errors_new_mus = np.concatenate(ofield_abs_errors_new_mus)
+        stokes_abs_errors_new_mus = np.concatenate(stokes_abs_errors_new_mus)
+        pfield_rel_errors_new_mus = np.concatenate(pfield_rel_errors_new_mus)
+        ofield_rel_errors_new_mus = np.concatenate(ofield_rel_errors_new_mus)
+        stokes_rel_errors_new_mus = np.concatenate(stokes_rel_errors_new_mus)
+        np.set_printoptions(formatter={"float": "{:.2e}".format})
+        with open(filename, "a") as ff:
+            ff.write(
+                "tol_pf tol_of tol_st tol_deim_pf tol_deim_of tol_deim_st n_pf n_of n_st n_deim_pf n_deim_of n_deim_st mean_err_pf mean_err_of mean_err_st mean_rel_err_pf mean_rel_err_of mean_rel_err_st mean_err_pf_new mean_err_of_new mean_err_st_new mean_rel_err_pf_new mean_rel_err_of_new mean_rel_err_st_new mean_norm_pf mean_norm_of mean_norm_st\n"
+            )
+            ff.write(
+                ("{} " * 12 + "{:.2e} " * 15 + "\n").format(
+                    pfield_atol,
+                    ofield_atol,
+                    stokes_atol,
+                    pfield_deim_atol,
+                    ofield_deim_atol,
+                    stokes_deim_atol,
+                    len(pfield_basis),
+                    len(ofield_basis),
+                    len(stokes_basis),
+                    len(pfield_deim_basis) if pfield_deim_basis else 0,
+                    len(ofield_deim_basis) if ofield_deim_basis else 0,
+                    len(stokes_deim_basis) if stokes_deim_basis else 0,
+                    mean([err for err in pfield_abs_errors if not np.isnan(err)]),
+                    mean([err for err in ofield_abs_errors if not np.isnan(err)]),
+                    mean([err for err in stokes_abs_errors if not np.isnan(err)]),
+                    mean([err for err in pfield_rel_errors if not np.isnan(err)]),
+                    mean([err for err in ofield_rel_errors if not np.isnan(err)]),
+                    mean([err for err in stokes_rel_errors if not np.isnan(err)]),
+                    mean([err for err in pfield_abs_errors_new_mus if not np.isnan(err)]),
+                    mean([err for err in ofield_abs_errors_new_mus if not np.isnan(err)]),
+                    mean([err for err in stokes_abs_errors_new_mus if not np.isnan(err)]),
+                    mean([err for err in pfield_rel_errors_new_mus if not np.isnan(err)]),
+                    mean([err for err in ofield_rel_errors_new_mus if not np.isnan(err)]),
+                    mean([err for err in stokes_rel_errors_new_mus if not np.isnan(err)]),
+                    mean([norm for norm in pfield_norms if not np.isnan(norm)]),
+                    mean([norm for norm in ofield_norms if not np.isnan(norm)]),
+                    mean([norm for norm in stokes_norms if not np.isnan(norm)]),
+                )
+            )
+            ff.write(
+                f"\nAbsolute errors for trained mus:\n {pfield_abs_errors}\n {ofield_abs_errors}\n {stokes_abs_errors}\n"
+            )
+            ff.write(
+                f"\nAbsolute errors for new mus:\n {pfield_abs_errors_new_mus}\n {ofield_abs_errors_new_mus}\n {stokes_abs_errors_new_mus}\n"
+            )
+            ff.write(
+                f"\nRelative errors for trained mus:\n {pfield_rel_errors}\n {ofield_rel_errors}\n {stokes_rel_errors}\n"
+            )
+            ff.write(
+                f"\nRelative errors for new mus:\n {pfield_rel_errors_new_mus}\n {ofield_rel_errors_new_mus}\n {stokes_rel_errors_new_mus}\n"
+            )
+            ff.write(f"\nTimings\n {mean_fom_time} vs. {mean_rom_time}, speedup {mean_fom_time/mean_rom_time}\n")
+        print(
+            "****",
+            len(pfield_basis),
+            len(ofield_basis),
+            len(stokes_basis),
+            len(pfield_deim_basis) if pfield_deim_basis is not None else 0,
+            len(ofield_deim_basis) if ofield_deim_basis is not None else 0,
+            len(stokes_deim_basis) if stokes_deim_basis is not None else 0,
+        )
+        print("Trained mus")
+        print(pfield_rel_errors)
+        print(ofield_rel_errors)
+        print(stokes_rel_errors)
+        print("New mus")
+        print(pfield_rel_errors_new_mus)
+        print(ofield_rel_errors_new_mus)
+        print(stokes_rel_errors_new_mus)
+        print("Timings")
+        print(f"{mean_fom_time:.2f} vs. {mean_rom_time:.2f}, speedup {mean_fom_time/mean_rom_time:.2f}")

@@ -165,14 +165,15 @@ class CoordinatetransformedmnModel(Model):
         self.rk_q = 2
         self.solution_space = operator.source
 
-    def _solve(self, mu=None, return_output=False, verbose=False, include_intermediate_alphas=False):
+    def _compute_solution(self, mu=None, **kwargs):
+        verbose = kwargs['verbose'] if 'verbose' in kwargs else False
+        include_intermediate_alphas = kwargs['include_intermediate_alphas'] if 'include_intermediate_alphas' in kwargs else False
         """
         Solve with adaptive Runge-Kutta-Scheme (Bogacki-Shampine).
 
         Copied and adapted from C++ (dune/gdt/tools/timestepper/adaptive-rungekutta-kinetic.hh)
         """
         print(mu)
-        assert not return_output
         Alphas = self.initial_data.as_vector()
         NonlinearSnaps = self.solution_space.empty()
         # alpha = self.initial_data.as_vector(mu)

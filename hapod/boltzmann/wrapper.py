@@ -113,8 +113,8 @@ class BoltzmannModel(Model):
         self.parameters_own = PARAMETER_TYPE
         self.solution_space = self.initial_data.range
 
-    def _solve(self, mu=None, return_output=False, return_half_steps=False, basis=None):
-        assert not return_output
+    def _compute_solution(self, mu=None, **kwargs):
+        return_half_steps = kwargs['return_half_steps'] if 'return_half_steps' in kwargs else False
         U = self.initial_data.as_vector(mu)
         U_half = U.empty()
         U_last = U.copy()
@@ -202,10 +202,9 @@ class DuneModel(BoltzmannModel):
             name="DuneModel",
         )
 
-    def _solve(self, mu=None, return_output=False, return_half_steps=False):
-        assert not return_output
-        return self.with_(new_type=BoltzmannModel, rhs=self.non_decomp_rhs_operator).solve(
-            mu=mu, return_half_steps=return_half_steps
+    def _compute_solution(self, mu=None, **kwargs):
+        return self.with_(new_type=BoltzmannModel, rhs=self.non_decomp_rhs_operator).compute(
+            mu=mu, **kwargs
         )
 
 

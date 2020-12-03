@@ -771,9 +771,9 @@ class CellModel(Model):
             [self.initial_pfield.as_vector(), self.initial_ofield.as_vector(), self.initial_stokes.as_vector()]
         )
 
-    def _solve(self, mu=None, return_output=False, return_stages=False, return_residuals=False):
-        assert not return_output
-
+    def _compute_solution(self, mu=None, **kwargs):
+        return_stages = kwargs['return_stages'] if 'return_stages' in kwargs else False
+        return_residuals = kwargs['return_residuals'] if 'return_residuals' in kwargs else False
         # initial values
         pfield_vecarray = self.initial_pfield.as_vector()
         ofield_vecarray = self.initial_ofield.as_vector()
