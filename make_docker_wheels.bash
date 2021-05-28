@@ -12,10 +12,10 @@ set -eu
 # default command is "build-wheels.sh"
 # this deletes testtols and uggrid source dirs
 docker run -e DUNE_SRC_DIR=/home/dxt/src -v ${THISDIR}:/home/dxt/src \
-  -e LOCAL_GID=${LOCAL_GID} -e LOCAL_UID=${LOCAL_UID} -it dunecommunity/manylinux-2014:${ML_TAG}
+  -e LOCAL_GID=${LOCAL_GID} -e LOCAL_UID=${LOCAL_UID} -i dunecommunity/manylinux-2014:${ML_TAG}
 
 # makes sure wheels are importable
-docker run -v ${THISDIR}/docker/wheelhouse/final:/wheelhouse:ro -it pymor/testing_py3.8:latest \
+docker run -v ${THISDIR}/docker/wheelhouse/final:/wheelhouse:ro -i pymor/testing_py3.8:latest \
   bash -c "pip install /wheelhouse/dune* && python -c 'from dune.xt import *; from dune.gdt import *'"
 
 echo '************************************'

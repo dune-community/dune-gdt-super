@@ -1,6 +1,7 @@
 stages:
   - base
   - modules
+  - wheels
 
 variables:
   GIT_SUBMODULE_STRATEGY: none
@@ -45,3 +46,14 @@ super:
   script: |
     docker build --build-arg BASE=${BASE} -t ${IMAGE} -f .ci/shared/docker/super_docker/Dockerfile .
     docker push ${IMAGE}
+
+wheels:
+  variables:
+    GIT_SUBMODULE_STRATEGY: recursive
+  stage: wheels
+  needs: []
+  extends: .docker-in-docker
+  script: ./make_docker_wheels.bash
+  artifacts:
+    paths:
+      - docker/wheelhouse/final/*.whl
