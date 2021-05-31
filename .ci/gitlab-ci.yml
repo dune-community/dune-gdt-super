@@ -17,7 +17,7 @@ variables:
         DOCKER_DRIVER: overlay2
     before_script:
         - apk --update add py3-pip openssh-client rsync git file bash python3
-        - pip3 install -U docker jinja2 docopt
+        - pip3 install -U docker jinja2 docopt twine
         - echo $DOCKER_PW | docker login --username="$DOCKER_USER" --password-stdin
         - git submodule update --init .ci/shared
     services:
@@ -47,13 +47,32 @@ super:
     docker build --build-arg BASE=${BASE} -t ${IMAGE} -f .ci/shared/docker/super_docker/Dockerfile .
     docker push ${IMAGE}
 
-wheels:
+.wheels_base:
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
+    TWINE_PASSWORD: ${CI_JOB_TOKEN}
+    TWINE_USERNAME: gitlab-ci-token
   stage: wheels
   needs: []
   extends: .docker-in-docker
-  script: ./make_docker_wheels.bash
+  script:
+    - ./make_docker_wheels.bash
+    - python3 -m twine upload --repository-url ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi docker/wheelhouse/final/*.whl
   artifacts:
     paths:
       - docker/wheelhouse/final/*.whl
+
+wheels 3.7:
+  extends: .wheels_base
+  variables:
+    GDT_PYTHON_VERSION: 3.7
+
+wheels 3.8:
+  extends: .wheels_base
+  variables:
+    GDT_PYTHON_VERSION: 3.8
+
+wheels 3.9:
+  extends: .wheels_base
+  variables:
+    GDT_PYTHON_VERSION: 3.9
