@@ -65,14 +65,14 @@ super:
 wheels 3.7:
   extends: .wheels_base
   variables:
-    GDT_PYTHON_VERSION: 3.7
+    GDT_PYTHON_VERSION: "3.7"
 
 wheels 3.8:
   extends: .wheels_base
   variables:
-    GDT_PYTHON_VERSION: 3.8
+    GDT_PYTHON_VERSION: "3.8"
 
 wheels 3.9:
   extends: .wheels_base
   variables:
-    GDT_PYTHON_VERSION: 3.9
+    GDT_PYTHON_VERSION: "3.9"
