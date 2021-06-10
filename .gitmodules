@@ -1,6 +1,6 @@
 [submodule "dune-common"]
 	path = dune-common
-	url = https://github.com/dune-mirrors/dune-common.git
+	url = https://github.com/dune-community/dune-common.git
         ignore = dirty
 [submodule "dune-grid"]
 	path = dune-grid
@@ -24,33 +24,15 @@
 [submodule "dune-istl"]
 	path = dune-istl
 	url = https://github.com/dune-mirrors/dune-istl.git
-[submodule "dune-typetree"]
-	path = dune-typetree
-	url = https://github.com/dune-mirrors/dune-typetree.git
 [submodule "configs"]
 	path = config.opts
 	url = https://github.com/dune-community/config.opts.git
 [submodule "scripts"]
 	path = scripts
 	url = https://github.com/wwu-numerik/scripts.git
-[submodule "dune-testtools"]
-	path = dune-testtools
-	url = https://github.com/dune-community/dune-testtools.git
 [submodule "dune-alugrid"]
 	path = dune-alugrid
-	url = https://zivgitlab.uni-muenster.de/ag-ohlberger/dune-community/dune-alugrid.git
-[submodule "dune-uggrid"]
-	path = dune-uggrid
-	url = https://github.com/dune-community/dune-uggrid.git
-[submodule "dune-functions"]
-	path = dune-functions
-	url = https://github.com/dune-mirrors/dune-functions.git
-[submodule "dune-grid-glue"]
-	path = dune-grid-glue
-	url = https://github.com/dune-mirrors/dune-grid-glue.git
-[submodule "dune-xt-data"]
-	path = dune-xt-data
-	url = https://github.com/dune-community/dune-xt-data
+	url = https://github.com/dune-community/dune-alugrid
 [submodule ".ci/shared"]
 	path = .ci/shared
 	url = https://github.com/dune-community/dune-xt-ci
