@@ -517,6 +517,7 @@ if __name__ == "__main__":
     ofield_rel_errors_new_mus = mpi.comm_world.gather(ofield_rel_errors_new_mu, root=0)
     stokes_rel_errors_new_mus = mpi.comm_world.gather(stokes_rel_errors_new_mu, root=0)
 
+    mpi.comm_world.Barrier()
     if mpi.rank_world == 0:
         pfield_abs_errors = np.concatenate(pfield_abs_errors)
         ofield_abs_errors = np.concatenate(ofield_abs_errors)
@@ -603,3 +604,4 @@ if __name__ == "__main__":
         print(stokes_rel_errors_new_mus)
         print("Timings")
         print(f"{mean_fom_time:.2f} vs. {mean_rom_time:.2f}, speedup {mean_fom_time/mean_rom_time:.2f}")
+    mpi.comm_world.Barrier()
