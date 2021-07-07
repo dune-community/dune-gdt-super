@@ -2,6 +2,7 @@ stages:
   - base
   - modules
   - wheels
+  - publish
 
 variables:
   GIT_SUBMODULE_STRATEGY: none
@@ -57,7 +58,7 @@ super:
   extends: .docker-in-docker
   script:
     - ./make_docker_wheels.bash
-    - python3 -m twine upload --repository-url ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi docker/wheelhouse/final/*.whl
+    - python3 -m twine check docker/wheelhouse/final/*.whl
   artifacts:
     paths:
       - docker/wheelhouse/final/*.whl
@@ -76,3 +77,12 @@ wheels 3.9:
   extends: .wheels_base
   variables:
     GDT_PYTHON_VERSION: "3.9"
+
+publish:
+  dependencies: ["wheels 3.9", "wheels 3.8", "wheels 3.7"]
+  stage: publish
+  script:
+    - python3 -m twine upload --repository-url ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi docker/wheelhouse/final/*.whl
+  artifacts:
+    paths:
+      - docker/wheelhouse/final/*.whl
