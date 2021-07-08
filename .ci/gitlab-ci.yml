@@ -79,8 +79,12 @@ wheels 3.9:
     GDT_PYTHON_VERSION: "3.9"
 
 publish:
+  image: alpine:3.12
   dependencies: ["wheels 3.9", "wheels 3.8", "wheels 3.7"]
   stage: publish
+  before_script:
+      - apk --update add py3-pip git file bash python3 py3-cffi py3-cryptography
+      - pip3 install -U twine
   script:
     - python3 -m twine upload --repository-url ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi docker/wheelhouse/final/*.whl
   artifacts:
