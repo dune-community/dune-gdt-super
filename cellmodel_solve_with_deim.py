@@ -23,6 +23,11 @@ from hapod.hapod import (
     local_pod,
 )
 from hapod.mpi import MPIWrapper
+from rich import traceback, print, pretty
+
+traceback.install()
+pretty.install()
+
 
 # set_log_levels({'pymor.algorithms.newton': 'WARN'})
 
