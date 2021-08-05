@@ -1,29 +1,39 @@
+import cProfile
 import math
-from timeit import default_timer as timer
 import random
 import resource
-import sys
-import numpy as np
 from statistics import mean
+import sys
+import time
+from timeit import default_timer as timer
+
+import numpy as np
+from pymor.vectorarrays.list import ListVectorArray
 
 from hapod.cellmodel.wrapper import (
-    CellModelSolver,
-    DuneCellModel,
-    CellModel,
     CellModel,
     CellModelReductor,
+    CellModelSolver,
+    DuneCellModel,
+)
+from hapod.hapod import (
+    HapodParameters,
+    binary_tree_depth,
+    binary_tree_hapod_over_ranks,
+    local_pod,
 )
 from hapod.mpi import MPIWrapper
-from hapod.boltzmann.utility import solver_statistics
-from hapod.hapod import (
-    local_pod,
-    HapodParameters,
-    binary_tree_hapod_over_ranks,
-    binary_tree_depth,
-)
-import cProfile
 
 # set_log_levels({'pymor.algorithms.newton': 'WARN'})
+
+
+def solver_statistics(cellmodel: CellModel, chunk_size: int):
+    num_time_steps = math.ceil(cellmodel.t_end / cellmodel.dt) + 1.0
+    num_chunks = int(math.ceil(num_time_steps / chunk_size))
+    last_chunk_size = num_time_steps - chunk_size * (num_chunks - 1)
+    assert num_chunks >= 2
+    assert 1 <= last_chunk_size <= chunk_size
+    return num_chunks, num_time_steps
 
 
 class BinaryTreeHapodResults:
@@ -34,6 +44,10 @@ class BinaryTreeHapodResults:
         self.max_local_modes = 0
         self.max_vectors_before_pod = 0
         self.total_num_snapshots = 0
+        self.orth_tol = 0
+        self.final_orth_tol = 0
+        self.gathered_modes = None
+        self.num_snaps = 0
 
 
 # Performs a POD on each processor core with the data vectors computed on that core,
@@ -42,12 +56,21 @@ class BinaryTreeHapodResults:
 # results.num_snaps (on rank 0) contains the total number of snapshots
 # that have been processed (on all ranks)
 def pods_on_processor_cores_in_binary_tree_hapod(r, vecs):
+    assert isinstance(vecs, ListVectorArray)
     print("start processor pod: ", mpi.rank_world)
     r.max_vectors_before_pod = max(r.max_vectors_before_pod, len(vecs))
-    vecs, svals = local_pod([vecs], len(vecs), r.params, incremental_gramian=False, orth_tol=r.orth_tol,)
+    vecs, svals = local_pod(
+        [vecs],
+        len(vecs),
+        r.params,
+        incremental_gramian=False,
+        orth_tol=r.orth_tol,
+    )
     r.max_local_modes = max(r.max_local_modes, len(vecs))
     vecs.scal(svals)
-    r.gathered_modes, _, r.num_snaps, _ = mpi.comm_proc.gather_on_rank_0(vecs, len(vecs), num_modes_equal=False)
+    r.gathered_modes, _, r.num_snaps, _ = mpi.comm_proc.gather_on_rank_0(
+        vecs, len(vecs), num_modes_equal=False
+    )
 
 
 # perform a POD with gathered modes on rank 0 on each processor/node
@@ -56,9 +79,16 @@ def pod_on_node_in_binary_tree_hapod(r, chunk_index, num_chunks, mpi):
     r.total_num_snapshots += r.num_snaps
     if chunk_index == 0:
         r.max_vectors_before_pod = max(r.max_vectors_before_pod, len(r.gathered_modes))
-        r.modes, r.svals = local_pod([r.gathered_modes], r.num_snaps, r.params, orth_tol=r.orth_tol,)
+        r.modes, r.svals = local_pod(
+            [r.gathered_modes],
+            r.num_snaps,
+            r.params,
+            orth_tol=r.orth_tol,
+        )
     else:
-        r.max_vectors_before_pod = max(r.max_vectors_before_pod, len(r.modes) + len(r.gathered_modes))
+        r.max_vectors_before_pod = max(
+            r.max_vectors_before_pod, len(r.modes) + len(r.gathered_modes)
+        )
         r.modes, r.svals = local_pod(
             [[r.modes, r.svals], r.gathered_modes],
             r.total_num_snapshots,
@@ -72,7 +102,13 @@ def pod_on_node_in_binary_tree_hapod(r, chunk_index, num_chunks, mpi):
 
 def final_hapod_in_binary_tree_hapod(r, mpi):
     print("start final pod: ", mpi.rank_world)
-    (r.modes, r.svals, r.total_num_snapshots, max_num_input_vecs, max_num_local_modes,) = binary_tree_hapod_over_ranks(
+    (
+        r.modes,
+        r.svals,
+        r.total_num_snapshots,
+        max_num_input_vecs,
+        max_num_local_modes,
+    ) = binary_tree_hapod_over_ranks(
         mpi.comm_rank_0_group,
         r.modes,
         r.total_num_snapshots,
@@ -80,7 +116,7 @@ def final_hapod_in_binary_tree_hapod(r, mpi):
         svals=r.svals,
         last_hapod=True,
         incremental_gramian=r.incremental_gramian,
-        orth_tol=r.orth_tol,
+        orth_tol=r.final_orth_tol,
     )
     r.max_vectors_before_pod = max(r.max_vectors_before_pod, max_num_input_vecs)
     r.max_local_modes = max(r.max_local_modes, max_num_local_modes)
@@ -98,7 +134,8 @@ def binary_tree_hapod(
     return_snapshots=False,
     return_newton_residuals=False,
     incremental_gramian=True,
-    orth_tol=1e-10,
+    orth_tol=1e-05,
+    final_orth_tol=1e-10,
     logfile=None,
 ):
 
@@ -110,13 +147,13 @@ def binary_tree_hapod(
 
     # setup timings
     timings = {}
-    timings['data'] = 0.
+    timings["data"] = 0.0
     for k in indices:
-        timings[f'POD{k}'] = 0.
+        timings[f"POD{k}"] = 0.0
 
     # calculate rooted tree depth
     mpi = MPIWrapper()
-    num_chunks, _ = solver_statistics(cellmodel, chunk_size, with_half_steps=False)
+    num_chunks, _ = solver_statistics(cellmodel, chunk_size)
     node_binary_tree_depth = binary_tree_depth(mpi.comm_rank_0_group)
     node_binary_tree_depth = mpi.comm_proc.bcast(node_binary_tree_depth, root=0)
     tree_depth = num_chunks + node_binary_tree_depth
@@ -126,6 +163,7 @@ def binary_tree_hapod(
     # add some more properties to the results classes
     for r in results:
         r.orth_tol = orth_tol
+        r.final_orth_tol = final_orth_tol
         r.incremental_gramian = incremental_gramian
 
     # store initial values
@@ -154,9 +192,13 @@ def binary_tree_hapod(
             for time_index in range(chunk_size - 1 if chunk_index == 0 else chunk_size):
                 t1 = timer()
                 retval = cellmodel.next_time_step(
-                    current_values[p], time, mu=mu, return_stages=include_newton_stages, return_residuals=True,
+                    current_values[p],
+                    time,
+                    mu=mu,
+                    return_stages=include_newton_stages,
+                    return_residuals=True,
                 )
-                timings['data']  += timer() - t1
+                timings["data"] += timer() - t1
                 current_values[p], time, *retval = retval
                 if include_newton_stages:
                     timestep_stages, *retval = retval
@@ -191,7 +233,7 @@ def binary_tree_hapod(
             if mpi.rank_proc == 0:
                 # perform another pod on rank 0 with gathered modes and modes from the last chunk
                 pod_on_node_in_binary_tree_hapod(results[k], chunk_index, num_chunks, mpi)
-            timings[f'POD{k}'] += timer() - t1
+            timings[f"POD{k}"] += timer() - t1
 
     # Finally, perform a HAPOD over a binary tree of nodes
     for k in indices:
@@ -199,7 +241,7 @@ def binary_tree_hapod(
         if mpi.rank_proc == 0:
             t1 = timer()
             final_hapod_in_binary_tree_hapod(r, mpi)
-            timings[f'POD{k}'] += timer() - t1
+            timings[f"POD{k}"] += timer() - t1
 
         # calculate max number of local modes
         r.max_vectors_before_pod = mpi.comm_world.gather(r.max_vectors_before_pod, root=0)
@@ -219,7 +261,9 @@ def binary_tree_hapod(
                     f"The HAPOD resulted in {len(r.modes)} final modes taken from a total of {r.total_num_snapshots} snapshots!\n"
                 )
                 ff.write(f"The maximal number of local modes was {r.max_local_modes}\n")
-                ff.write(f"The maximal number of input vectors to a local POD was: {r.max_vectors_before_pod}\n")
+                ff.write(
+                    f"The maximal number of input vectors to a local POD was: {r.max_vectors_before_pod}\n"
+                )
                 ff.write("PODs took {} s.\n".format(timings[f"POD{k}"]))
             ff.write(
                 f"The maximum amount of memory used on rank 0 was: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1000.0 ** 2} GB\n"
@@ -238,9 +282,9 @@ if __name__ == "__main__":
     argc = len(sys.argv)
     testcase = "single_cell" if argc < 2 else sys.argv[1]
     t_end = 1e-1 if argc < 3 else float(sys.argv[2])
-    dt = 1e-2 if argc < 4 else float(sys.argv[3])
-    grid_size_x = 60 if argc < 5 else int(sys.argv[4])
-    grid_size_y = 60 if argc < 6 else int(sys.argv[5])
+    dt = 1e-3 if argc < 4 else float(sys.argv[3])
+    grid_size_x = 90 if argc < 5 else int(sys.argv[4])
+    grid_size_y = 90 if argc < 6 else int(sys.argv[5])
     visualize = True if argc < 7 else (False if sys.argv[6] == "False" else True)
     subsampling = True if argc < 8 else (False if sys.argv[7] == "False" else True)
     deim_pfield = True if argc < 9 else (False if sys.argv[8] == "False" else True)
@@ -319,7 +363,10 @@ if __name__ == "__main__":
     # Compute factors such that mu_i/mu_{i+1} = const and mu_0 = default_value/sqrt(rf), mu_last = default_value*sqrt(rf)
     # factors = np.array([1.])
     factors = np.array(
-        [(rf ** 2) ** (i / (values_per_parameter_train - 1)) / rf for i in range(values_per_parameter_train)]
+        [
+            (rf ** 2) ** (i / (values_per_parameter_train - 1)) / rf
+            for i in range(values_per_parameter_train)
+        ]
         if values_per_parameter_train > 1
         else [1.0]
     )
@@ -343,9 +390,15 @@ if __name__ == "__main__":
     while len(mus) < num_train_params:
         mus.append(
             {
-                "Pa": Pa0 if excluded_param == "Pa" else random.uniform(lower_bound_Pa, upper_bound_Pa),
-                "Be": Be0 if excluded_param == "Be" else random.uniform(lower_bound_Be, upper_bound_Be),
-                "Ca": Ca0 if excluded_param == "Ca" else random.uniform(lower_bound_Ca, upper_bound_Ca),
+                "Pa": Pa0
+                if excluded_param == "Pa"
+                else random.uniform(lower_bound_Pa, upper_bound_Pa),
+                "Be": Be0
+                if excluded_param == "Be"
+                else random.uniform(lower_bound_Be, upper_bound_Be),
+                "Ca": Ca0
+                if excluded_param == "Ca"
+                else random.uniform(lower_bound_Ca, upper_bound_Ca),
             }
         )
     ####### Create test parameters ########
@@ -353,9 +406,15 @@ if __name__ == "__main__":
     for i in range(num_test_params):
         new_mus.append(
             {
-                "Pa": Pa0 if excluded_param == "Pa" else random.uniform(lower_bound_Pa, upper_bound_Pa),
-                "Be": Be0 if excluded_param == "Be" else random.uniform(lower_bound_Be, upper_bound_Be),
-                "Ca": Ca0 if excluded_param == "Ca" else random.uniform(lower_bound_Ca, upper_bound_Ca),
+                "Pa": Pa0
+                if excluded_param == "Pa"
+                else random.uniform(lower_bound_Pa, upper_bound_Pa),
+                "Be": Be0
+                if excluded_param == "Be"
+                else random.uniform(lower_bound_Be, upper_bound_Be),
+                "Ca": Ca0
+                if excluded_param == "Ca"
+                else random.uniform(lower_bound_Ca, upper_bound_Ca),
             }
         )
 
@@ -448,9 +507,10 @@ if __name__ == "__main__":
     rom = reductor.reduce()
 
     ################## solve reduced model for trained parameters ####################
-    # print("Hello", flush=True)
-    # time.sleep(10)
+    mpi.comm_world.Barrier()
+    time.sleep(10)
     u = rom.solve(mus[0], return_stages=False)
+    time.sleep(10)
     for p in range(1, len(mus)):
         u.append(rom.solve(mus[p], return_stages=False))
     U_rom = reductor.reconstruct(u)
@@ -488,8 +548,10 @@ if __name__ == "__main__":
 
     # solve reduced model for new params
     start = timer()
-    # cProfile.run("u_new_mu = rom.solve(new_mus[0], return_stages=False)", f"rom{mpi.rank_world}.cprof")
-    u_new_mu = rom.solve(new_mus[0], return_stages=False)
+    cProfile.run(
+        "u_new_mu = rom.solve(new_mus[0], return_stages=False)", f"rom{mpi.rank_world}.cprof"
+    )
+    # u_new_mu = rom.solve(new_mus[0], return_stages=False)
     for p in range(1, len(new_mus)):
         u_new_mu.append(rom.solve(new_mus[p], return_stages=False))
     mean_rom_time = (timer() - start) / len(new_mus)
@@ -505,9 +567,15 @@ if __name__ == "__main__":
     pfield_abs_errors_new_mu = (U_new_mu._blocks[0] - U_rom_new_mu._blocks[0]).norm()
     ofield_abs_errors_new_mu = (U_new_mu._blocks[1] - U_rom_new_mu._blocks[1]).norm()
     stokes_abs_errors_new_mu = (U_new_mu._blocks[2] - U_rom_new_mu._blocks[2]).norm()
-    pfield_rel_errors_new_mu = (U_new_mu._blocks[0] - U_rom_new_mu._blocks[0]).norm() / U_new_mu._blocks[0].norm()
-    ofield_rel_errors_new_mu = (U_new_mu._blocks[1] - U_rom_new_mu._blocks[1]).norm() / U_new_mu._blocks[1].norm()
-    stokes_rel_errors_new_mu = (U_new_mu._blocks[2] - U_rom_new_mu._blocks[2]).norm() / U_new_mu._blocks[2].norm()
+    pfield_rel_errors_new_mu = (
+        U_new_mu._blocks[0] - U_rom_new_mu._blocks[0]
+    ).norm() / U_new_mu._blocks[0].norm()
+    ofield_rel_errors_new_mu = (
+        U_new_mu._blocks[1] - U_rom_new_mu._blocks[1]
+    ).norm() / U_new_mu._blocks[1].norm()
+    stokes_rel_errors_new_mu = (
+        U_new_mu._blocks[2] - U_rom_new_mu._blocks[2]
+    ).norm() / U_new_mu._blocks[2].norm()
     mean_fom_time = mpi.comm_world.gather(mean_fom_time, root=0)
     mean_rom_time = mpi.comm_world.gather(mean_rom_time, root=0)
     pfield_abs_errors_new_mus = mpi.comm_world.gather(pfield_abs_errors_new_mu, root=0)
@@ -584,7 +652,9 @@ if __name__ == "__main__":
             ff.write(
                 f"\nRelative errors for new mus:\n {pfield_rel_errors_new_mus}\n {ofield_rel_errors_new_mus}\n {stokes_rel_errors_new_mus}\n"
             )
-            ff.write(f"\nTimings\n {mean_fom_time} vs. {mean_rom_time}, speedup {mean_fom_time/mean_rom_time}\n")
+            ff.write(
+                f"\nTimings\n {mean_fom_time} vs. {mean_rom_time}, speedup {mean_fom_time/mean_rom_time}\n"
+            )
         print(
             "****",
             len(pfield_basis),
@@ -593,15 +663,19 @@ if __name__ == "__main__":
             len(pfield_deim_basis) if pfield_deim_basis is not None else 0,
             len(ofield_deim_basis) if ofield_deim_basis is not None else 0,
             len(stokes_deim_basis) if stokes_deim_basis is not None else 0,
+            flush=True,
         )
-        print("Trained mus")
-        print(pfield_rel_errors)
-        print(ofield_rel_errors)
-        print(stokes_rel_errors)
-        print("New mus")
-        print(pfield_rel_errors_new_mus)
-        print(ofield_rel_errors_new_mus)
-        print(stokes_rel_errors_new_mus)
-        print("Timings")
-        print(f"{mean_fom_time:.2f} vs. {mean_rom_time:.2f}, speedup {mean_fom_time/mean_rom_time:.2f}")
+        print("Trained mus", flush=True)
+        print(pfield_rel_errors, flush=True)
+        print(ofield_rel_errors, flush=True)
+        print(stokes_rel_errors, flush=True)
+        print("New mus", flush=True)
+        print(pfield_rel_errors_new_mus, flush=True)
+        print(ofield_rel_errors_new_mus, flush=True)
+        print(stokes_rel_errors_new_mus, flush=True)
+        print("Timings", flush=True)
+        print(
+            f"{mean_fom_time:.2f} vs. {mean_rom_time:.2f}, speedup {mean_fom_time/mean_rom_time:.2f}",
+            flush=True,
+        )
     mpi.comm_world.Barrier()

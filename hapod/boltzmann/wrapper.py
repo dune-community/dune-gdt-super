@@ -1,26 +1,22 @@
+from dune.xt.la import CommonVector
 import numpy as np
-
 from pymor.algorithms.projection import project
 from pymor.models.interface import Model
-from pymor.operators.interface import Operator
 from pymor.operators.constructions import (
-    VectorOperator,
     ConstantOperator,
+    FixedParameterOperator,
     LincombOperator,
     LinearOperator,
-    FixedParameterOperator,
+    VectorOperator,
 )
+from pymor.operators.interface import Operator
 from pymor.parameters.base import Mu, Parameters, ParametricObject
 from pymor.parameters.functionals import ExpressionParameterFunctional
 from pymor.reductors.basic import ProjectionBasedReductor
 from pymor.vectorarrays.numpy import NumpyVectorSpace
 
-from gdt.vectors import CommonDenseVector
 import gdt.boltzmann
-
-from hapod.xt import DuneXtLaVector, DuneXtLaListVectorSpace
-
-IMPL_TYPES = (CommonDenseVector,)
+from hapod.xt import DuneXtLaListVectorSpace
 
 NUM_PARAMETERS = 4
 PARAMETER_TYPE = Parameters({"s": NUM_PARAMETERS})
@@ -45,7 +41,9 @@ class Solver(ParametricObject):
         elif testcase == "HFM66Checkerboard3d":
             self.impl = gdt.boltzmann.HFM66CheckerboardSolver3d(*args)
         else:
-            raise NotImplementedError(f"Unknown testcase {testcase}, available testcases:\n{AVAILABLE_TESTCASES}")
+            raise NotImplementedError(
+                f"Unknown testcase {testcase}, available testcases:\n{AVAILABLE_TESTCASES}"
+            )
         self._last_mu = None
         self.solution_space = DuneXtLaListVectorSpace(self.impl.get_initial_values().dim)
         self.t_end = self.impl.t_end()
@@ -107,14 +105,18 @@ class BoltzmannModel(Model):
         name=None,
     ):
         super().__init__(
-            products=products, estimator=estimator, visualizer=visualizer, cache_region=cache_region, name=name
+            products=products,
+            estimator=estimator,
+            visualizer=visualizer,
+            cache_region=cache_region,
+            name=name,
         )
         self.__auto_init(locals())
         self.parameters_own = PARAMETER_TYPE
         self.solution_space = self.initial_data.range
 
     def _compute_solution(self, mu=None, **kwargs):
-        return_half_steps = kwargs['return_half_steps'] if 'return_half_steps' in kwargs else False
+        return_half_steps = kwargs["return_half_steps"] if "return_half_steps" in kwargs else False
         U = self.initial_data.as_vector(mu)
         U_half = U.empty()
         U_last = U.copy()
@@ -151,27 +153,39 @@ class DuneModel(BoltzmannModel):
         # the others are
         # A_i u  + b_i
         param = solver.parameters.parse([0.0] * NUM_PARAMETERS)
-        affine_part = ConstantOperator(ndrhs.apply(initial_data.range.zeros(), mu=param), initial_data.range)
+        affine_part = ConstantOperator(
+            ndrhs.apply(initial_data.range.zeros(), mu=param), initial_data.range
+        )
         rhs_operator = affine_part + LincombOperator(
             [
                 LinearOperator(
-                    FixedParameterOperator(RHSOperator(self.solver), solver.parameters.parse(mu=[0.0, 0.0, 0.0, 0.0]))
+                    FixedParameterOperator(
+                        RHSOperator(self.solver), solver.parameters.parse(mu=[0.0, 0.0, 0.0, 0.0])
+                    )
                     - affine_part
                 ),
                 LinearOperator(
-                    FixedParameterOperator(RHSOperator(self.solver), solver.parameters.parse(mu=[1.0, 0.0, 0.0, 0.0]))
+                    FixedParameterOperator(
+                        RHSOperator(self.solver), solver.parameters.parse(mu=[1.0, 0.0, 0.0, 0.0])
+                    )
                     - affine_part
                 ),
                 LinearOperator(
-                    FixedParameterOperator(RHSOperator(self.solver), solver.parameters.parse(mu=[0.0, 1.0, 0.0, 0.0]))
+                    FixedParameterOperator(
+                        RHSOperator(self.solver), solver.parameters.parse(mu=[0.0, 1.0, 0.0, 0.0])
+                    )
                     - affine_part
                 ),
                 LinearOperator(
-                    FixedParameterOperator(RHSOperator(self.solver), solver.parameters.parse(mu=[0.0, 0.0, 1.0, 0.0]))
+                    FixedParameterOperator(
+                        RHSOperator(self.solver), solver.parameters.parse(mu=[0.0, 0.0, 1.0, 0.0])
+                    )
                     - affine_part
                 ),
                 LinearOperator(
-                    FixedParameterOperator(RHSOperator(self.solver), solver.parameters.parse(mu=[0.0, 0.0, 0.0, 1.0]))
+                    FixedParameterOperator(
+                        RHSOperator(self.solver), solver.parameters.parse(mu=[0.0, 0.0, 0.0, 1.0])
+                    )
                     - affine_part
                 ),
             ],
@@ -233,7 +247,9 @@ class RestrictedKineticOperator(RestrictedDuneOperator):
         self.dofs = dofs
         dofs_as_list = [int(i) for i in dofs]
         self.solver.impl.prepare_restricted_operator(dofs_as_list)
-        super(RestrictedKineticOperator, self).__init__(solver, self.solver.impl.len_source_dofs(), len(dofs))
+        super(RestrictedKineticOperator, self).__init__(
+            solver, self.solver.impl.len_source_dofs(), len(dofs)
+        )
 
     def apply(self, U, mu=None):
         assert U in self.source
@@ -243,7 +259,9 @@ class RestrictedKineticOperator(RestrictedDuneOperator):
         U = DuneXtLaListVectorSpace.from_numpy(U.to_numpy())
         try:
             ret = [
-                DuneXtLaVector(self.solver.impl.apply_restricted_kinetic_operator(u.impl)).to_numpy(True)
+                CommonVector(self.solver.impl.apply_restricted_kinetic_operator(u)).to_numpy(
+                    True
+                )
                 for u in U._list
             ]
         except:
@@ -273,7 +291,9 @@ class KineticOperator(DuneOperator):
         )
 
     def restricted(self, dofs):
-        return RestrictedKineticOperator(self.solver, dofs), np.array(self.solver.impl.source_dofs())
+        return RestrictedKineticOperator(self.solver, dofs), np.array(
+            self.solver.impl.source_dofs()
+        )
 
 
 class RHSOperator(DuneOperator):
@@ -286,7 +306,9 @@ class RHSOperator(DuneOperator):
     def apply(self, U, mu=None):
         assert U in self.source
         self.solver.set_parameters(mu["s"])
-        return self.range.make_array([self.solver.impl.apply_rhs_operator(u.impl, 0.0) for u in U._list])
+        return self.range.make_array(
+            [self.solver.impl.apply_rhs_operator(u.impl, 0.0) for u in U._list]
+        )
 
 
 class BoltzmannRBReductor(ProjectionBasedReductor):
@@ -294,7 +316,9 @@ class BoltzmannRBReductor(ProjectionBasedReductor):
         assert isinstance(fom, BoltzmannModel)
         RB = fom.solution_space.empty() if RB is None else RB
         assert RB in fom.solution_space, (RB.space, fom.solution_space)
-        super().__init__(fom, {"RB": RB}, check_orthonormality=check_orthonormality, check_tol=check_tol)
+        super().__init__(
+            fom, {"RB": RB}, check_orthonormality=check_orthonormality, check_tol=check_tol
+        )
 
     def project_operators(self):
         fom = self.fom

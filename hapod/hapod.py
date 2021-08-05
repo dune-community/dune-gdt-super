@@ -1,14 +1,14 @@
-from abc import abstractmethod
 import numpy as np
 from pymor.algorithms.pod import pod
 from pymor.basic import gram_schmidt
 from pymor.vectorarrays.interface import VectorArray
+from pymor.vectorarrays.list import ListVectorArray
 from scipy.linalg import eigh
 
 
 class HapodParameters:
-    """Stores the HAPOD parameters :math:`\omega`, :math:`\epsilon^\ast` and :math:`L_\mathcal{T}` for easier passing
-       and provides the local error tolerance :math:`\varepsilon_\mathcal{T}(\alpha)` """
+    """Stores the HAPOD parameters omega, epsilon* and L_T for easier passing
+    and provides the local error tolerance varepsilon_T(alpha)"""
 
     def __init__(self, rooted_tree_depth, epsilon_ast=1e-4, omega=0.95):
         self.epsilon_ast = epsilon_ast
@@ -76,6 +76,8 @@ def local_pod(
         # calculate gramian avoiding recalculations
         gramian = np.empty((offsets[-1],) * 2)
         all_modes = inputs[0][0].space.empty()
+        assert len(inputs) > 0
+        modes_i = ListVectorArray(None, None)  # avoid 'possibly unbound variable' warning
         for i in range(len(inputs)):
             modes_i, svals_i = [inputs[i][0], inputs[i][1] if svals_provided[i] else None]
             gramian[offsets[i] : offsets[i + 1], offsets[i] : offsets[i + 1]] = (
@@ -83,7 +85,9 @@ def local_pod(
             )
             for j in range(i + 1, len(inputs)):
                 modes_j = inputs[j][0]
-                cross_gramian = modes_i.inner(product.apply(modes_j) if product is not None else modes_j)
+                cross_gramian = modes_i.inner(
+                    product.apply(modes_j) if product is not None else modes_j
+                )
                 gramian[offsets[i] : offsets[i + 1], offsets[j] : offsets[j + 1]] = cross_gramian
                 gramian[offsets[j] : offsets[j + 1], offsets[i] : offsets[i + 1]] = cross_gramian.T
             all_modes.append(modes_i)
@@ -111,7 +115,7 @@ def local_pod(
         if final_modes.dim > 0 and len(final_modes) > 0 and np.isfinite(orth_tol):
             err = np.max(np.abs(final_modes.inner(final_modes, product) - np.eye(len(final_modes))))
             if err >= orth_tol:
-                gram_schmidt(final_modes, product=product, atol=0., rtol=0., copy=False)
+                gram_schmidt(final_modes, product=product, atol=0.0, rtol=0.0, copy=False)
 
         return final_modes, svals
     else:
@@ -129,11 +133,17 @@ def local_pod(
 
 
 def incremental_hapod_over_ranks(
-    comm, modes, num_snaps_in_leafs, parameters, svals=None, last_hapod=False, incremental_gramian=True
+    comm,
+    modes,
+    num_snaps_in_leafs,
+    parameters,
+    svals=None,
+    last_hapod=False,
+    incremental_gramian=True,
 ):
-    """ A incremental HAPOD with modes and possibly svals stored on ranks of the MPI communicator comm.
-        May be used as part of a larger HAPOD tree, in that case you need to specify whether this
-        part of the tree contains the root node (last_hapod=True)"""
+    """A incremental HAPOD with modes and possibly svals stored on ranks of the MPI communicator comm.
+    May be used as part of a larger HAPOD tree, in that case you need to specify whether this
+    part of the tree contains the root node (last_hapod=True)"""
     total_num_snapshots = num_snaps_in_leafs
     max_vecs_before_pod = len(modes)
     max_local_modes = 0
@@ -146,13 +156,17 @@ def incremental_hapod_over_ranks(
                 modes = None
             # receive modes and svals
             elif comm.rank == 0:
-                modes_on_source, svals_on_source, total_num_snapshots_on_source = comm.recv_modes(current_rank)
+                modes_on_source, svals_on_source, total_num_snapshots_on_source = comm.recv_modes(
+                    current_rank
+                )
                 max_vecs_before_pod = max(max_vecs_before_pod, len(modes) + len(modes_on_source))
                 total_num_snapshots += total_num_snapshots_on_source
                 modes, svals = local_pod(
                     [
                         [modes, svals],
-                        [modes_on_source, svals_on_source] if len(svals_on_source) > 0 else modes_on_source,
+                        [modes_on_source, svals_on_source]
+                        if len(svals_on_source) > 0
+                        else modes_on_source,
                     ],
                     total_num_snapshots,
                     parameters,
@@ -188,10 +202,10 @@ def binary_tree_hapod_over_ranks(
     product=None,
     orth_tol=1e-10,
 ):
-    """ A HAPOD with modes and possibly svals stored on ranks of the MPI communicator comm. A binary tree
-        of MPI ranks is used as HAPOD tree.
-        May be used as part of a larger HAPOD tree, in that case you need to specify whether this
-        part of the tree contains the root node (last_hapod=True) """
+    """A HAPOD with modes and possibly svals stored on ranks of the MPI communicator comm. A binary tree
+    of MPI ranks is used as HAPOD tree.
+    May be used as part of a larger HAPOD tree, in that case you need to specify whether this
+    part of the tree contains the root node (last_hapod=True)"""
     total_num_snapshots = num_snaps_in_leafs
     max_vecs_before_pod = len(modes)
     max_local_modes = 0
@@ -209,13 +223,21 @@ def binary_tree_hapod_over_ranks(
                     comm.send_modes(receiving_rank, modes, svals, total_num_snapshots)
                     modes = None
                 elif comm.rank == receiving_rank:
-                    modes_on_source, svals_on_source, total_num_snapshots_on_source = comm.recv_modes(sending_rank)
-                    max_vecs_before_pod = max(max_vecs_before_pod, len(modes) + len(modes_on_source))
+                    (
+                        modes_on_source,
+                        svals_on_source,
+                        total_num_snapshots_on_source,
+                    ) = comm.recv_modes(sending_rank)
+                    max_vecs_before_pod = max(
+                        max_vecs_before_pod, len(modes) + len(modes_on_source)
+                    )
                     total_num_snapshots += total_num_snapshots_on_source
                     modes, svals = local_pod(
                         [
                             [modes, svals],
-                            [modes_on_source, svals_on_source] if len(svals_on_source) > 0 else modes_on_source,
+                            [modes_on_source, svals_on_source]
+                            if len(svals_on_source) > 0
+                            else modes_on_source,
                         ],
                         total_num_snapshots,
                         parameters,

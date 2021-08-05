@@ -1,23 +1,19 @@
 import math
-import numpy as np
-from tqdm import tqdm
 
+import numpy as np
 from pymor.models.interface import Model
 from pymor.operators.constructions import VectorOperator
 from pymor.parameters.base import ParametricObject
 from pymor.vectorarrays.interface import VectorArray
 
-from gdt.vectors import CommonDenseVector
 import gdt.coordinatetransformedmn
-
-from hapod.xt import DuneXtLaVector, DuneXtLaListVectorSpace
-
 from hapod.boltzmann.wrapper import DuneOperator, RestrictedDuneOperator
+from hapod.xt import DuneXtLaListVectorSpace
+from tqdm import tqdm
+from dune.xt.la import CommonVector
 
 # import cvxopt
 # from cvxopt import matrix as cvxmatrix
-
-IMPL_TYPES = (CommonDenseVector,)
 
 # Parameters are:
 # - Sourcebeam test: (sigma_a_left, sigma_a_right, sigma_s_left, sigma_s_middle, sigma_s_right)
@@ -129,7 +125,7 @@ class Solver(ParametricObject):
         return times, self.solution_space.make_array(snapshots), self.solution_space.make_array(nonlinear_snapshots)
 
     def u_from_alpha(self, alpha_vec):
-        return DuneXtLaVector(self.impl.u_from_alpha(alpha_vec.impl))
+        return self.impl.u_from_alpha(alpha_vec)
 
     def visualize(self, vec, prefix):
         self.impl.visualize(vec.impl, prefix)
