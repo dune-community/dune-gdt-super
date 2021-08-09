@@ -26,7 +26,7 @@ def idle_wait(comm, root=0):
 
 class MPIWrapper:
     """Stores MPI communicators for all ranks (world), for all ranks on a single compute node (proc)
-       and for all ranks that have rank 0 on their compute node (rank_0_group).
+       and for all ranks that have rank the same rank on their compute node (rank_group).
        Further provides some convenience functions for using MPI for VectorArrays"""
 
     def __init__(self):
@@ -41,17 +41,23 @@ class MPIWrapper:
         self.size_proc = self.comm_proc.size
         self.rank_proc = self.comm_proc.rank
 
-        # create communicator containing rank 0 processes from each processor
-        self.contained_in_rank_0_group = 1 if self.rank_proc == 0 else 0
-        self.comm_rank_0_group = BoltzmannMPICommunicator(
-            self.comm_world.Split(self.contained_in_rank_0_group, self.rank_world)
-        )
-        self.size_rank_0_group = self.comm_rank_0_group.size
-        self.rank_rank_0_group = self.comm_rank_0_group.rank
+        # create communicator containing rank k processes from each processor
+        self.comm_rank_group = []
+        self.size_rank_group = []
+        self.rank_rank_group = []
+        for k in range(self.size_proc):
+            contained_in_rank_k_group = 1 if self.rank_proc == k else 0
+            self.comm_rank_group.append(
+                    BoltzmannMPICommunicator(
+                        self.comm_world.Split(contained_in_rank_k_group, self.rank_world)
+                )
+            )
+            self.size_rank_group.append(self.comm_rank_group[k].size)
+            self.rank_rank_group.append(self.comm_rank_group[k].rank)
 
-    def shared_memory_bcast_modes(self, modes, returnlistvectorarray=False):
+    def shared_memory_bcast_modes(self, modes, returnlistvectorarray=False, root=0):
         """
-        Broadcast modes on rank 0 to all ranks by using a shared memory buffer on each node
+        Broadcast modes on root rank to all ranks by using a shared memory buffer on each node
 
         Parameters
         ----------
@@ -66,26 +72,26 @@ class MPIWrapper:
         """
         if modes is None:
             modes = np.empty(shape=(0, 0), dtype="d")
-        modes_length = self.comm_world.bcast(len(modes) if self.rank_world == 0 else 0, root=0)
+        modes_length = self.comm_world.bcast(len(modes) if self.rank_world == root else 0, root=root)
         assert modes_length > 0, "Cannot broadcast empty modes"
-        vector_length = self.comm_world.bcast(modes[0].dim if self.rank_world == 0 else 0, root=0)
+        vector_length = self.comm_world.bcast(modes[0].dim if self.rank_world == root else 0, root=root)
         # create shared memory buffer to share final modes between processes on each node
         size = modes_length * vector_length
         itemsize = MPI.DOUBLE.Get_size()
-        num_bytes = size * itemsize if self.rank_proc == 0 else 0
+        num_bytes = size * itemsize if self.rank_proc == root else 0
         win = MPI.Win.Allocate_shared(num_bytes, itemsize, comm=self.comm_proc)
-        buf, itemsize = win.Shared_query(rank=0)
+        buf, itemsize = win.Shared_query(rank=root)
         assert itemsize == MPI.DOUBLE.Get_size()
         buf = np.array(buf, dtype="B", copy=False)
         modes_numpy = np.ndarray(buffer=buf, dtype="d", shape=(modes_length, vector_length))
-        if self.rank_proc == 0:
-            if self.rank_world == 0:
-                self.comm_rank_0_group.comm.Bcast([modes.to_numpy(), MPI.DOUBLE], root=0)
+        if self.rank_proc == root:
+            if self.rank_world == root:
+                self.comm_rank_group[root].Bcast([modes.to_numpy(), MPI.DOUBLE], root=0)
                 for i, v in enumerate(modes._list):
                     modes_numpy[i, :] = v.to_numpy()[:]
                     del v
             else:
-                self.comm_rank_0_group.Bcast([modes_numpy, MPI.DOUBLE], root=0)
+                self.comm_rank_group[root].Bcast([modes_numpy, MPI.DOUBLE], root=0)
         self.comm_world.Barrier()  # without this barrier, non-zero ranks might be too fast
         if returnlistvectorarray:
             modes = DuneXtLaListVectorSpace.from_memory(modes_numpy)
@@ -94,26 +100,9 @@ class MPIWrapper:
             modes = NumpyVectorSpace.from_numpy(modes_numpy)
             return modes, win
 
-
-class MPICommunicator(object):
-
-    rank = None
-    size = None
-
-    @abstractmethod
-    def send_modes(self, dest, modes, svals, num_snaps_in_leafs):
-        pass
-
-    @abstractmethod
-    def recv_modes(self, source):
-        pass
-
-
-class BoltzmannMPICommunicator(MPICommunicator, MPI.Intracomm):
+class BoltzmannMPICommunicator(MPI.Intracomm):
     def __init__(self, comm):
         self.comm = comm
-        self.rank = comm.Get_rank()
-        self.size = comm.Get_size()
 
     def send_modes(self, dest, modes, svals, num_snaps_in_leafs):
         comm = self.comm
@@ -139,46 +128,46 @@ class BoltzmannMPICommunicator(MPICommunicator, MPI.Intracomm):
 
         return modes, svals, total_num_snapshots
 
-    def gather_on_rank_0(self, vectorarray, num_snapshots_on_rank, svals=None, num_modes_equal=False, merge=True):
+    def gather_on_root_rank(self, vectorarray, num_snapshots_on_rank, svals=None, num_modes_equal=False, merge=True, root=0):
         comm = self.comm
         rank = comm.Get_rank()
         if svals is not None:
             assert len(svals) == len(vectorarray)
-        num_snapshots_in_associated_leafs = comm.reduce(num_snapshots_on_rank, op=MPI.SUM, root=0)
-        total_num_modes = comm.reduce(len(vectorarray), op=MPI.SUM, root=0)
+        num_snapshots_in_associated_leafs = comm.reduce(num_snapshots_on_rank, op=MPI.SUM, root=root)
+        total_num_modes = comm.reduce(len(vectorarray), op=MPI.SUM, root=root)
         vector_length = vectorarray[0].dim if len(vectorarray) > 0 else 0
         # create empty numpy array on rank 0 as a buffer to receive the pod modes from each core
-        vectors_gathered = np.empty(shape=(total_num_modes, vector_length)) if rank == 0 else None
-        svals_gathered = np.empty(shape=(total_num_modes,)) if (rank == 0 and svals is not None) else None
+        vectors_gathered = np.empty(shape=(total_num_modes, vector_length)) if rank == root else None
+        svals_gathered = np.empty(shape=(total_num_modes,)) if (rank == root and svals is not None) else None
         # gather the modes (as numpy array, thus the call to data) in vectors_gathered.
         offsets = []
         offsets_svals = []
         # if we have the same number of modes on each rank, we can use Gather, else we have to use Gatherv
         if num_modes_equal:
-            comm.Gather(vectorarray.to_numpy(), vectors_gathered, root=0)
+            comm.Gather(vectorarray.to_numpy(), vectors_gathered, root=root)
             if svals is not None:
-                comm.Gather(svals, svals_gathered, root=0)
+                comm.Gather(svals, svals_gathered, root=root)
         else:
             # Gatherv needed because every process can send a different number of modes
-            counts = comm.gather(len(vectorarray) * vector_length, root=0)
+            counts = comm.gather(len(vectorarray) * vector_length, root=root)
             if svals is not None:
-                counts_svals = comm.gather(len(svals), root=0)
-            if rank == 0:
+                counts_svals = comm.gather(len(svals), root=root)
+            if rank == root:
                 offsets = [0]
                 for j, count in enumerate(counts):
                     offsets.append(offsets[j] + count)
-                comm.Gatherv(vectorarray.to_numpy(), [vectors_gathered, counts, offsets[0:-1], MPI.DOUBLE], root=0)
+                comm.Gatherv(vectorarray.to_numpy(), [vectors_gathered, counts, offsets[0:-1], MPI.DOUBLE], root=root)
                 if svals is not None:
                     offsets_svals = [0]
                     for j, count in enumerate(counts_svals):
                         offsets_svals.append(offsets_svals[j] + count)
-                    comm.Gatherv(svals, [svals_gathered, counts_svals, offsets_svals[0:-1], MPI.DOUBLE], root=0)
+                    comm.Gatherv(svals, [svals_gathered, counts_svals, offsets_svals[0:-1], MPI.DOUBLE], root=root)
             else:
-                comm.Gatherv(vectorarray.to_numpy(), None, root=0)
+                comm.Gatherv(vectorarray.to_numpy(), None, root=root)
                 if svals is not None:
-                    comm.Gatherv(svals, None, root=0)
+                    comm.Gatherv(svals, None, root=root)
         del vectorarray
-        if rank == 0:
+        if rank == root:
             if merge:
                 vectors_gathered = DuneXtLaListVectorSpace.from_numpy(vectors_gathered, ensure_copy=True)
             else:
@@ -197,7 +186,11 @@ class BoltzmannMPICommunicator(MPICommunicator, MPI.Intracomm):
                 svals_gathered = svals
         return vectors_gathered, svals_gathered, num_snapshots_in_associated_leafs, offsets_svals
 
+    def gather_on_rank_0(self, vectorarray, num_snapshots_on_rank, svals=None, num_modes_equal=False, merge=True):
+        return self.gather_on_root_rank(vectorarray, num_snapshots_on_rank, svals, num_modes_equal, merge, root=0)
+
     def __getattr__(self, item):
+        """ Redirects all request for properties and methods that are not defined in this class to self.comm """
         if item in self.__dict__:
             return self.__dict__[item]
         else:
