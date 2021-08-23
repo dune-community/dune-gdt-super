@@ -24,7 +24,6 @@ variables:
           alias: docker
     environment:
         name: unsafe
-    stage: modules
     script: .ci/shared/docker/update_test_dockers.py ${MODULE_NAME}
 
 base:
@@ -35,11 +34,13 @@ base:
 
 gdt:
     extends: .docker-in-docker
+    stage: modules
     variables:
       MODULE_NAME: dune-gdt
 
 super:
   extends: .docker-in-docker
+  stage: modules
   variables:
     BASE: debian
     IMAGE: ${CI_REGISTRY_IMAGE}/super_debian:${CI_COMMIT_SHA}
