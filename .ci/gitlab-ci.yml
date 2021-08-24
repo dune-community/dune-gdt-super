@@ -14,7 +14,6 @@ variables:
     variables:
         DOCKER_HOST: tcp://docker:2375/
         DOCKER_DRIVER: overlay2
-        CI_REGISTRY_IMAGE: ${CI_REGISTRY_IMAGE}
     before_script:
         - apk --update add py3-pip openssh-client rsync git file bash python3
         - pip3 install -U docker jinja2 docopt
@@ -38,6 +37,7 @@ gdt:
     stage: modules
     variables:
       MODULE_NAME: dune-gdt
+      CI_REGISTRY_IMAGE: ${CI_REGISTRY_IMAGE}
 
 super:
   extends: .docker-in-docker
