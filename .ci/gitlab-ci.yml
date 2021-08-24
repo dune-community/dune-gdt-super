@@ -10,20 +10,20 @@ variables:
         max: 2
         when:
             - always
-    image: docker:stable
+    image: harbor.uni-muenster.de/proxy-docker/library/docker:stable
     variables:
         DOCKER_HOST: tcp://docker:2375/
         DOCKER_DRIVER: overlay2
     before_script:
         - apk --update add py3-pip openssh-client rsync git file bash python3
         - pip3 install -U docker jinja2 docopt
-        - echo $DOCKER_PW | docker login --username="$DOCKER_USER" --password-stdin
+        - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
         - git submodule update --init .ci/shared
     services:
-        - docker:dind
+        - name: harbor.uni-muenster.de/proxy-docker/library/docker:dind
+          alias: docker
     environment:
         name: unsafe
-    stage: modules
     script: .ci/shared/docker/update_test_dockers.py ${MODULE_NAME}
 
 base:
@@ -34,14 +34,16 @@ base:
 
 gdt:
     extends: .docker-in-docker
+    stage: modules
     variables:
       MODULE_NAME: dune-gdt
 
 super:
   extends: .docker-in-docker
+  stage: modules
   variables:
     BASE: debian
-    IMAGE: dunecommunity/gdt-super_${BASE}:${CI_COMMIT_SHA}
+    IMAGE: ${CI_REGISTRY_IMAGE}/super_debian:${CI_COMMIT_SHA}
   script: |
     docker build --build-arg BASE=${BASE} -t ${IMAGE} -f .ci/shared/docker/super_docker/Dockerfile .
     docker push ${IMAGE}
