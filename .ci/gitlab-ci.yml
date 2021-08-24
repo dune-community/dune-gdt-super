@@ -37,7 +37,6 @@ gdt:
     stage: modules
     variables:
       MODULE_NAME: dune-gdt
-      CI_REGISTRY_IMAGE: ${CI_REGISTRY_IMAGE}
 
 super:
   extends: .docker-in-docker
