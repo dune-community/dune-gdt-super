@@ -1,6 +1,6 @@
 stages:
   - base
-  - modules
+  # - modules
   - wheels
   - publish
 
@@ -25,7 +25,7 @@ variables:
         - docker:dind
     environment:
         name: unsafe
-    stage: modules
+    # stage: modules
     script: .ci/shared/docker/update_test_dockers.py ${MODULE_NAME}
 
 base:
@@ -34,19 +34,19 @@ base:
     variables:
       MODULE_NAME: BASE
 
-gdt:
-    extends: .docker-in-docker
-    variables:
-      MODULE_NAME: dune-gdt
+# gdt:
+#     extends: .docker-in-docker
+#     variables:
+#       MODULE_NAME: dune-gdt
 
-super:
-  extends: .docker-in-docker
-  variables:
-    BASE: debian
-    IMAGE: dunecommunity/gdt-super_${BASE}:${CI_COMMIT_SHA}
-  script: |
-    docker build --build-arg BASE=${BASE} -t ${IMAGE} -f .ci/shared/docker/super_docker/Dockerfile .
-    docker push ${IMAGE}
+# super:
+#   extends: .docker-in-docker
+#   variables:
+#     BASE: debian
+#     IMAGE: dunecommunity/gdt-super_${BASE}:${CI_COMMIT_SHA}
+#   script: |
+#     docker build --build-arg BASE=${BASE} -t ${IMAGE} -f .ci/shared/docker/super_docker/Dockerfile .
+#     docker push ${IMAGE}
 
 .wheels_base:
   variables:
