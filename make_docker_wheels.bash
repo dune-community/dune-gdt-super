@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-ML_TAG=latest
+ML_TAG=a2abb90466d2bd655c7bb1053c91e473330b7ba8
 
 THISDIR="$(cd "$(dirname ${BASH_SOURCE[0]})" && pwd -P )"
 
