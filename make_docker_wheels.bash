@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-ML_TAG=a2abb90466d2bd655c7bb1053c91e473330b7ba8
+ML_TAG=ec02aa94092fd804bf6f5fcd9d53029a259ba990
 
 THISDIR="$(cd "$(dirname ${BASH_SOURCE[0]})" && pwd -P )"
 
@@ -11,7 +11,7 @@ PYTHON_VERSION=${GDT_PYTHON_VERSION:-3.8}
 
 set -eu
 
-IMAGE=dunecommunity/manylinux-2014_py${PYTHON_VERSION}:${ML_TAG}
+IMAGE=zivgitlab.wwu.io/ag-ohlberger/dune-community/docker/manylinux-2014_py${PYTHON_VERSION}:${ML_TAG}
 TEST_IMAGE=pymor/testing_py${PYTHON_VERSION}:latest
 
 # default command is "build-wheels.sh"
