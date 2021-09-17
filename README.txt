@@ -6,9 +6,9 @@ in the correct versions are provided with these supplementary files in the dune-
 The code is probably not compatible to other (including newer) versions of the DUNE modules.
 
 To run the code yourself, you need to (tested on Ubuntu 20.04)
-1. Install the required dependencies: build-essential, gfortran, git, CMake, python3, pkg-config. This can be done e.g. via
+1. Install the required dependencies: build-essential, gfortran, git, CMake, python3, pip, pkg-config. This can be done e.g. via
 
-apt-get install build-essential gfortran git cmake python3-dev pkg-config
+apt-get install build-essential gfortran git cmake python3-dev python3-pip pkg-config
 
 2. Change to the dune-gdt-super folder, download and install some more required external packages by running
 
@@ -70,7 +70,7 @@ for the new scheme and
 
 ./dune/gdt/test/test_hyperbolic__momentmodels__mn_ord1
 
-for the reference scheme.
+for the reference scheme. You can ignore the "[  FAILED  ] ... " output.
 
 The following command line options will be accepted by both executables:
 -grid_size INT                      Number of grid cells, INT is an integer, e.g. -grid_size 100 will give a grid with 100 cells in 1d and a grid with 100x100x100 cells in 3d.
