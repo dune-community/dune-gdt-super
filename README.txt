@@ -88,10 +88,10 @@ The following command line options will be accepted by both executables:
 -filename STRING                    Prefix for the output files
 
 The following command line options are only available for the new scheme (test_hyperbolic__momentmodels__entropic_coords_mn)
--timestepper.atol FLOAT             Specifies the absolute tolerance for the error computation of the adaptive time stepping scheme (see eq. ??? in the paper)
--timestepper.rtol FLOAT             Specifies the relative tolerance for the error computation of the adaptive time stepping scheme (see eq. ??? in the paper)
--apply_gamma_relaxation BOOL        If BOOL = 1, the relaxed Runge-Kutta scheme will be used (see ??? in the paper)
--massmatrix_regularization FLOAT    Enables regularization by the mass matrix with regularization parameter FLOAT (see ??? in the paper)
+-timestepper.atol FLOAT             Specifies the absolute tolerance tau_abs for the error computation of the adaptive time stepping scheme (see eq. (4.11) in the paper)
+-timestepper.rtol FLOAT             Specifies the relative tolerance tau_rel for the error computation of the adaptive time stepping scheme (see eq. (4.11) in the paper)
+-apply_gamma_relaxation BOOL        If BOOL = 1, the relaxed Runge-Kutta scheme will be used (see eq. (3.19) in the paper)
+-massmatrix_regularization FLOAT    Enables regularization using the mass matrix with regularization parameter epsilon = FLOAT (see Section 3.5.1 in the paper)
 
 The following command line options are only available for the reference scheme (test_hyperbolic__momentmodels__mn_ord1)
 -timestepper.dt FLOAT               Specifies the time step to use
