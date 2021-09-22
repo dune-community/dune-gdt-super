@@ -15,6 +15,10 @@ from hapod.cellmodel.wrapper import (
     CellModelReductor,
     CellModelSolver,
     DuneCellModel,
+    calculate_cellmodel_errors,
+    CellModelPfieldProductOperator,
+    CellModelOfieldProductOperator,
+    CellModelStokesProductOperator,
 )
 from hapod.hapod import (
     HapodParameters,
@@ -60,26 +64,28 @@ class BinaryTreeHapodResults:
 # The resulting modes are stored in results.gathered_modes on processor rank 0
 # results.num_snaps (on rank 0) contains the total number of snapshots
 # that have been processed (on all ranks)
-def pods_on_processor_cores_in_binary_tree_hapod(r, vecs, root):
+def pods_on_processor_cores_in_binary_tree_hapod(r, vecs, root, product):
     assert isinstance(vecs, ListVectorArray)
     print("start processor pod: ", mpi.rank_world)
-    r.max_vectors_before_pod = max(r.max_vectors_before_pod, len(vecs))
+    snaps_on_rank = len(vecs)
+    r.max_vectors_before_pod = max(r.max_vectors_before_pod, snaps_on_rank)
     vecs, svals = local_pod(
         [vecs],
-        len(vecs),
+        snaps_on_rank,
         r.params,
+        product=product,
         incremental_gramian=False,
         orth_tol=r.orth_tol,
     )
     r.max_local_modes = max(r.max_local_modes, len(vecs))
     vecs.scal(svals)
     r.gathered_modes, _, r.num_snaps, _ = mpi.comm_proc.gather_on_root_rank(
-        vecs, len(vecs), num_modes_equal=False, root=root
+        vecs, num_snapshots_on_rank=snaps_on_rank, num_modes_equal=False, root=root
     )
 
 
 # perform a POD with gathered modes on rank 0 on each processor/node
-def pod_on_node_in_binary_tree_hapod(r, chunk_index, num_chunks, mpi, root):
+def pod_on_node_in_binary_tree_hapod(r, chunk_index, num_chunks, mpi, root, product):
     print("start node pod: ", mpi.rank_world)
     r.total_num_snapshots += r.num_snaps
     if chunk_index == 0:
@@ -88,24 +94,27 @@ def pod_on_node_in_binary_tree_hapod(r, chunk_index, num_chunks, mpi, root):
             [r.gathered_modes],
             r.num_snaps,
             r.params,
+            product=product,
             orth_tol=r.orth_tol,
         )
     else:
         r.max_vectors_before_pod = max(
             r.max_vectors_before_pod, len(r.modes) + len(r.gathered_modes)
         )
+        root_of_tree = (chunk_index == num_chunks - 1 and mpi.size_rank_group[root] == 1)
         r.modes, r.svals = local_pod(
             [[r.modes, r.svals], r.gathered_modes],
             r.total_num_snapshots,
             r.params,
-            orth_tol=r.orth_tol,
+            orth_tol=r.final_orth_tol if root_of_tree else r.orth_tol,
             incremental_gramian=r.incremental_gramian,
-            root_of_tree=(chunk_index == num_chunks - 1 and mpi.size_rank_group[root] == 1),
+            product=product,
+            root_of_tree=root_of_tree,
         )
     r.max_local_modes = max(r.max_local_modes, len(r.modes))
 
 
-def final_hapod_in_binary_tree_hapod(r, mpi, root):
+def final_hapod_in_binary_tree_hapod(r, mpi, root, product):
     print("start final pod: ", mpi.rank_world)
     (
         r.modes,
@@ -121,6 +130,7 @@ def final_hapod_in_binary_tree_hapod(r, mpi, root):
         svals=r.svals,
         last_hapod=True,
         incremental_gramian=r.incremental_gramian,
+        product=product,
         orth_tol=r.final_orth_tol,
     )
     r.max_vectors_before_pod = max(r.max_vectors_before_pod, max_num_input_vecs)
@@ -138,10 +148,12 @@ def binary_tree_hapod(
     omega=0.95,
     return_snapshots=False,
     return_newton_residuals=False,
-    incremental_gramian=True,
-    orth_tol=1e-05,
+    incremental_gramian=False,
+    orth_tol=np.inf,
+    # orth_tol=1e-10,
     final_orth_tol=1e-10,
     logfile=None,
+    products=None,
 ):
 
     assert isinstance(cellmodel, CellModel)
@@ -184,12 +196,12 @@ def binary_tree_hapod(
         U_res = [tuple(space.subspaces[i].empty() for i in range(3)) for _ in range(len(mus))]
     # walk over time chunks
     # currently, all parameters have to use the same timestep length in all time steps
-    old_time = 0.0
+    old_t = 0.0
     for chunk_index in range(num_chunks):
         new_vecs = [U[0]._blocks[i % 3].empty() for i in range(6)]
         # walk over parameters
         for p in range(len(mus)):
-            time = old_time
+            t = old_t
             mu = mus[p]
             # If this is the first time step, add initial values ...
             if chunk_index == 0:
@@ -200,13 +212,13 @@ def binary_tree_hapod(
                 t1 = timer()
                 retval = cellmodel.next_time_step(
                     current_values[p],
-                    time,
+                    t,
                     mu=mu,
                     return_stages=include_newton_stages,
                     return_residuals=True,
                 )
                 timings["data"] += timer() - t1
-                current_values[p], time, *retval = retval
+                current_values[p], t, *retval = retval
                 if include_newton_stages:
                     timestep_stages, *retval = retval
                 timestep_residuals, *retval = retval
@@ -231,13 +243,13 @@ def binary_tree_hapod(
                     else:
                         # this is a DEIM index
                         new_vecs[k].append(timestep_residuals[k - 3])
-        old_time = time
+        old_t = t
 
         # calculate POD of timestep vectors on each core
         for k in indices:
             t1 = timer()
             root_rank = k % mpi.size_proc
-            pods_on_processor_cores_in_binary_tree_hapod(results[k], new_vecs[k], root=root_rank)
+            pods_on_processor_cores_in_binary_tree_hapod(results[k], new_vecs[k], root=root_rank, product=products[k])
             timings[f"POD{k}"] += timer() - t1
         for k in indices:
             t1 = timer()
@@ -246,7 +258,7 @@ def binary_tree_hapod(
             if mpi.rank_proc == root_rank:
                 # perform pod on rank root_rank with gathered modes and modes from the last chunk
                 pod_on_node_in_binary_tree_hapod(
-                    results[k], chunk_index, num_chunks, mpi, root=root_rank
+                    results[k], chunk_index, num_chunks, mpi, root=root_rank, product=products[k]
                 )
             timings[f"POD{k}"] += timer() - t1
 
@@ -257,18 +269,20 @@ def binary_tree_hapod(
         r = results[k]
         if mpi.rank_proc == root_rank:
             t1 = timer()
-            final_hapod_in_binary_tree_hapod(r, mpi, root=root_rank)
+            final_hapod_in_binary_tree_hapod(r, mpi, root=root_rank, product=products[k])
             timings[f"POD{k}"] += timer() - t1
 
         # calculate max number of local modes
         r.max_vectors_before_pod = mpi.comm_world.gather(r.max_vectors_before_pod, root=0)
         r.max_local_modes = mpi.comm_world.gather(r.max_local_modes, root=0)
         r.num_modes = mpi.comm_world.gather(len(r.modes) if r.modes is not None else 0, root=0)
+        r.total_num_snapshots = mpi.comm_world.gather(r.total_num_snapshots, root=0)
         gathered_timings = mpi.comm_world.gather(timings, root=0)
         if mpi.rank_world == 0:
             r.max_vectors_before_pod = max(r.max_vectors_before_pod)
             r.max_local_modes = max(r.max_local_modes)
             r.num_modes = max(r.num_modes)
+            r.total_num_snapshots = max(r.total_num_snapshots)
             r.timings = {}
             for key in timings.keys():
                 r.timings[key] = max([timing[key] for timing in gathered_timings])
@@ -322,7 +336,7 @@ if __name__ == "__main__":
     stokes_deim_atol = 1e-10 if argc < 18 else float(sys.argv[17])
     pol_order = 2
     chunk_size = 10
-    visualize_step = 50
+    visualize_step = 10
     pod_pfield = True
     pod_ofield = True
     pod_stokes = True
@@ -477,6 +491,8 @@ if __name__ == "__main__":
     solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])
     num_cells = solver.num_cells
     m = DuneCellModel(solver)
+    # products = [CellModelPfieldProductOperator(solver), CellModelOfieldProductOperator(solver), CellModelStokesProductOperator(solver)]*2
+    products = [None] * 6
     Us, _, results = binary_tree_hapod(
         m,
         mus,
@@ -489,11 +505,12 @@ if __name__ == "__main__":
         return_snapshots=True,
         return_newton_residuals=False,
         logfile=filename,
+        products=products,
     )
-    U = Us[0]
+    # U = Us[0]
     # U_res = Us_res[0]
-    for p in range(1, len(mus)):
-        U.append(Us[p])
+    # for p in range(1, len(mus)):
+    #     U.append(Us[p])
     #     for q in range(3):
     #         U_res[q].append(Us_res[p][q])
     del Us
@@ -520,6 +537,7 @@ if __name__ == "__main__":
         (f"pod{stokes_atol:.0e}" if pod_stokes else "pod0")
         + (f"deim{stokes_deim_atol:.0e}" if deim_stokes else "deim0"),
     )
+
     reductor = CellModelReductor(
         m,
         pfield_basis,
@@ -531,55 +549,59 @@ if __name__ == "__main__":
         pfield_deim_basis=pfield_deim_basis,
         ofield_deim_basis=ofield_deim_basis,
         stokes_deim_basis=stokes_deim_basis,
+        check_orthonormality=True,
+        check_tol=1e-10,
+        products={'pfield': products[0], 'ofield': products[1], 'stokes': products[2]}
     )
     rom = reductor.reduce()
 
     ################## solve reduced model for trained parameters ####################
     mpi.comm_world.Barrier()
-    time.sleep(10)
+    # time.sleep(10)
     u = rom.solve(mus[0], return_stages=False)
-    time.sleep(10)
+    # time.sleep(10)
     for p in range(1, len(mus)):
         u.append(rom.solve(mus[p], return_stages=False))
     U_rom = reductor.reconstruct(u)
+    Be, Ca, Pa = (float(mus[0]['Be']), float(mus[0]['Ca']), float(mus[0]['Pa']))
+    m.visualize(U_rom, prefix=f"{filename[:-4]}_Be{Be}_Ca{Ca}_Pa{Pa}", subsampling=subsampling, every_nth=visualize_step)
 
-    ################## calculate errors for trained parameters #######################
-    pfield_abs_errors = (U._blocks[0] - U_rom._blocks[0]).norm()
-    ofield_abs_errors = (U._blocks[1] - U_rom._blocks[1]).norm()
-    stokes_abs_errors = (U._blocks[2] - U_rom._blocks[2]).norm()
-    pfield_rel_errors = (U._blocks[0] - U_rom._blocks[0]).norm() / U._blocks[0].norm()
-    ofield_rel_errors = (U._blocks[1] - U_rom._blocks[1]).norm() / U._blocks[1].norm()
-    stokes_rel_errors = (U._blocks[2] - U_rom._blocks[2]).norm() / U._blocks[2].norm()
-    pfield_norms = U._blocks[0].norm()
-    ofield_norms = U._blocks[1].norm()
-    stokes_norms = U._blocks[2].norm()
-    pfield_abs_errors = mpi.comm_world.gather(pfield_abs_errors, root=0)
-    ofield_abs_errors = mpi.comm_world.gather(ofield_abs_errors, root=0)
-    stokes_abs_errors = mpi.comm_world.gather(stokes_abs_errors, root=0)
-    pfield_rel_errors = mpi.comm_world.gather(pfield_rel_errors, root=0)
-    ofield_rel_errors = mpi.comm_world.gather(ofield_rel_errors, root=0)
-    stokes_rel_errors = mpi.comm_world.gather(stokes_rel_errors, root=0)
-    pfield_norms = mpi.comm_world.gather(pfield_norms, root=0)
-    ofield_norms = mpi.comm_world.gather(ofield_norms, root=0)
-    stokes_norms = mpi.comm_world.gather(stokes_norms, root=0)
-    del U, U_rom
+    # ################## calculate errors for trained parameters #######################
+    # pfield_abs_errors = (U._blocks[0] - U_rom._blocks[0]).norm()
+    # ofield_abs_errors = (U._blocks[1] - U_rom._blocks[1]).norm()
+    # stokes_abs_errors = (U._blocks[2] - U_rom._blocks[2]).norm()
+    # pfield_rel_errors = (U._blocks[0] - U_rom._blocks[0]).norm() / U._blocks[0].norm()
+    # ofield_rel_errors = (U._blocks[1] - U_rom._blocks[1]).norm() / U._blocks[1].norm()
+    # stokes_rel_errors = (U._blocks[2] - U_rom._blocks[2]).norm() / U._blocks[2].norm()
+    # pfield_norms = U._blocks[0].norm()
+    # ofield_norms = U._blocks[1].norm()
+    # stokes_norms = U._blocks[2].norm()
+    # pfield_abs_errors = mpi.comm_world.gather(pfield_abs_errors, root=0)
+    # ofield_abs_errors = mpi.comm_world.gather(ofield_abs_errors, root=0)
+    # stokes_abs_errors = mpi.comm_world.gather(stokes_abs_errors, root=0)
+    # pfield_rel_errors = mpi.comm_world.gather(pfield_rel_errors, root=0)
+    # ofield_rel_errors = mpi.comm_world.gather(ofield_rel_errors, root=0)
+    # stokes_rel_errors = mpi.comm_world.gather(stokes_rel_errors, root=0)
+    # pfield_norms = mpi.comm_world.gather(pfield_norms, root=0)
+    # ofield_norms = mpi.comm_world.gather(ofield_norms, root=0)
+    # stokes_norms = mpi.comm_world.gather(stokes_norms, root=0)
 
     ################## test new parameters #######################
     # solve full-order model for new param
-    start = timer()
-    U_new_mu = m.solve(mu=new_mus[0], return_stages=False)
-    for p in range(1, len(new_mus)):
-        U_new_mu.append(m.solve(mu=new_mus[p], return_stages=False))
-    mean_fom_time = (timer() - start) / len(new_mus)
+    # start = timer()
+    # U_new_mu = m.solve(mu=new_mus[0], return_stages=False)
+    # for p in range(1, len(new_mus)):
+        # U_new_mu.append(m.solve(mu=new_mus[p], return_stages=False))
+    # mean_fom_time = (timer() - start) / len(new_mus)
     # Be, Ca, Pa = (float(new_mu['Be']), float(new_mu['Ca']), float(new_mu['Pa']))
     # m.visualize(U_new_mu, prefix=f"fullorder_Be{Be}_Ca{Ca}_Pa{Pa}", subsampling=subsampling, every_nth=visualize_step)
 
     # solve reduced model for new params
     start = timer()
-    cProfile.run(
-        "u_new_mu = rom.solve(new_mus[0], return_stages=False)", f"rom{mpi.rank_world}.cprof"
-    )
-    # u_new_mu = rom.solve(new_mus[0], return_stages=False)
+    # cProfile.run(
+    #     "u_new_mu = rom.solve(new_mus[0], return_stages=False)", f"rom{mpi.rank_world}.cprof"
+    # )
+    u_new_mu = rom.solve(new_mus[0], return_stages=False)
     for p in range(1, len(new_mus)):
         u_new_mu.append(rom.solve(new_mus[p], return_stages=False))
     mean_rom_time = (timer() - start) / len(new_mus)
@@ -591,119 +613,121 @@ if __name__ == "__main__":
     #     subsampling=subsampling,
     #     every_nth=visualize_step)
 
-    # calculate_errors for new mus
-    pfield_abs_errors_new_mu = (U_new_mu._blocks[0] - U_rom_new_mu._blocks[0]).norm()
-    ofield_abs_errors_new_mu = (U_new_mu._blocks[1] - U_rom_new_mu._blocks[1]).norm()
-    stokes_abs_errors_new_mu = (U_new_mu._blocks[2] - U_rom_new_mu._blocks[2]).norm()
-    pfield_rel_errors_new_mu = (
-        U_new_mu._blocks[0] - U_rom_new_mu._blocks[0]
-    ).norm() / U_new_mu._blocks[0].norm()
-    ofield_rel_errors_new_mu = (
-        U_new_mu._blocks[1] - U_rom_new_mu._blocks[1]
-    ).norm() / U_new_mu._blocks[1].norm()
-    stokes_rel_errors_new_mu = (
-        U_new_mu._blocks[2] - U_rom_new_mu._blocks[2]
-    ).norm() / U_new_mu._blocks[2].norm()
-    mean_fom_time = mpi.comm_world.gather(mean_fom_time, root=0)
-    mean_rom_time = mpi.comm_world.gather(mean_rom_time, root=0)
-    pfield_abs_errors_new_mus = mpi.comm_world.gather(pfield_abs_errors_new_mu, root=0)
-    ofield_abs_errors_new_mus = mpi.comm_world.gather(ofield_abs_errors_new_mu, root=0)
-    stokes_abs_errors_new_mus = mpi.comm_world.gather(stokes_abs_errors_new_mu, root=0)
-    pfield_rel_errors_new_mus = mpi.comm_world.gather(pfield_rel_errors_new_mu, root=0)
-    ofield_rel_errors_new_mus = mpi.comm_world.gather(ofield_rel_errors_new_mu, root=0)
-    stokes_rel_errors_new_mus = mpi.comm_world.gather(stokes_rel_errors_new_mu, root=0)
-
+    # # calculate_errors for new mus
+    # pfield_abs_errors_new_mu = (U_new_mu._blocks[0] - U_rom_new_mu._blocks[0]).norm()
+    # ofield_abs_errors_new_mu = (U_new_mu._blocks[1] - U_rom_new_mu._blocks[1]).norm()
+    # stokes_abs_errors_new_mu = (U_new_mu._blocks[2] - U_rom_new_mu._blocks[2]).norm()
+    # pfield_rel_errors_new_mu = (
+    #     U_new_mu._blocks[0] - U_rom_new_mu._blocks[0]
+    # ).norm() / U_new_mu._blocks[0].norm()
+    # ofield_rel_errors_new_mu = (
+    #     U_new_mu._blocks[1] - U_rom_new_mu._blocks[1]
+    # ).norm() / U_new_mu._blocks[1].norm()
+    # stokes_rel_errors_new_mu = (
+    #     U_new_mu._blocks[2] - U_rom_new_mu._blocks[2]
+    # ).norm() / U_new_mu._blocks[2].norm()
+    # mean_fom_time = mpi.comm_world.gather(mean_fom_time, root=0)
+    # mean_rom_time = mpi.comm_world.gather(mean_rom_time, root=0)
+    # pfield_abs_errors_new_mus = mpi.comm_world.gather(pfield_abs_errors_new_mu, root=0)
+    # ofield_abs_errors_new_mus = mpi.comm_world.gather(ofield_abs_errors_new_mu, root=0)
+    # stokes_abs_errors_new_mus = mpi.comm_world.gather(stokes_abs_errors_new_mu, root=0)
+    # pfield_rel_errors_new_mus = mpi.comm_world.gather(pfield_rel_errors_new_mu, root=0)
+    # ofield_rel_errors_new_mus = mpi.comm_world.gather(ofield_rel_errors_new_mu, root=0)
+    # stokes_rel_errors_new_mus = mpi.comm_world.gather(stokes_rel_errors_new_mu, root=0)
+    #
     mpi.comm_world.Barrier()
-    if mpi.rank_world == 0:
-        pfield_abs_errors = np.concatenate(pfield_abs_errors)
-        ofield_abs_errors = np.concatenate(ofield_abs_errors)
-        stokes_abs_errors = np.concatenate(stokes_abs_errors)
-        pfield_rel_errors = np.concatenate(pfield_rel_errors)
-        ofield_rel_errors = np.concatenate(ofield_rel_errors)
-        stokes_rel_errors = np.concatenate(stokes_rel_errors)
-        pfield_norms = np.concatenate(pfield_norms)
-        ofield_norms = np.concatenate(ofield_norms)
-        stokes_norms = np.concatenate(stokes_norms)
-        mean_fom_time = np.mean(mean_fom_time)
-        mean_rom_time = np.mean(mean_rom_time)
-        pfield_abs_errors_new_mus = np.concatenate(pfield_abs_errors_new_mus)
-        ofield_abs_errors_new_mus = np.concatenate(ofield_abs_errors_new_mus)
-        stokes_abs_errors_new_mus = np.concatenate(stokes_abs_errors_new_mus)
-        pfield_rel_errors_new_mus = np.concatenate(pfield_rel_errors_new_mus)
-        ofield_rel_errors_new_mus = np.concatenate(ofield_rel_errors_new_mus)
-        stokes_rel_errors_new_mus = np.concatenate(stokes_rel_errors_new_mus)
-        np.set_printoptions(formatter={"float": "{:.2e}".format}, threshold=sys.maxsize)
-        with open(filename, "a") as ff:
-            ff.write(
-                "tol_pf tol_of tol_st tol_deim_pf tol_deim_of tol_deim_st n_pf n_of n_st n_deim_pf n_deim_of n_deim_st mean_err_pf mean_err_of mean_err_st mean_rel_err_pf mean_rel_err_of mean_rel_err_st mean_err_pf_new mean_err_of_new mean_err_st_new mean_rel_err_pf_new mean_rel_err_of_new mean_rel_err_st_new mean_norm_pf mean_norm_of mean_norm_st\n"
-            )
-            ff.write(
-                ("{} " * 12 + "{:.2e} " * 15 + "\n").format(
-                    pfield_atol,
-                    ofield_atol,
-                    stokes_atol,
-                    pfield_deim_atol,
-                    ofield_deim_atol,
-                    stokes_deim_atol,
-                    len(pfield_basis),
-                    len(ofield_basis),
-                    len(stokes_basis),
-                    len(pfield_deim_basis) if pfield_deim_basis else 0,
-                    len(ofield_deim_basis) if ofield_deim_basis else 0,
-                    len(stokes_deim_basis) if stokes_deim_basis else 0,
-                    mean([err for err in pfield_abs_errors if not np.isnan(err)]),
-                    mean([err for err in ofield_abs_errors if not np.isnan(err)]),
-                    mean([err for err in stokes_abs_errors if not np.isnan(err)]),
-                    mean([err for err in pfield_rel_errors if not np.isnan(err)]),
-                    mean([err for err in ofield_rel_errors if not np.isnan(err)]),
-                    mean([err for err in stokes_rel_errors if not np.isnan(err)]),
-                    mean([err for err in pfield_abs_errors_new_mus if not np.isnan(err)]),
-                    mean([err for err in ofield_abs_errors_new_mus if not np.isnan(err)]),
-                    mean([err for err in stokes_abs_errors_new_mus if not np.isnan(err)]),
-                    mean([err for err in pfield_rel_errors_new_mus if not np.isnan(err)]),
-                    mean([err for err in ofield_rel_errors_new_mus if not np.isnan(err)]),
-                    mean([err for err in stokes_rel_errors_new_mus if not np.isnan(err)]),
-                    mean([norm for norm in pfield_norms if not np.isnan(norm)]),
-                    mean([norm for norm in ofield_norms if not np.isnan(norm)]),
-                    mean([norm for norm in stokes_norms if not np.isnan(norm)]),
-                )
-            )
-            ff.write(
-                f"\nAbsolute errors for trained mus:\n {pfield_abs_errors}\n {ofield_abs_errors}\n {stokes_abs_errors}\n"
-            )
-            ff.write(
-                f"\nAbsolute errors for new mus:\n {pfield_abs_errors_new_mus}\n {ofield_abs_errors_new_mus}\n {stokes_abs_errors_new_mus}\n"
-            )
-            ff.write(
-                f"\nRelative errors for trained mus:\n {pfield_rel_errors}\n {ofield_rel_errors}\n {stokes_rel_errors}\n"
-            )
-            ff.write(
-                f"\nRelative errors for new mus:\n {pfield_rel_errors_new_mus}\n {ofield_rel_errors_new_mus}\n {stokes_rel_errors_new_mus}\n"
-            )
-            ff.write(
-                f"\nTimings\n {mean_fom_time} vs. {mean_rom_time}, speedup {mean_fom_time/mean_rom_time}\n"
-            )
-        print(
-            "****",
-            len(pfield_basis),
-            len(ofield_basis),
-            len(stokes_basis),
-            len(pfield_deim_basis) if pfield_deim_basis is not None else 0,
-            len(ofield_deim_basis) if ofield_deim_basis is not None else 0,
-            len(stokes_deim_basis) if stokes_deim_basis is not None else 0,
-            flush=True,
-        )
-        print("Trained mus", flush=True)
-        print(pfield_rel_errors, flush=True)
-        print(ofield_rel_errors, flush=True)
-        print(stokes_rel_errors, flush=True)
-        print("New mus", flush=True)
-        print(pfield_rel_errors_new_mus, flush=True)
-        print(ofield_rel_errors_new_mus, flush=True)
-        print(stokes_rel_errors_new_mus, flush=True)
-        print("Timings", flush=True)
-        print(
-            f"{mean_fom_time:.2f} vs. {mean_rom_time:.2f}, speedup {mean_fom_time/mean_rom_time:.2f}",
-            flush=True,
-        )
+    calculate_cellmodel_errors([pfield_basis, ofield_basis, stokes_basis], [pfield_deim_basis, ofield_deim_basis, stokes_deim_basis], testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0], U_rom, mpi, filename, products=products)
+    calculate_cellmodel_errors([pfield_basis, ofield_basis, stokes_basis], [pfield_deim_basis, ofield_deim_basis, stokes_deim_basis], testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, new_mus[0], U_rom_new_mu, mpi, filename, prefix="new ", products=products)
+    # if mpi.rank_world == 0:
+    #     pfield_abs_errors = np.concatenate(pfield_abs_errors)
+    #     ofield_abs_errors = np.concatenate(ofield_abs_errors)
+    #     stokes_abs_errors = np.concatenate(stokes_abs_errors)
+    #     pfield_rel_errors = np.concatenate(pfield_rel_errors)
+    #     ofield_rel_errors = np.concatenate(ofield_rel_errors)
+    #     stokes_rel_errors = np.concatenate(stokes_rel_errors)
+    #     pfield_norms = np.concatenate(pfield_norms)
+    #     ofield_norms = np.concatenate(ofield_norms)
+    #     stokes_norms = np.concatenate(stokes_norms)
+    #     mean_fom_time = np.mean(mean_fom_time)
+    #     mean_rom_time = np.mean(mean_rom_time)
+    #     pfield_abs_errors_new_mus = np.concatenate(pfield_abs_errors_new_mus)
+    #     ofield_abs_errors_new_mus = np.concatenate(ofield_abs_errors_new_mus)
+    #     stokes_abs_errors_new_mus = np.concatenate(stokes_abs_errors_new_mus)
+    #     pfield_rel_errors_new_mus = np.concatenate(pfield_rel_errors_new_mus)
+    #     ofield_rel_errors_new_mus = np.concatenate(ofield_rel_errors_new_mus)
+    #     stokes_rel_errors_new_mus = np.concatenate(stokes_rel_errors_new_mus)
+    #     np.set_printoptions(formatter={"float": "{:.2e}".format}, threshold=sys.maxsize)
+    #     with open(filename, "a") as ff:
+    #         ff.write(
+    #             "tol_pf tol_of tol_st tol_deim_pf tol_deim_of tol_deim_st n_pf n_of n_st n_deim_pf n_deim_of n_deim_st mean_err_pf mean_err_of mean_err_st mean_rel_err_pf mean_rel_err_of mean_rel_err_st mean_err_pf_new mean_err_of_new mean_err_st_new mean_rel_err_pf_new mean_rel_err_of_new mean_rel_err_st_new mean_norm_pf mean_norm_of mean_norm_st\n"
+    #         )
+    #         ff.write(
+    #             ("{} " * 12 + "{:.2e} " * 15 + "\n").format(
+    #                 pfield_atol,
+    #                 ofield_atol,
+    #                 stokes_atol,
+    #                 pfield_deim_atol,
+    #                 ofield_deim_atol,
+    #                 stokes_deim_atol,
+    #                 len(pfield_basis),
+    #                 len(ofield_basis),
+    #                 len(stokes_basis),
+    #                 len(pfield_deim_basis) if pfield_deim_basis else 0,
+    #                 len(ofield_deim_basis) if ofield_deim_basis else 0,
+    #                 len(stokes_deim_basis) if stokes_deim_basis else 0,
+        # print(mean([err for err in pfield_abs_errors if not np.isnan(err)]), flush=True)
+    #                 mean([err for err in ofield_abs_errors if not np.isnan(err)]),
+    #                 mean([err for err in stokes_abs_errors if not np.isnan(err)]),
+    #                 mean([err for err in pfield_rel_errors if not np.isnan(err)]),
+    #                 mean([err for err in ofield_rel_errors if not np.isnan(err)]),
+    #                 mean([err for err in stokes_rel_errors if not np.isnan(err)]),
+    #                 mean([err for err in pfield_abs_errors_new_mus if not np.isnan(err)]),
+    #                 mean([err for err in ofield_abs_errors_new_mus if not np.isnan(err)]),
+    #                 mean([err for err in stokes_abs_errors_new_mus if not np.isnan(err)]),
+    #                 mean([err for err in pfield_rel_errors_new_mus if not np.isnan(err)]),
+    #                 mean([err for err in ofield_rel_errors_new_mus if not np.isnan(err)]),
+    #                 mean([err for err in stokes_rel_errors_new_mus if not np.isnan(err)]),
+    #                 mean([norm for norm in pfield_norms if not np.isnan(norm)]),
+    #                 mean([norm for norm in ofield_norms if not np.isnan(norm)]),
+    #                 mean([norm for norm in stokes_norms if not np.isnan(norm)]),
+    #             )
+    #         )
+    #         ff.write(
+    #             f"\nAbsolute errors for trained mus:\n {pfield_abs_errors}\n {ofield_abs_errors}\n {stokes_abs_errors}\n"
+    #         )
+    #         ff.write(
+    #             f"\nAbsolute errors for new mus:\n {pfield_abs_errors_new_mus}\n {ofield_abs_errors_new_mus}\n {stokes_abs_errors_new_mus}\n"
+    #         )
+    #         ff.write(
+    #             f"\nRelative errors for trained mus:\n {pfield_rel_errors}\n {ofield_rel_errors}\n {stokes_rel_errors}\n"
+    #         )
+    #         ff.write(
+    #             f"\nRelative errors for new mus:\n {pfield_rel_errors_new_mus}\n {ofield_rel_errors_new_mus}\n {stokes_rel_errors_new_mus}\n"
+    #         )
+    #         ff.write(
+    #             f"\nTimings\n {mean_fom_time} vs. {mean_rom_time}, speedup {mean_fom_time/mean_rom_time}\n"
+    #         )
+    #     print(
+    #         "****",
+    #         len(pfield_basis),
+    #         len(ofield_basis),
+    #         len(stokes_basis),
+    #         len(pfield_deim_basis) if pfield_deim_basis is not None else 0,
+    #         len(ofield_deim_basis) if ofield_deim_basis is not None else 0,
+    #         len(stokes_deim_basis) if stokes_deim_basis is not None else 0,
+    #         flush=True,
+    #     )
+    #     print("Trained mus", flush=True)
+    #     print(pfield_rel_errors, flush=True)
+    #     print(ofield_rel_errors, flush=True)
+    #     print(stokes_rel_errors, flush=True)
+    #     print("New mus", flush=True)
+    #     print(pfield_rel_errors_new_mus, flush=True)
+    #     print(ofield_rel_errors_new_mus, flush=True)
+    #     print(stokes_rel_errors_new_mus, flush=True)
+    #     print("Timings", flush=True)
+    #     print(
+    #         f"{mean_fom_time:.2f} vs. {mean_rom_time:.2f}, speedup {mean_fom_time/mean_rom_time:.2f}",
+    #         flush=True,
+    #     )
     mpi.comm_world.Barrier()

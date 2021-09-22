@@ -81,13 +81,11 @@ def local_pod(
         for i in range(len(inputs)):
             modes_i, svals_i = [inputs[i][0], inputs[i][1] if svals_provided[i] else None]
             gramian[offsets[i] : offsets[i + 1], offsets[i] : offsets[i + 1]] = (
-                np.diag(svals_i) ** 2 if svals_provided[i] else modes_i.gramian(product)
+                np.diag(svals_i) ** 2 if svals_provided[i] else modes_i.gramian(product=product)
             )
             for j in range(i + 1, len(inputs)):
                 modes_j = inputs[j][0]
-                cross_gramian = modes_i.inner(
-                    product.apply(modes_j) if product is not None else modes_j
-                )
+                cross_gramian = modes_i.inner(modes_j, product=product)
                 gramian[offsets[i] : offsets[i + 1], offsets[j] : offsets[j + 1]] = cross_gramian
                 gramian[offsets[j] : offsets[j + 1], offsets[i] : offsets[i + 1]] = cross_gramian.T
             all_modes.append(modes_i)

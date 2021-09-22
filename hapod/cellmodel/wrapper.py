@@ -97,9 +97,12 @@ class CellModelSolver(ParametricObject):
             U_out = [self.impl.apply_pfield_product_operator(vec.impl) for vec in U._list]
             return pfield_space.make_array(U_out)
         else:
-            U_list = pfield_space.make_array([pfield_space.vector_from_numpy(vec).impl for vec in U.to_numpy()])
+            U_list = pfield_space.make_array(
+                [pfield_space.vector_from_numpy(vec).impl for vec in U.to_numpy()]
+            )
             U_out = [
-                DuneXtLaVector(self.impl.apply_pfield_product_operator(vec.impl)).to_numpy(True) for vec in U_list._list
+                DuneXtLaVector(self.impl.apply_pfield_product_operator(vec.impl)).to_numpy(True)
+                for vec in U_list._list
             ]
             return self.pfield_numpy_space.make_array(U_out)
 
@@ -215,7 +218,9 @@ class CellModelSolver(ParametricObject):
             U = self.numpy_vecarray_to_xt_listvecarray(U)
         else:
             assert U.dim == self.pfield_solution_space.dim
-        U_out = [self.impl.apply_pfield_operator(vec.impl, cell_index, restricted) for vec in U._list]
+        U_out = [
+            self.impl.apply_pfield_operator(vec.impl, cell_index, restricted) for vec in U._list
+        ]
         return self.pfield_solution_space.make_array(U_out)
 
     def apply_ofield_operator(self, U, cell_index, restricted=False):
@@ -223,7 +228,9 @@ class CellModelSolver(ParametricObject):
             U = self.numpy_vecarray_to_xt_listvecarray(U)
         else:
             assert U.dim == self.ofield_solution_space.dim
-        U_out = [self.impl.apply_ofield_operator(vec.impl, cell_index, restricted) for vec in U._list]
+        U_out = [
+            self.impl.apply_ofield_operator(vec.impl, cell_index, restricted) for vec in U._list
+        ]
         return self.ofield_solution_space.make_array(U_out)
 
     def apply_stokes_operator(self, U, restricted=False):
@@ -256,14 +263,18 @@ class CellModelSolver(ParametricObject):
     def apply_pfield_jacobian(self, U, cell_index, restricted=False):
         if restricted:
             U = self.numpy_vecarray_to_xt_listvecarray(U)
-        U_out = [self.impl.apply_pfield_jacobian(vec.impl, cell_index, restricted) for vec in U._list]
+        U_out = [
+            self.impl.apply_pfield_jacobian(vec.impl, cell_index, restricted) for vec in U._list
+        ]
         ret = self.pfield_solution_space.make_array(U_out)
         return ret
 
     def apply_ofield_jacobian(self, U, cell_index, restricted=False):
         if restricted:
             U = self.numpy_vecarray_to_xt_listvecarray(U)
-        U_out = [self.impl.apply_ofield_jacobian(vec.impl, cell_index, restricted) for vec in U._list]
+        U_out = [
+            self.impl.apply_ofield_jacobian(vec.impl, cell_index, restricted) for vec in U._list
+        ]
         return self.ofield_solution_space.make_array(U_out)
 
     def apply_stokes_jacobian(self, U, restricted=False):
@@ -273,7 +284,9 @@ class CellModelSolver(ParametricObject):
         return self.stokes_solution_space.make_array(U_out)
 
     def update_pfield_parameters(self, mu, cell_index=0, restricted=False):
-        self.impl.update_pfield_parameters(float(mu["Be"]), float(mu["Ca"]), float(mu["Pa"]), cell_index, restricted)
+        self.impl.update_pfield_parameters(
+            float(mu["Be"]), float(mu["Ca"]), float(mu["Pa"]), cell_index, restricted
+        )
 
     def update_ofield_parameters(self, mu, cell_index=0, restricted=False):
         self.impl.update_ofield_parameters(float(mu["Pa"]), cell_index, restricted)
@@ -327,14 +340,17 @@ class MutableStateComponentOperator(Operator):
     def _set_state(self, dofs, mu):
         new_pfield_dofs = None if dofs[0] == self.solver._last_pfield_dofs else dofs[0]
         new_ofield_dofs = None if dofs[1] == self.solver._last_ofield_dofs else dofs[1]
-        new_stokes_dofs = None if len(dofs) < 3 or dofs[2] == self.solver._last_stokes_dofs else dofs[2]
+        new_stokes_dofs = (
+            None if len(dofs) < 3 or dofs[2] == self.solver._last_stokes_dofs else dofs[2]
+        )
         new_mu = None if mu == self.solver._last_mu else mu
         if not new_pfield_dofs == new_ofield_dofs == new_stokes_dofs == new_mu == None:
             self._change_state(
-                    pfield_dofs=new_pfield_dofs,
-                    ofield_dofs=new_ofield_dofs,
-                    stokes_dofs=new_stokes_dofs,
-                    mu=new_mu)
+                pfield_dofs=new_pfield_dofs,
+                ofield_dofs=new_ofield_dofs,
+                stokes_dofs=new_stokes_dofs,
+                mu=new_mu,
+            )
         if new_pfield_dofs is not None:
             self.solver._last_pfield_dofs = new_pfield_dofs
         if new_ofield_dofs is not None:
@@ -346,7 +362,9 @@ class MutableStateComponentOperator(Operator):
 
     @property
     def fixed_component_source(self):
-        subspaces = tuple(s for i, s in enumerate(self.source.subspaces) if i not in self.mutable_state_index)
+        subspaces = tuple(
+            s for i, s in enumerate(self.source.subspaces) if i not in self.mutable_state_index
+        )
         return subspaces[0] if len(subspaces) == 1 else BlockVectorSpace(subspaces)
 
     def apply(self, U, mu):
@@ -406,7 +424,9 @@ class MutableStateComponentJacobianOperator(MutableStateComponentOperator):
     def _change_jacobian_state(self, jacobian_value):
         pass
 
-    def _need_to_invalidate_jacobian_state(self, pfield_changed, ofield_changed, stokes_changed, mu_changed):
+    def _need_to_invalidate_jacobian_state(
+        self, pfield_changed, ofield_changed, stokes_changed, mu_changed
+    ):
         return pfield_changed or ofield_changed or stokes_changed or mu_changed
 
     @abstractmethod
@@ -421,7 +441,9 @@ class MutableStateComponentJacobianOperator(MutableStateComponentOperator):
         pfield_changed = dofs[0] != self.solver._last_pfield_dofs
         ofield_changed = dofs[1] != self.solver._last_ofield_dofs
         stokes_changed = False if len(dofs) < 3 else dofs[2] != self.solver._last_stokes_dofs
-        if self._need_to_invalidate_jacobian_state(pfield_changed, ofield_changed, stokes_changed, mu_changed):
+        if self._need_to_invalidate_jacobian_state(
+            pfield_changed, ofield_changed, stokes_changed, mu_changed
+        ):
             self._last_jacobian_value = None
         super()._set_state(dofs, mu)
 
@@ -434,7 +456,16 @@ class MutableStateComponentJacobianOperator(MutableStateComponentOperator):
     def _fixed_component_jacobian(self, U, mu=None):
         assert len(U) == 1
         assert mu is None or mu == self.solver._last_mu
-        return MutableStateFixedComponentJacobianOperator(self, (self.solver._last_pfield_dofs, self.solver._last_ofield_dofs, self.solver._last_stokes_dofs), self.solver._last_mu, U)
+        return MutableStateFixedComponentJacobianOperator(
+            self,
+            (
+                self.solver._last_pfield_dofs,
+                self.solver._last_ofield_dofs,
+                self.solver._last_stokes_dofs,
+            ),
+            self.solver._last_mu,
+            U,
+        )
 
 
 class MutableStateFixedComponentJacobianOperator(Operator):
@@ -445,7 +476,7 @@ class MutableStateFixedComponentJacobianOperator(Operator):
         self.source = operator.fixed_component_source
         self.range = operator.range
         self.linear = True
-        self._parameters = {} # mu is already fixed, so no parameters
+        self._parameters = {}  # mu is already fixed, so no parameters
 
     def apply(self, U, mu=None):
         assert U in self.source
@@ -468,7 +499,9 @@ class MutableStateFixedComponentJacobianOperator(Operator):
             )
             for i, value in enumerate(self.component_value)
         ]
-        restricted_jacobian_value = NumpyVectorSpace.make_array(self.jacobian_value.dofs(restricted_source_dofs))
+        restricted_jacobian_value = NumpyVectorSpace.make_array(
+            self.jacobian_value.dofs(restricted_source_dofs)
+        )
         ret_op = self.with_(
             operator=restricted_operator,
             component_value=restricted_component_value,
@@ -506,9 +539,13 @@ class CellModelRestrictedPfieldOperator(MutableStateComponentJacobianOperator):
 
     def _change_jacobian_state(self, jacobian_value):
         assert jacobian_value.dim == len(self._fixed_component_source_dofs)
-        self.solver.set_pfield_jacobian_state_dofs(jacobian_value.to_numpy().ravel(), self.cell_index)
+        self.solver.set_pfield_jacobian_state_dofs(
+            jacobian_value.to_numpy().ravel(), self.cell_index
+        )
 
-    def _need_to_invalidate_jacobian_state(self, pfield_changed, ofield_changed, stokes_changed, mu_changed):
+    def _need_to_invalidate_jacobian_state(
+        self, pfield_changed, ofield_changed, stokes_changed, mu_changed
+    ):
         return pfield_changed or mu_changed
 
     def _fixed_component_apply(self, U):
@@ -557,7 +594,9 @@ class CellModelPfieldOperator(MutableStateComponentJacobianOperator):
     def _change_jacobian_state(self, jacobian_value):
         self.solver.set_pfield_jacobian_state(jacobian_value._list[0], self.cell_index)
 
-    def _need_to_invalidate_jacobian_state(self, pfield_changed, ofield_changed, stokes_changed, mu_changed):
+    def _need_to_invalidate_jacobian_state(
+        self, pfield_changed, ofield_changed, stokes_changed, mu_changed
+    ):
         return pfield_changed or mu_changed
 
     def _fixed_component_apply(self, U):
@@ -567,7 +606,9 @@ class CellModelPfieldOperator(MutableStateComponentJacobianOperator):
         raise NotImplementedError
         assert sum(V.norm()) == 0.0, "Not implemented for non-zero rhs!"
         assert not least_squares, "Least squares not implemented!"
-        return self.solver.apply_inverse_pfield_operator(self.solver.pfield_vector(self.cell_index), self.cell_index)
+        return self.solver.apply_inverse_pfield_operator(
+            self.solver.pfield_vector(self.cell_index), self.cell_index
+        )
 
     def _fixed_component_jacobian_apply(self, U):
         return self.solver.apply_pfield_jacobian(U, self.cell_index)
@@ -610,9 +651,13 @@ class CellModelRestrictedOfieldOperator(MutableStateComponentJacobianOperator):
 
     def _change_jacobian_state(self, jacobian_value):
         assert jacobian_value.dim == len(self._fixed_component_source_dofs)
-        self.solver.set_ofield_jacobian_state_dofs(jacobian_value.to_numpy().ravel(), self.cell_index)
+        self.solver.set_ofield_jacobian_state_dofs(
+            jacobian_value.to_numpy().ravel(), self.cell_index
+        )
 
-    def _need_to_invalidate_jacobian_state(self, pfield_changed, ofield_changed, stokes_changed, mu_changed):
+    def _need_to_invalidate_jacobian_state(
+        self, pfield_changed, ofield_changed, stokes_changed, mu_changed
+    ):
         return ofield_changed or mu_changed
 
     def _fixed_component_apply(self, U):
@@ -661,7 +706,9 @@ class CellModelOfieldOperator(MutableStateComponentJacobianOperator):
     def _change_jacobian_state(self, jacobian_value):
         self.solver.set_ofield_jacobian_state(jacobian_value._list[0], self.cell_index)
 
-    def _need_to_invalidate_jacobian_state(self, pfield_changed, ofield_changed, stokes_changed, mu_changed):
+    def _need_to_invalidate_jacobian_state(
+        self, pfield_changed, ofield_changed, stokes_changed, mu_changed
+    ):
         return ofield_changed or mu_changed
 
     def _fixed_component_apply(self, U):
@@ -671,7 +718,9 @@ class CellModelOfieldOperator(MutableStateComponentJacobianOperator):
         raise NotImplementedError
         assert sum(V.norm()) == 0.0, "Not implemented for non-zero rhs!"
         assert not least_squares, "Least squares not implemented!"
-        return self.solver.apply_inverse_ofield_operator(self.solver.ofield_vector(self.cell_index), self.cell_index)
+        return self.solver.apply_inverse_ofield_operator(
+            self.solver.ofield_vector(self.cell_index), self.cell_index
+        )
 
     def _fixed_component_jacobian_apply(self, U):
         return self.solver.apply_ofield_jacobian(U, self.cell_index)
@@ -710,7 +759,9 @@ class CellModelRestrictedStokesOperator(MutableStateComponentJacobianOperator):
     def _change_jacobian_state(self, jacobian_value):
         pass
 
-    def _need_to_invalidate_jacobian_state(self, pfield_changed, ofield_changed, stokes_changed, mu_changed):
+    def _need_to_invalidate_jacobian_state(
+        self, pfield_changed, ofield_changed, stokes_changed, mu_changed
+    ):
         return False
 
     def _fixed_component_apply(self, U):
@@ -734,7 +785,11 @@ class CellModelStokesOperator(MutableStateComponentJacobianOperator):
         self.__auto_init(locals())
         self.linear = False
         self.source = BlockVectorSpace(
-            [self.solver.stokes_solution_space, self.solver.pfield_solution_space, self.solver.ofield_solution_space]
+            [
+                self.solver.stokes_solution_space,
+                self.solver.pfield_solution_space,
+                self.solver.ofield_solution_space,
+            ]
         )
         self.range = self.solver.stokes_solution_space
 
@@ -749,7 +804,9 @@ class CellModelStokesOperator(MutableStateComponentJacobianOperator):
     def _change_jacobian_state(self, jacobian_value):
         pass
 
-    def _need_to_invalidate_jacobian_state(self, pfield_changed, ofield_changed, stokes_changed, mu_changed):
+    def _need_to_invalidate_jacobian_state(
+        self, pfield_changed, ofield_changed, stokes_changed, mu_changed
+    ):
         return False
 
     def _fixed_component_apply(self, U):
@@ -793,16 +850,24 @@ class CellModel(Model):
     ):
         self.__auto_init(locals())
         self.solution_space = BlockVectorSpace(
-            [pfield_op.source.subspaces[0], ofield_op.source.subspaces[0], stokes_op.source.subspaces[0]]
+            [
+                pfield_op.source.subspaces[0],
+                ofield_op.source.subspaces[0],
+                stokes_op.source.subspaces[0],
+            ]
         )
         self.linear = False
         self.initial_values = self.solution_space.make_array(
-            [self.initial_pfield.as_vector(), self.initial_ofield.as_vector(), self.initial_stokes.as_vector()]
+            [
+                self.initial_pfield.as_vector(),
+                self.initial_ofield.as_vector(),
+                self.initial_stokes.as_vector(),
+            ]
         )
 
     def _compute_solution(self, mu=None, **kwargs):
-        return_stages = kwargs['return_stages'] if 'return_stages' in kwargs else False
-        return_residuals = kwargs['return_residuals'] if 'return_residuals' in kwargs else False
+        return_stages = kwargs["return_stages"] if "return_stages" in kwargs else False
+        return_residuals = kwargs["return_residuals"] if "return_residuals" in kwargs else False
         # initial values
         pfield_vecarray = self.initial_pfield.as_vector()
         ofield_vecarray = self.initial_ofield.as_vector()
@@ -820,7 +885,7 @@ class CellModel(Model):
         U_all = self.solution_space.make_array([pfield_vecarray, ofield_vecarray, stokes_vecarray])
 
         i = 0
-        t = 0
+        t = 0.
         t_end = self.t_end
         dt = self.dt
         while t < t_end - 1e-14:
@@ -829,7 +894,9 @@ class CellModel(Model):
             # do a timestep
             print("Current time: {}".format(t))
             pfield_vecarray, pfield_data = newton(
-                self.pfield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]),
+                self.pfield_op.fix_components(
+                    (1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]
+                ),
                 self.pfield_op.range.zeros(),
                 initial_guess=pfield_vecarray,
                 mu=mu,
@@ -839,7 +906,9 @@ class CellModel(Model):
                 **self.newton_params_pfield,
             )
             ofield_vecarray, ofield_data = newton(
-                self.ofield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]),
+                self.ofield_op.fix_components(
+                    (1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]
+                ),
                 self.ofield_op.range.zeros(),
                 initial_guess=ofield_vecarray,
                 mu=mu,
@@ -879,7 +948,9 @@ class CellModel(Model):
             retval.append(pfield_residuals, ofield_residuals, stokes_residuals)
         return retval if len(retval) > 1 else retval[0]
 
-    def next_time_step(self, U_last, t, mu=None, return_output=False, return_stages=False, return_residuals=False):
+    def next_time_step(
+        self, U_last, t, mu=None, return_output=False, return_stages=False, return_residuals=False
+    ):
         assert not return_output
 
         pfield_vecs, ofield_vecs, stokes_vecs = U_last._blocks
@@ -962,9 +1033,15 @@ class DuneCellModel(CellModel):
         pfield_op = CellModelPfieldOperator(solver, 0)
         ofield_op = CellModelOfieldOperator(solver, 0)
         stokes_op = CellModelStokesOperator(solver)
-        initial_pfield = VectorOperator(solver.pfield_solution_space.make_array([solver.pfield_vector(0)]))
-        initial_ofield = VectorOperator(solver.ofield_solution_space.make_array([solver.ofield_vector(0)]))
-        initial_stokes = VectorOperator(solver.stokes_solution_space.make_array([solver.stokes_vector()]))
+        initial_pfield = VectorOperator(
+            solver.pfield_solution_space.make_array([solver.pfield_vector(0)])
+        )
+        initial_ofield = VectorOperator(
+            solver.ofield_solution_space.make_array([solver.ofield_vector(0)])
+        )
+        initial_stokes = VectorOperator(
+            solver.stokes_solution_space.make_array([solver.stokes_vector()])
+        )
         self.dt = solver.dt
         self.t_end = solver.t_end
         super().__init__(
@@ -1022,7 +1099,9 @@ class ProjectedSystemOperator(Operator):
             self.source = NumpyVectorSpace(len(source_bases))
         else:
             assert len(source_bases) == len(operator.source.subspaces)
-            assert all(sb is None or sb in ss for sb, ss in zip(source_bases, operator.source.subspaces))
+            assert all(
+                sb is None or sb in ss for sb, ss in zip(source_bases, operator.source.subspaces)
+            )
             source_bases = tuple(None if sb is None else sb.copy() for sb in source_bases)
             self.blocked_source_basis = True
             self.source = BlockVectorSpace(
@@ -1086,7 +1165,10 @@ class FixedComponentEmpiricalInterpolatedOperator(EmpiricalInterpolatedOperator)
             subspaces = restricted_op.source.subspaces
             if idx != restricted_op.mutable_state_index:
                 raise NotImplementedError
-            U_restricted = [subspaces[j].from_numpy(U[i].dofs(ei_operator.source_dofs[j])) for i, j in enumerate(idx)]
+            U_restricted = [
+                subspaces[j].from_numpy(U[i].dofs(ei_operator.source_dofs[j]))
+                for i, j in enumerate(idx)
+            ]
             self.restricted_operator = restricted_op.fix_components(idx, U_restricted)
             fixed_source_indices = [i for i in range(len(subspaces)) if i not in idx]
             if len(fixed_source_indices) != 1:
@@ -1164,25 +1246,35 @@ class CellModelReductor(ProjectionBasedReductor):
         pfield_deim_basis=None,
         ofield_deim_basis=None,
         stokes_deim_basis=None,
+        products={'pfield': None,
+                  'ofield': None,
+                  'stokes': None},
     ):
         bases = {"pfield": pfield_basis, "ofield": ofield_basis, "stokes": stokes_basis}
-        # products = {'pfield': None,
-        #             'ofield': None,
-        #             'stokes': None}
-        super().__init__(fom, bases, {}, check_orthonormality=check_orthonormality, check_tol=check_tol)
+        super().__init__(
+            fom, bases, check_orthonormality=check_orthonormality, check_tol=check_tol, products=products
+        )
         self.__auto_init(locals())
 
     reduce = ProjectionBasedReductor._reduce  # hack to allow bases which are None
 
     def project_operators(self):
         fom = self.fom
-        pfield_basis, ofield_basis, stokes_basis = self.bases["pfield"], self.bases["ofield"], self.bases["stokes"]
+        pfield_basis, ofield_basis, stokes_basis = (
+            self.bases["pfield"],
+            self.bases["ofield"],
+            self.bases["stokes"],
+        )
         pfield_op, ofield_op, stokes_op = fom.pfield_op, fom.ofield_op, fom.stokes_op
         if self.pfield_deim_basis:
-            pfield_dofs, pfield_deim_basis, _ = deim(self.pfield_deim_basis, pod=False)
-            pfield_op = EmpiricalInterpolatedOperatorWithFixComponent(pfield_op, pfield_dofs, pfield_deim_basis, False)
+            pfield_dofs, pfield_deim_basis, _ = deim(self.pfield_deim_basis, pod=False, product=self.products['pfield'])
+            pfield_op = EmpiricalInterpolatedOperatorWithFixComponent(
+                pfield_op, pfield_dofs, pfield_deim_basis, False
+            )
             projected_collateral_basis = (
-                NumpyVectorSpace.make_array(np.eye(len(pfield_deim_basis)))   # assumes that pfield_deim_basis is ONB!!!
+                NumpyVectorSpace.make_array(
+                    np.eye(len(pfield_deim_basis))
+                )  # assumes that pfield_deim_basis is ONB!!!
                 if self.least_squares_pfield
                 else NumpyVectorSpace.make_array(pfield_deim_basis.dot(pfield_basis))
             )
@@ -1206,10 +1298,14 @@ class CellModelReductor(ProjectionBasedReductor):
                 [pfield_basis, pfield_basis, ofield_basis, stokes_basis],
             )
         if self.ofield_deim_basis:
-            ofield_dofs, ofield_deim_basis, _ = deim(self.ofield_deim_basis, pod=False)
-            ofield_op = EmpiricalInterpolatedOperatorWithFixComponent(ofield_op, ofield_dofs, ofield_deim_basis, False)
+            ofield_dofs, ofield_deim_basis, _ = deim(self.ofield_deim_basis, pod=False, product=self.products['ofield'])
+            ofield_op = EmpiricalInterpolatedOperatorWithFixComponent(
+                ofield_op, ofield_dofs, ofield_deim_basis, False
+            )
             projected_collateral_basis = (
-                NumpyVectorSpace.make_array(np.eye(len(ofield_deim_basis)))   # assumes that ofield_deim_basis is ONB!!!
+                NumpyVectorSpace.make_array(
+                    np.eye(len(ofield_deim_basis))
+                )  # assumes that ofield_deim_basis is ONB!!!
                 if self.least_squares_ofield
                 else NumpyVectorSpace.make_array(ofield_deim_basis.dot(ofield_basis))
             )
@@ -1233,10 +1329,14 @@ class CellModelReductor(ProjectionBasedReductor):
                 [ofield_basis, pfield_basis, ofield_basis, stokes_basis],
             )
         if self.stokes_deim_basis:
-            stokes_dofs, stokes_deim_basis, _ = deim(self.stokes_deim_basis, pod=False)
-            stokes_op = EmpiricalInterpolatedOperatorWithFixComponent(stokes_op, stokes_dofs, stokes_deim_basis, False)
+            stokes_dofs, stokes_deim_basis, _ = deim(self.stokes_deim_basis, pod=False, product=self.products['stokes'])
+            stokes_op = EmpiricalInterpolatedOperatorWithFixComponent(
+                stokes_op, stokes_dofs, stokes_deim_basis, False
+            )
             projected_collateral_basis = (
-                NumpyVectorSpace.make_array(np.eye(len(stokes_deim_basis)))   # assumes that stokes_deim_basis is ONB!!!
+                NumpyVectorSpace.make_array(
+                    np.eye(len(stokes_deim_basis))
+                )  # assumes that stokes_deim_basis is ONB!!!
                 if self.least_squares_stokes
                 else NumpyVectorSpace.make_array(stokes_deim_basis.dot(stokes_basis))
             )
@@ -1284,22 +1384,56 @@ class CellModelReductor(ProjectionBasedReductor):
         )
 
     def reconstruct(self, u):  # , basis='RB'):
-        pfield_basis, ofield_basis, stokes_basis = self.bases["pfield"], self.bases["ofield"], self.bases["stokes"]
-        pfield = pfield_basis.lincomb(u._blocks[0].to_numpy()) if pfield_basis is not None else u._blocks[0]
-        ofield = ofield_basis.lincomb(u._blocks[1].to_numpy()) if ofield_basis is not None else u._blocks[1]
-        stokes = stokes_basis.lincomb(u._blocks[2].to_numpy()) if stokes_basis is not None else u._blocks[2]
+        pfield_basis, ofield_basis, stokes_basis = (
+            self.bases["pfield"],
+            self.bases["ofield"],
+            self.bases["stokes"],
+        )
+        pfield = (
+            pfield_basis.lincomb(u._blocks[0].to_numpy())
+            if pfield_basis is not None
+            else u._blocks[0]
+        )
+        ofield = (
+            ofield_basis.lincomb(u._blocks[1].to_numpy())
+            if ofield_basis is not None
+            else u._blocks[1]
+        )
+        stokes = (
+            stokes_basis.lincomb(u._blocks[2].to_numpy())
+            if stokes_basis is not None
+            else u._blocks[2]
+        )
         return self.fom.solution_space.make_array([pfield, ofield, stokes])
 
 
 def create_and_scatter_cellmodel_parameters(
-    comm, Be_min=0.3 / 3, Be_max=0.3 * 3, Ca_min=0.1 / 3, Ca_max=0.1 * 3, Pa_min=1.0 / 3, Pa_max=1.0 * 3
+    comm,
+    Be_min=0.3 / 3,
+    Be_max=0.3 * 3,
+    Ca_min=0.1 / 3,
+    Ca_max=0.1 * 3,
+    Pa_min=1.0 / 3,
+    Pa_max=1.0 * 3,
 ):
-    """ Samples all 3 parameters uniformly with the same width and adds random parameter combinations until
-        comm.Get_size() parameters are created. After that, parameter combinations are scattered to ranks. """
+    """Samples all 3 parameters uniformly with the same width and adds random parameter combinations until
+    comm.Get_size() parameters are created. After that, parameter combinations are scattered to ranks."""
     num_samples_per_parameter = int(comm.Get_size() ** (1.0 / 3.0) + 0.1)
-    sample_width_Be = (Be_max - Be_min) / (num_samples_per_parameter - 1) if num_samples_per_parameter > 1 else 1e10
-    sample_width_Ca = (Ca_max - Ca_min) / (num_samples_per_parameter - 1) if num_samples_per_parameter > 1 else 1e10
-    sample_width_Pa = (Pa_max - Pa_min) / (num_samples_per_parameter - 1) if num_samples_per_parameter > 1 else 1e10
+    sample_width_Be = (
+        (Be_max - Be_min) / (num_samples_per_parameter - 1)
+        if num_samples_per_parameter > 1
+        else 1e10
+    )
+    sample_width_Ca = (
+        (Ca_max - Ca_min) / (num_samples_per_parameter - 1)
+        if num_samples_per_parameter > 1
+        else 1e10
+    )
+    sample_width_Pa = (
+        (Pa_max - Pa_min) / (num_samples_per_parameter - 1)
+        if num_samples_per_parameter > 1
+        else 1e10
+    )
     Be_range = np.arange(Be_min, Be_max + 1e-15, sample_width_Be)
     Ca_range = np.arange(Ca_min, Ca_max + 1e-15, sample_width_Ca)
     Pa_range = np.arange(Pa_min, Pa_max + 1e-15, sample_width_Pa)
@@ -1319,64 +1453,168 @@ def create_and_scatter_cellmodel_parameters(
     return comm.scatter(parameters_list, root=0)
 
 
-def calculate_cellmodel_trajectory_errors(modes, testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu):
+def calculate_cellmodel_trajectory_errors(
+    modes, deim_modes, testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu, U_rom, products
+):
+    proj_errs = [0.0] * len(modes)
     errs = [0.0] * len(modes)
+    proj_deim_errs = [0.0] * len(deim_modes)
     # modes has length 2*num_cells+1
-    nc = (len(modes) - 1) // 2
+    num_cells = (len(modes) - 1) // 2
+    assert num_cells == 1, "Not tested for more than 1 cell, most likely there are errors!"
     solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu)
+    cellmodel = DuneCellModel(solver)
+    current_values = cellmodel.initial_values.copy()
     n = 0
-    while not solver.finished():
-        print("timestep: ", n)
-        next_vectors = solver.next_n_timesteps(1)
-        for k in range(nc):
-            res = next_vectors[k] - modes[k].lincomb(
-                next_vectors[k].dot(solver.apply_pfield_product_operator(modes[k]))
+    n_deim_pf = 0
+    n_deim_of = 0
+    n_deim_st = 0
+    t = 0.
+    timestep_residuals = None
+    while True:
+        # POD basis errors
+        for k in range(num_cells):
+            proj_res = current_values.block(k) - modes[k].lincomb(
+                current_values.block(k).inner(modes[k], product=products[0])
             )
-            errs[k] += np.sum(res.pairwise_dot(solver.apply_pfield_product_operator(res)))
-            res = next_vectors[nc + k] - modes[nc + k].lincomb(
-                next_vectors[nc + k].dot(solver.apply_ofield_product_operator(modes[nc + k]))
+            proj_errs[k] += np.sum(proj_res.pairwise_inner(proj_res, product=products[0]))
+            res = current_values.block(k) - U_rom.block(k)[n]
+            errs[k] += np.sum(res.pairwise_inner(res, product=products[0]))
+            proj_res = current_values.block(num_cells + k) - modes[num_cells + k].lincomb(
+                current_values.block(num_cells + k).inner(modes[num_cells + k], product=products[1])
             )
-            errs[nc + k] += np.sum(res.pairwise_dot(solver.apply_ofield_product_operator(res)))
-        res = next_vectors[2 * nc] - modes[2 * nc].lincomb(
-            next_vectors[2 * nc].dot(solver.apply_stokes_product_operator(modes[2 * nc]))
+            proj_errs[num_cells + k] += np.sum(proj_res.pairwise_inner(proj_res, product=products[1]))
+            res = current_values.block(num_cells + k) - U_rom.block(num_cells + k)[n]
+            errs[num_cells + k] += np.sum(res.pairwise_inner(res, product=products[1]))
+        proj_res = current_values.block(2 * num_cells) - modes[2 * num_cells].lincomb(
+            current_values.block(2 * num_cells).inner(modes[2 * num_cells], product=products[2])
         )
-        errs[2 * nc] += np.sum(res.pairwise_dot(solver.apply_stokes_product_operator(res)))
+        proj_errs[2 * num_cells] += np.sum(proj_res.pairwise_inner(proj_res, product=products[2]))
+        res = current_values.block(2*num_cells) - U_rom.block(2*num_cells)[n]
+        errs[2*num_cells] += np.sum(res.pairwise_inner(res, product=products[2]))
         n += 1
-    return errs
+        # DEIM basis errors
+        if timestep_residuals is not None:
+            for k in range(num_cells):
+                proj_res = timestep_residuals[k] - deim_modes[k].lincomb(
+                    timestep_residuals[k].inner(deim_modes[k], product=products[0])
+                )
+                proj_deim_errs[k] += np.sum(proj_res.pairwise_inner(proj_res, product=products[0]))
+                n_deim_pf += len(proj_res)
+                proj_res = timestep_residuals[num_cells + k] - deim_modes[num_cells + k].lincomb(
+                    timestep_residuals[num_cells + k].inner(deim_modes[num_cells + k], product=products[1])
+                )
+                proj_deim_errs[num_cells + k] += np.sum(proj_res.pairwise_inner(proj_res, product=products[1]))
+                n_deim_of += len(proj_res)
+            proj_res = timestep_residuals[2 * num_cells] - deim_modes[2 * num_cells].lincomb(
+                timestep_residuals[2 * num_cells].inner(deim_modes[2 * num_cells], product=products[2])
+            )
+            proj_deim_errs[2 * num_cells] += np.sum(proj_res.pairwise_inner(proj_res, product=products[2]))
+            n_deim_st += len(proj_res)
+        current_values, t, timestep_residuals = cellmodel.next_time_step(
+                    current_values,
+                    t,
+                    mu=mu,
+                    return_stages=False,
+                    return_residuals=True,
+                )
+        if current_values is None:
+            break
+
+        #     res = next_vectors[k] - modes[k].lincomb(
+        #         next_vectors[k].inner(solver.apply_pfield_product_operator(modes[k]))
+        #     )
+        #     errs[k] += np.sum(res.pairwise_inner(solver.apply_pfield_product_operator(res)))
+        #     res = next_vectors[nc + k] - modes[nc + k].lincomb(
+        #         next_vectors[nc + k].inner(solver.apply_ofield_product_operator(modes[nc + k]))
+        #     )
+        #     errs[nc + k] += np.sum(res.pairwise_inner(solver.apply_ofield_product_operator(res)))
+        # res = next_vectors[2 * nc] - modes[2 * nc].lincomb(
+        #     next_vectors[2 * nc].inner(solver.apply_stokes_product_operator(modes[2 * nc]))
+        # )
+        # errs[2 * nc] += np.sum(res.pairwise_inner(solver.apply_stokes_product_operator(res)))
+    return proj_errs, proj_deim_errs, errs, n, n_deim_pf, n_deim_of, n_deim_st
 
 
 def calculate_mean_cellmodel_projection_errors(
-    modes, testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu, mpi_wrapper, with_half_steps=True
+    modes, deim_modes, testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu, U_rom, mpi_wrapper, products
 ):
-    trajectory_errs = calculate_cellmodel_trajectory_errors(
-        modes, testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu
+    trajectory_errs, deim_trajector_errs, red_trajectory_errs, num_snapshots, num_residuals_pf, num_residuals_of, num_residuals_st = calculate_cellmodel_trajectory_errors(
+        modes, deim_modes, testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu, U_rom, products
     )
-    errs = [0.0] * len(modes)
+    print(f"Trajectory errors: {trajectory_errs}")
+    proj_errs = [0.0] * len(modes)
+    proj_deim_errs = proj_errs.copy()
+    red_errs = [0.0] * len(modes)
+    num_snapshots = mpi_wrapper.comm_world.gather(num_snapshots, root=0)
+    num_residuals_pf = mpi_wrapper.comm_world.gather(num_residuals_pf, root=0)
+    num_residuals_of = mpi_wrapper.comm_world.gather(num_residuals_of, root=0)
+    num_residuals_st = mpi_wrapper.comm_world.gather(num_residuals_st, root=0)
+    if mpi_wrapper.rank_world == 0:
+        num_snapshots = np.sum(num_snapshots)
+        num_residuals_pf = np.sum(num_residuals_pf)
+        num_residuals_of = np.sum(num_residuals_of)
+        num_residuals_st = np.sum(num_residuals_st)
+        print(num_snapshots, num_residuals_pf, num_residuals_of, num_residuals_st)
     for index, trajectory_err in enumerate(trajectory_errs):
         trajectory_err = mpi_wrapper.comm_world.gather(trajectory_err, root=0)
         if mpi_wrapper.rank_world == 0:
-            errs[index] = np.sqrt(np.sum(trajectory_err))
-    return errs
+            proj_errs[index] = np.sqrt(np.sum(trajectory_err) / num_snapshots)
+    for index, red_err in enumerate(red_trajectory_errs):
+        red_err = mpi_wrapper.comm_world.gather(red_err, root=0)
+        if mpi_wrapper.rank_world == 0:
+            red_errs[index] = np.sqrt(np.sum(red_err) / num_snapshots)
+    pf_err = mpi_wrapper.comm_world.gather(deim_trajector_errs[0], root=0)
+    of_err = mpi_wrapper.comm_world.gather(deim_trajector_errs[1], root=0)
+    st_err = mpi_wrapper.comm_world.gather(deim_trajector_errs[2], root=0)
+    if mpi_wrapper.rank_world == 0:
+        proj_deim_errs[0] = np.sqrt(np.sum(pf_err) / num_residuals_pf)
+        proj_deim_errs[1] = np.sqrt(np.sum(of_err) / num_residuals_of)
+        proj_deim_errs[2] = np.sqrt(np.sum(st_err) / num_residuals_st)
+    return proj_errs, proj_deim_errs, red_errs
 
 
 def calculate_cellmodel_errors(
-    modes, testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu, mpi_wrapper, logfile=None
+    modes,
+    deim_modes,
+    testcase,
+    t_end,
+    dt,
+    grid_size_x,
+    grid_size_y,
+    pol_order,
+    mu,
+    U_rom,
+    mpi_wrapper,
+    logfile_name=None,
+    prefix="",
+    products=[None]*3,
 ):
-    """ Calculates projection error. As we cannot store all snapshots due to memory restrictions, the
-        problem is solved again and the error calculated on the fly"""
+    """Calculates projection error. As we cannot store all snapshots due to memory restrictions, the
+    problem is solved again and the error calculated on the fly"""
     start = timer()
-    errs = calculate_mean_cellmodel_projection_errors(
-        modes, testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu, mpi_wrapper
+    errs, deim_errs, red_errs = calculate_mean_cellmodel_projection_errors(
+        modes, deim_modes, testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu, U_rom, mpi_wrapper, products=products
     )
     elapsed = timer() - start
-    if mpi_wrapper.rank_world == 0 and logfile is not None:
-        logfile.write("Time used for calculating error: " + str(elapsed) + "\n")
-        nc = (len(modes) - 1) // 2
-        for k in range(nc):
-            logfile.write("L2 error for {}-th pfield is: {}\n".format(k, errs[k]))
-            logfile.write("L2 error for {}-th ofield is: {}\n".format(k, errs[nc + k]))
-        logfile.write("L2 error for stokes is: {}\n".format(errs[2 * nc]))
-        logfile.close()
+    if mpi_wrapper.rank_world == 0 and logfile_name is not None:
+        with open(logfile_name, "a") as logfile:
+            logfile.write("Time used for calculating error: " + str(elapsed) + "\n")
+            nc = (len(modes) - 1) // 2
+            print(errs, deim_errs, red_errs)
+            for k in range(nc):
+                logfile.write("{}L2 projection error for {}-th pfield is: {}\n".format(prefix, k, errs[k]))
+                logfile.write("{}L2 projection error for {}-th ofield is: {}\n".format(prefix, k, errs[nc + k]))
+            logfile.write("{}L2 projection error for stokes is: {}\n".format(prefix, errs[2 * nc]))
+            logfile.write("{}L2 projection DEIM error for {}-th pfield is: {}\n".format(prefix, 0, deim_errs[0]))
+            logfile.write("{}L2 projection DEIM error for {}-th ofield is: {}\n".format(prefix, 0, deim_errs[1]))
+            logfile.write("{}L2 projection DEIM error for stokes is: {}\n".format(prefix, deim_errs[2]))
+            for k in range(nc):
+                logfile.write("{}L2 reduction error for {}-th pfield is: {}\n".format(prefix, k, red_errs[k]))
+                logfile.write("{}L2 reduction error for {}-th ofield is: {}\n".format(prefix, k, red_errs[nc+k]))
+            logfile.write("{}L2 reduction error for {}-th stokes is: {}\n".format(prefix, k, red_errs[2*nc]))
+                # logfile.write("{}L2 reduction error for {}-th ofield is: {}\n".format(prefix, k, red_errs[nc + k]))
+            # logfile.write("{}L2 reduction error for stokes is: {}\n".format(prefix, red_errs[2 * nc]))
     return errs
 
 
