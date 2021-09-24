@@ -37,7 +37,7 @@ class MPIWrapper:
         self.size_world = self.comm_world.size
 
         # use processor numbers to create a communicator on each processor
-        self.comm_proc = BoltzmannMPICommunicator(self.comm_world.Split_type(MPI.COMM_TYPE_SHARED))
+        self.comm_proc = BoltzmannMPICommunicator(self.comm_world.Split_type(MPI.COMM_TYPE_SHARED, self.rank_world))
         self.size_proc = self.comm_proc.size
         self.rank_proc = self.comm_proc.rank
 
@@ -55,7 +55,8 @@ class MPIWrapper:
             self.size_rank_group.append(self.comm_rank_group[k].size)
             self.rank_rank_group.append(self.comm_rank_group[k].rank)
 
-    def shared_memory_bcast_modes(self, modes, returnlistvectorarray=False, root=0):
+
+    def shared_memory_bcast_modes(self, modes, returnlistvectorarray=False, proc_rank=0):
         """
         Broadcast modes on root rank to all ranks by using a shared memory buffer on each node
 
@@ -72,26 +73,30 @@ class MPIWrapper:
         """
         if modes is None:
             modes = np.empty(shape=(0, 0), dtype="d")
-        modes_length = self.comm_world.bcast(len(modes) if self.rank_world == root else 0, root=root)
+        self_is_root = self.rank_proc == proc_rank and self.rank_rank_group[proc_rank] == 0
+        gathered_root_info = self.comm_world.gather(self_is_root, root=0)
+        root = gathered_root_info.index(True) if self.rank_world == 0 else None
+        root = self.comm_world.bcast(root, root=0)
+        modes_length = self.comm_world.bcast(len(modes) if self_is_root else 0, root=root)
         assert modes_length > 0, "Cannot broadcast empty modes"
-        vector_length = self.comm_world.bcast(modes[0].dim if self.rank_world == root else 0, root=root)
+        vector_length = self.comm_world.bcast(modes[0].dim if self_is_root else 0, root=root)
         # create shared memory buffer to share final modes between processes on each node
         size = modes_length * vector_length
         itemsize = MPI.DOUBLE.Get_size()
-        num_bytes = size * itemsize if self.rank_proc == root else 0
+        num_bytes = size * itemsize if self.rank_proc == proc_rank else 0
         win = MPI.Win.Allocate_shared(num_bytes, itemsize, comm=self.comm_proc)
-        buf, itemsize = win.Shared_query(rank=root)
+        buf, itemsize = win.Shared_query(rank=proc_rank)
         assert itemsize == MPI.DOUBLE.Get_size()
         buf = np.array(buf, dtype="B", copy=False)
         modes_numpy = np.ndarray(buffer=buf, dtype="d", shape=(modes_length, vector_length))
-        if self.rank_proc == root:
-            if self.rank_world == root:
-                self.comm_rank_group[root].Bcast([modes.to_numpy(), MPI.DOUBLE], root=0)
+        if self.rank_proc == proc_rank:
+            if self_is_root:
+                self.comm_rank_group[proc_rank].Bcast([modes.to_numpy(), MPI.DOUBLE], root=0)
                 for i, v in enumerate(modes._list):
                     modes_numpy[i, :] = v.to_numpy()[:]
                     del v
             else:
-                self.comm_rank_group[root].Bcast([modes_numpy, MPI.DOUBLE], root=0)
+                self.comm_rank_group[proc_rank].Bcast([modes_numpy, MPI.DOUBLE], root=0)
         self.comm_world.Barrier()  # without this barrier, non-zero ranks might be too fast
         if returnlistvectorarray:
             modes = DuneXtLaListVectorSpace.from_memory(modes_numpy)
