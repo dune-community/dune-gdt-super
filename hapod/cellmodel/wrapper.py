@@ -1496,21 +1496,24 @@ def calculate_cellmodel_trajectory_errors(
         # DEIM basis errors
         if timestep_residuals is not None:
             for k in range(num_cells):
-                proj_res = timestep_residuals[k] - deim_modes[k].lincomb(
-                    timestep_residuals[k].inner(deim_modes[k], product=products[0])
+                if deim_modes[k] is not None:
+                    proj_res = timestep_residuals[k] - deim_modes[k].lincomb(
+                            timestep_residuals[k].inner(deim_modes[k], product=products[0])
+                            )
+                    proj_deim_errs[k] += np.sum(proj_res.pairwise_inner(proj_res, product=products[0]))
+                    n_deim_pf += len(proj_res)
+                if deim_modes[num_cells+k] is not None:
+                    proj_res = timestep_residuals[num_cells + k] - deim_modes[num_cells + k].lincomb(
+                        timestep_residuals[num_cells + k].inner(deim_modes[num_cells + k], product=products[1])
+                    )
+                    proj_deim_errs[num_cells + k] += np.sum(proj_res.pairwise_inner(proj_res, product=products[1]))
+                    n_deim_of += len(proj_res)
+            if deim_modes[2*num_cells] is not None:
+                proj_res = timestep_residuals[2 * num_cells] - deim_modes[2 * num_cells].lincomb(
+                    timestep_residuals[2 * num_cells].inner(deim_modes[2 * num_cells], product=products[2])
                 )
-                proj_deim_errs[k] += np.sum(proj_res.pairwise_inner(proj_res, product=products[0]))
-                n_deim_pf += len(proj_res)
-                proj_res = timestep_residuals[num_cells + k] - deim_modes[num_cells + k].lincomb(
-                    timestep_residuals[num_cells + k].inner(deim_modes[num_cells + k], product=products[1])
-                )
-                proj_deim_errs[num_cells + k] += np.sum(proj_res.pairwise_inner(proj_res, product=products[1]))
-                n_deim_of += len(proj_res)
-            proj_res = timestep_residuals[2 * num_cells] - deim_modes[2 * num_cells].lincomb(
-                timestep_residuals[2 * num_cells].inner(deim_modes[2 * num_cells], product=products[2])
-            )
-            proj_deim_errs[2 * num_cells] += np.sum(proj_res.pairwise_inner(proj_res, product=products[2]))
-            n_deim_st += len(proj_res)
+                proj_deim_errs[2 * num_cells] += np.sum(proj_res.pairwise_inner(proj_res, product=products[2]))
+                n_deim_st += len(proj_res)
         current_values, t, timestep_residuals = cellmodel.next_time_step(
                     current_values,
                     t,

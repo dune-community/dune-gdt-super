@@ -198,7 +198,7 @@ def binary_tree_hapod(
     # currently, all parameters have to use the same timestep length in all time steps
     old_t = 0.0
     for chunk_index in range(num_chunks):
-        new_vecs = [U[0]._blocks[i % 3].empty() for i in range(6)]
+        new_vecs = [space.subspaces[i % 3].empty() for i in range(6)]
         # walk over parameters
         for p in range(len(mus)):
             t = old_t
@@ -457,9 +457,24 @@ if __name__ == "__main__":
             }
         )
 
+    ####### Scatter parameters to MPI ranks #######
+    # Transform mus and new_mus from plain list to list of lists where the i-th inner list contains all parameters for rank i
+    mus = np.reshape(np.array(mus), (mpi.size_world, train_params_per_rank)).tolist()
+    new_mus = np.reshape(np.array(new_mus), (mpi.size_world, test_params_per_rank)).tolist()
+    mus = mpi.comm_world.scatter(mus, root=0)
+    print(f"Mu on rank {mpi.rank_world}: {mus}")
+    new_mus = mpi.comm_world.scatter(new_mus, root=0)
+    solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])
+    num_cells = solver.num_cells
+    m = DuneCellModel(solver)
+    # products = [CellModelPfieldProductOperator(solver), CellModelOfieldProductOperator(solver), CellModelStokesProductOperator(solver)]*2
+    products = [None] * 6
+
     ###### Start writing output file #########
 
-    filename = "rom_grid{}x{}_tend{}_dt{}_{}_without{}_pfield{}_ofield{}_stokes{}.txt".format(
+    filename = "rom_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_without{}_pfield{}_ofield{}_stokes{}.txt".format(
+        mpi.size_world,
+        "fvproduct" if products[0] is not None else "noproduct",
         grid_size_x,
         grid_size_y,
         t_end,
@@ -481,18 +496,8 @@ if __name__ == "__main__":
                 f"Tested with {len(new_mus)} new Parameters: {new_mus}\n"
             )
 
-    ####### Scatter parameters to MPI ranks #######
-    # Transform mus and new_mus from plain list to list of lists where the i-th inner list contains all parameters for rank i
-    mus = np.reshape(np.array(mus), (mpi.size_world, train_params_per_rank)).tolist()
-    new_mus = np.reshape(np.array(new_mus), (mpi.size_world, test_params_per_rank)).tolist()
-    mus = mpi.comm_world.scatter(mus, root=0)
-    print(f"Mu on rank {mpi.rank_world}: {mus}")
-    new_mus = mpi.comm_world.scatter(new_mus, root=0)
-    solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])
-    num_cells = solver.num_cells
-    m = DuneCellModel(solver)
-    # products = [CellModelPfieldProductOperator(solver), CellModelOfieldProductOperator(solver), CellModelStokesProductOperator(solver)]*2
-    products = [None] * 6
+    ################### Start HAPOD #####################
+
     Us, _, results = binary_tree_hapod(
         m,
         mus,
@@ -502,7 +507,7 @@ if __name__ == "__main__":
         indices,
         include_newton_stages,
         omega=0.95,
-        return_snapshots=True,
+        return_snapshots=False,
         return_newton_residuals=False,
         logfile=filename,
         products=products,
@@ -565,6 +570,8 @@ if __name__ == "__main__":
     U_rom = reductor.reconstruct(u)
     Be, Ca, Pa = (float(mus[0]['Be']), float(mus[0]['Ca']), float(mus[0]['Pa']))
     m.visualize(U_rom, prefix=f"{filename[:-4]}_Be{Be}_Ca{Ca}_Pa{Pa}", subsampling=subsampling, every_nth=visualize_step)
+    del m
+    del solver
 
     # ################## calculate errors for trained parameters #######################
     # pfield_abs_errors = (U._blocks[0] - U_rom._blocks[0]).norm()

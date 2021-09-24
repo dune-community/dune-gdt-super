@@ -32,4 +32,5 @@ gdt/*.so
 *.code-workspace
 profiling_results*
 rom_grid*
+rom_*procs_*
 .vimspector.json
