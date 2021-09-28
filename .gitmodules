@@ -48,9 +48,6 @@
 [submodule "dune-grid-glue"]
 	path = dune-grid-glue
 	url = https://github.com/dune-mirrors/dune-grid-glue.git
-[submodule "dune-xt-data"]
-	path = dune-xt-data
-	url = https://github.com/dune-community/dune-xt-data
 [submodule ".ci/shared"]
 	path = .ci/shared
 	url = https://github.com/dune-community/dune-xt-ci
