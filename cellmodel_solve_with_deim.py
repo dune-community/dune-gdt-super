@@ -313,15 +313,16 @@ def binary_tree_hapod(
     return U, U_res, results
 
 
+# example call: mpiexec -n 2 python3 cellmodel_solve_with_deim.py single_cell 1e-2 1e-3 30 30 True True False False False False 1e-3 1e-3 1e-3 1e-10 1e-10 1e-10
 if __name__ == "__main__":
     mpi = MPIWrapper()
     ##### read command line arguments, additional settings #####
     argc = len(sys.argv)
     testcase = "single_cell" if argc < 2 else sys.argv[1]
-    t_end = 1e-1 if argc < 3 else float(sys.argv[2])
+    t_end = 1e-2 if argc < 3 else float(sys.argv[2])
     dt = 1e-3 if argc < 4 else float(sys.argv[3])
-    grid_size_x = 90 if argc < 5 else int(sys.argv[4])
-    grid_size_y = 90 if argc < 6 else int(sys.argv[5])
+    grid_size_x = 30 if argc < 5 else int(sys.argv[4])
+    grid_size_y = 30 if argc < 6 else int(sys.argv[5])
     visualize = True if argc < 7 else (False if sys.argv[6] == "False" else True)
     subsampling = True if argc < 8 else (False if sys.argv[7] == "False" else True)
     deim_pfield = True if argc < 9 else (False if sys.argv[8] == "False" else True)
@@ -522,7 +523,7 @@ if __name__ == "__main__":
     for k in indices:
         r = results[k]
         r.modes, r.win = mpi.shared_memory_bcast_modes(
-            r.modes, returnlistvectorarray=True, root=k % mpi.size_proc
+            r.modes, returnlistvectorarray=True, proc_rank=k % mpi.size_proc
         )
 
     pfield_basis = results[0].modes if pod_pfield else None
