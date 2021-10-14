@@ -941,12 +941,16 @@ class CellModel(Model):
                 ofield_residuals.append(ofield_data["residuals"])
                 stokes_residuals.append(stokes_data["residuals"])
 
-        retval = [U_all]
+        retval = [U_all, {}]
         if return_stages:
-            retval.append(pfield_stages, ofield_stages, stokes_stages)
+            retval[1]["pfield_stages"] = pfield_stages
+            retval[1]["ofield_stages"] = ofield_stages
+            retval[1]["stokes_stages"] = stokes_stages
         if return_residuals:
-            retval.append(pfield_residuals, ofield_residuals, stokes_residuals)
-        return retval if len(retval) > 1 else retval[0]
+            retval[1]["pfield_residuals"] = pfield_residuals
+            retval[1]["ofield_residuals"] = ofield_residuals
+            retval[1]["stokes_residuals"] = stokes_residuals
+        return retval
 
     def next_time_step(
         self, U_last, t, mu=None, return_output=False, return_stages=False, return_residuals=False
@@ -1628,3 +1632,83 @@ def get_num_chunks_and_num_timesteps(t_end, dt, chunk_size):
     assert num_chunks >= 2
     assert 1 <= last_chunk_size <= chunk_size
     return num_chunks, num_time_steps
+
+def create_parameters(train_params_per_rank, test_params_per_rank, rf, mpi, excluded_param, Be0=1.0, Ca0=1.0, Pa0=1.0):
+    # Be0, Ca0 and Pa0 are default values for parameters
+    ####### Create training parameters ######
+    num_train_params = train_params_per_rank * mpi.size_world
+    num_test_params = test_params_per_rank * mpi.size_world
+    # we have two parameters and want to sample both of these parameters with the same number of values
+    values_per_parameter_train = int(math.sqrt(num_train_params))
+    rf = np.sqrt(rf)
+    lower_bound_Ca = Ca0 / rf
+    upper_bound_Ca = Ca0 * rf
+    lower_bound_Be = Be0 / rf
+    upper_bound_Be = Be0 * rf
+    lower_bound_Pa = Pa0 / rf
+    upper_bound_Pa = Pa0 * rf
+    # Compute factors such that mu_i/mu_{i+1} = const and mu_0 = default_value/sqrt(rf), mu_last = default_value*sqrt(rf)
+    # factors = np.array([1.])
+    factors = np.array(
+        [
+            (rf ** 2) ** (i / (values_per_parameter_train - 1)) / rf
+            for i in range(values_per_parameter_train)
+        ]
+        if values_per_parameter_train > 1
+        else [1.0]
+    )
+    # Actually create training parameters.
+    # Currently, only two parameters vary, the other one is set to the default value
+    mus = []
+    if excluded_param == "Ca":
+        for Be in factors * Be0:
+            for Pa in factors * Pa0:
+                mus.append({"Pa": Pa, "Be": Be, "Ca": Ca0})
+    elif excluded_param == "Be":
+        for Ca in factors * Ca0:
+            for Pa in factors * Pa0:
+                mus.append({"Pa": Pa, "Be": Be0, "Ca": Ca})
+    elif excluded_param == "Pa":
+        for Ca in factors * Ca0:
+            for Be in factors * Be0:
+                mus.append({"Pa": Pa0, "Be": Be, "Ca": Ca})
+    else:
+        raise NotImplementedError(f"Wrong value of excluded_param: {excluded_param}")
+    while len(mus) < num_train_params:
+        mus.append(
+            {
+                "Pa": Pa0
+                if excluded_param == "Pa"
+                else random.uniform(lower_bound_Pa, upper_bound_Pa),
+                "Be": Be0
+                if excluded_param == "Be"
+                else random.uniform(lower_bound_Be, upper_bound_Be),
+                "Ca": Ca0
+                if excluded_param == "Ca"
+                else random.uniform(lower_bound_Ca, upper_bound_Ca),
+            }
+        )
+    ####### Create test parameters ########
+    new_mus = []
+    for _ in range(num_test_params):
+        new_mus.append(
+            {
+                "Pa": Pa0
+                if excluded_param == "Pa"
+                else random.uniform(lower_bound_Pa, upper_bound_Pa),
+                "Be": Be0
+                if excluded_param == "Be"
+                else random.uniform(lower_bound_Be, upper_bound_Be),
+                "Ca": Ca0
+                if excluded_param == "Ca"
+                else random.uniform(lower_bound_Ca, upper_bound_Ca),
+            }
+        )
+    ####### Scatter parameters to MPI ranks #######
+    # Transform mus and new_mus from plain list to list of lists where the i-th inner list contains all parameters for rank i
+    mus = np.reshape(np.array(mus), (mpi.size_world, train_params_per_rank)).tolist()
+    new_mus = np.reshape(np.array(new_mus), (mpi.size_world, test_params_per_rank)).tolist()
+    mus = mpi.comm_world.scatter(mus, root=0)
+    print(f"Mu on rank {mpi.rank_world}: {mus}")
+    new_mus = mpi.comm_world.scatter(new_mus, root=0)
+    return mus, new_mus
