@@ -1,22 +1,12 @@
-import cProfile
-import math
+import pickle
 import random
-from statistics import mean
 import sys
-import time
 from timeit import default_timer as timer
 
-import numpy as np
+from rich import pretty, traceback
 
-from hapod.cellmodel.wrapper import (
-    CellModelReductor,
-    CellModelSolver,
-    DuneCellModel,
-    create_parameters
-)
+from hapod.cellmodel.wrapper import CellModelSolver, DuneCellModel, create_parameters
 from hapod.mpi import MPIWrapper
-from rich import traceback, print, pretty
-import pickle
 
 traceback.install()
 pretty.install()
@@ -47,17 +37,26 @@ if __name__ == "__main__":
     ####### choose parameters ####################
     train_params_per_rank = 1 if mpi.size_world > 1 else 1
     test_params_per_rank = 1 if mpi.size_world > 1 else 1
-    rf = 10 # Factor of largest to smallest training parameter
-    random.seed(123) # create_parameters choose some parameters randomly in some cases
+    rf = 10  # Factor of largest to smallest training parameter
+    random.seed(123)  # create_parameters chooses some parameters randomly in some cases
     excluded_param = "Be"
-    mus, new_mus = create_parameters(train_params_per_rank, test_params_per_rank, rf, mpi, excluded_param, Be0 = 1., Ca0 = 1., Pa0 = 1.)
+    mus, new_mus = create_parameters(
+        train_params_per_rank,
+        test_params_per_rank,
+        rf,
+        mpi,
+        excluded_param,
+        None,
+        Be0=1.0,
+        Ca0=1.0,
+        Pa0=1.0,
+    )
 
     # Solve for chosen parameter
     assert len(mus) == 1, "Not yet implemented for more than one parameter per rank"
     solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])
-    num_cells = solver.num_cells
     m = DuneCellModel(solver)
-    ret = m.solve(mu=mus[0], return_stages=include_newton_stages, return_residuals=True)
+    ret, data = m.solve(mu=mus[0], return_stages=include_newton_stages, return_residuals=True)
 
     ###### Pickle results #########
     prefix = "pickle_grid{}x{}_tend{}_dt{}_{}_without{}_".format(
@@ -71,11 +70,12 @@ if __name__ == "__main__":
     filename_mu = f"{prefix}_Be{mus[0]['Be']}_Ca{mus[0]['Ca']}_Pa{mus[0]['Pa']}"
     filename_new_mu = f"{prefix}_Be{new_mus[0]['Be']}_Ca{new_mus[0]['Ca']}_Pa{new_mus[0]['Pa']}"
     with open(filename_mu, "wb") as pickle_file:
-        pickle.dump([mus[0], ret], pickle_file)
-    del ret
-    ret = m.solve(mu=new_mus[0], return_stages=include_newton_stages, return_residuals=True)
+        pickle.dump([mus[0], ret, data], pickle_file)
+    del ret, data
+    start = timer()
+    ret, data = m.solve(mu=new_mus[0], return_stages=include_newton_stages, return_residuals=True)
+    data["mean_fom_time"] = (timer() - start) / len(new_mus)
     with open(filename_new_mu, "wb") as pickle_file:
-        pickle.dump([new_mus[0], ret], pickle_file)
-    del ret
+        pickle.dump([new_mus[0], ret, data], pickle_file)
 
     mpi.comm_world.Barrier()

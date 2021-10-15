@@ -1,5 +1,4 @@
 import cProfile
-import math
 import random
 import resource
 from statistics import mean
@@ -9,133 +8,31 @@ from timeit import default_timer as timer
 
 import numpy as np
 from pymor.vectorarrays.list import ListVectorArray
+from rich import pretty, print, traceback
 
 from hapod.cellmodel.wrapper import (
+    BinaryTreeHapodResults,
     CellModel,
+    CellModelOfieldProductOperator,
+    CellModelPfieldProductOperator,
     CellModelReductor,
     CellModelSolver,
+    CellModelStokesProductOperator,
     DuneCellModel,
     calculate_cellmodel_errors,
-    CellModelPfieldProductOperator,
-    CellModelOfieldProductOperator,
-    CellModelStokesProductOperator,
     create_parameters,
+    final_hapod_in_binary_tree_hapod,
+    pod_on_node_in_binary_tree_hapod,
+    pods_on_processor_cores_in_binary_tree_hapod,
+    solver_statistics,
 )
-from hapod.hapod import (
-    HapodParameters,
-    binary_tree_depth,
-    binary_tree_hapod_over_ranks,
-    local_pod,
-)
+from hapod.hapod import binary_tree_depth
 from hapod.mpi import MPIWrapper
-from rich import traceback, print, pretty
 
 traceback.install()
 pretty.install()
 
-
 # set_log_levels({'pymor.algorithms.newton': 'WARN'})
-
-
-def solver_statistics(cellmodel: CellModel, chunk_size: int):
-    num_time_steps = math.ceil(cellmodel.t_end / cellmodel.dt) + 1.0
-    num_chunks = int(math.ceil(num_time_steps / chunk_size))
-    last_chunk_size = num_time_steps - chunk_size * (num_chunks - 1)
-    assert num_chunks >= 2
-    assert 1 <= last_chunk_size <= chunk_size
-    return num_chunks, num_time_steps
-
-
-class BinaryTreeHapodResults:
-    def __init__(self, tree_depth, epsilon_ast, omega):
-        self.params = HapodParameters(tree_depth, epsilon_ast=epsilon_ast, omega=omega)
-        self.modes = None
-        self.svals = None
-        self.max_local_modes = 0
-        self.max_vectors_before_pod = 0
-        self.total_num_snapshots = 0
-        self.orth_tol = 0
-        self.final_orth_tol = 0
-        self.gathered_modes = None
-        self.num_snaps = 0
-
-
-# Performs a POD on each processor core with the data vectors computed on that core,
-# then sends resulting (scaled) modes to rank 0 on that processor.
-# The resulting modes are stored in results.gathered_modes on processor rank 0
-# results.num_snaps (on rank 0) contains the total number of snapshots
-# that have been processed (on all ranks)
-def pods_on_processor_cores_in_binary_tree_hapod(r, vecs, root, product):
-    assert isinstance(vecs, ListVectorArray)
-    print("start processor pod: ", mpi.rank_world)
-    snaps_on_rank = len(vecs)
-    r.max_vectors_before_pod = max(r.max_vectors_before_pod, snaps_on_rank)
-    vecs, svals = local_pod(
-        [vecs],
-        snaps_on_rank,
-        r.params,
-        product=product,
-        incremental_gramian=False,
-        orth_tol=r.orth_tol,
-    )
-    r.max_local_modes = max(r.max_local_modes, len(vecs))
-    vecs.scal(svals)
-    r.gathered_modes, _, r.num_snaps, _ = mpi.comm_proc.gather_on_root_rank(
-        vecs, num_snapshots_on_rank=snaps_on_rank, num_modes_equal=False, root=root
-    )
-
-
-# perform a POD with gathered modes on rank 0 on each processor/node
-def pod_on_node_in_binary_tree_hapod(r, chunk_index, num_chunks, mpi, root, product):
-    print("start node pod: ", mpi.rank_world)
-    r.total_num_snapshots += r.num_snaps
-    if chunk_index == 0:
-        r.max_vectors_before_pod = max(r.max_vectors_before_pod, len(r.gathered_modes))
-        r.modes, r.svals = local_pod(
-            [r.gathered_modes],
-            r.num_snaps,
-            r.params,
-            product=product,
-            orth_tol=r.orth_tol,
-        )
-    else:
-        r.max_vectors_before_pod = max(
-            r.max_vectors_before_pod, len(r.modes) + len(r.gathered_modes)
-        )
-        root_of_tree = (chunk_index == num_chunks - 1 and mpi.size_rank_group[root] == 1)
-        r.modes, r.svals = local_pod(
-            [[r.modes, r.svals], r.gathered_modes],
-            r.total_num_snapshots,
-            r.params,
-            orth_tol=r.final_orth_tol if root_of_tree else r.orth_tol,
-            incremental_gramian=r.incremental_gramian,
-            product=product,
-            root_of_tree=root_of_tree,
-        )
-    r.max_local_modes = max(r.max_local_modes, len(r.modes))
-
-
-def final_hapod_in_binary_tree_hapod(r, mpi, root, product):
-    print("start final pod: ", mpi.rank_world)
-    (
-        r.modes,
-        r.svals,
-        r.total_num_snapshots,
-        max_num_input_vecs,
-        max_num_local_modes,
-    ) = binary_tree_hapod_over_ranks(
-        mpi.comm_rank_group[root],
-        r.modes,
-        r.total_num_snapshots,
-        r.params,
-        svals=r.svals,
-        last_hapod=True,
-        incremental_gramian=r.incremental_gramian,
-        product=product,
-        orth_tol=r.final_orth_tol,
-    )
-    r.max_vectors_before_pod = max(r.max_vectors_before_pod, max_num_input_vecs)
-    r.max_local_modes = max(r.max_local_modes, max_num_local_modes)
 
 
 def binary_tree_hapod(
@@ -171,7 +68,7 @@ def binary_tree_hapod(
 
     # calculate rooted tree depth
     mpi = MPIWrapper()
-    num_chunks, _ = solver_statistics(cellmodel, chunk_size)
+    num_chunks, _ = solver_statistics(t_end=cellmodel.t_end, dt=cellmodel.dt, chunk_size=chunk_size)
     node_binary_tree_depth = binary_tree_depth(
         mpi.comm_rank_group[0]
     )  # assumes same tree for all fields
@@ -250,7 +147,9 @@ def binary_tree_hapod(
         for k in indices:
             t1 = timer()
             root_rank = k % mpi.size_proc
-            pods_on_processor_cores_in_binary_tree_hapod(results[k], new_vecs[k], root=root_rank, product=products[k])
+            pods_on_processor_cores_in_binary_tree_hapod(
+                results[k], new_vecs[k], mpi, root=root_rank, product=products[k]
+            )
             timings[f"POD{k}"] += timer() - t1
         for k in indices:
             t1 = timer()
@@ -345,14 +244,44 @@ if __name__ == "__main__":
     least_squares_pfield = True
     least_squares_ofield = True
     least_squares_stokes = True
+    # products = [CellModelPfieldProductOperator(solver), CellModelOfieldProductOperator(solver), CellModelStokesProductOperator(solver)]*2
+    products = [None] * 6
+    excluded_param = "Be"
+
+    ###### Choose filename #########
+    filename = "results_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_without{}_pfield{}_ofield{}_stokes{}.txt".format(
+        mpi.size_world,
+        "fvproduct" if products[0] is not None else "noproduct",
+        grid_size_x,
+        grid_size_y,
+        t_end,
+        dt,
+        "snapsandstages" if include_newton_stages else "snaps",
+        excluded_param,
+        (f"pod{pfield_atol:.0e}" if pod_pfield else "pod0")
+        + (f"deim{pfield_deim_atol:.0e}" if deim_pfield else "deim0"),
+        (f"pod{ofield_atol:.0e}" if pod_ofield else "pod0")
+        + (f"deim{ofield_deim_atol:.0e}" if deim_ofield else "deim0"),
+        (f"pod{stokes_atol:.0e}" if pod_stokes else "pod0")
+        + (f"deim{stokes_deim_atol:.0e}" if deim_stokes else "deim0"),
+    )
 
     ####### choose parameters ####################
     train_params_per_rank = 1 if mpi.size_world > 1 else 1
     test_params_per_rank = 1 if mpi.size_world > 1 else 1
-    rf = 10 # Factor of largest to smallest training parameter
-    random.seed(123) # create_parameters choose some parameters randomly in some cases
-    excluded_param = "Be"
-    mus, new_mus = create_parameters(train_params_per_rank, test_params_per_rank, rf, mpi, excluded_param, Be0 = 1., Ca0 = 1., Pa0 = 1.)
+    rf = 10  # Factor of largest to smallest training parameter
+    random.seed(123)  # create_parameters choose some parameters randomly in some cases
+    mus, new_mus = create_parameters(
+        train_params_per_rank,
+        test_params_per_rank,
+        rf,
+        mpi,
+        excluded_param,
+        filename,
+        Be0=1.0,
+        Ca0=1.0,
+        Pa0=1.0,
+    )
 
     ####### Collect some settings in lists for simpler handling #####
     hapod_tols = [
@@ -387,33 +316,6 @@ if __name__ == "__main__":
     solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])
     num_cells = solver.num_cells
     m = DuneCellModel(solver)
-    # products = [CellModelPfieldProductOperator(solver), CellModelOfieldProductOperator(solver), CellModelStokesProductOperator(solver)]*2
-    products = [None] * 6
-
-    ###### Start writing output file #########
-    filename = "rom_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_without{}_pfield{}_ofield{}_stokes{}.txt".format(
-        mpi.size_world,
-        "fvproduct" if products[0] is not None else "noproduct",
-        grid_size_x,
-        grid_size_y,
-        t_end,
-        dt,
-        "snapsandstages" if include_newton_stages else "snaps",
-        excluded_param,
-        (f"pod{pfield_atol:.0e}" if pod_pfield else "pod0")
-        + (f"deim{pfield_deim_atol:.0e}" if deim_pfield else "deim0"),
-        (f"pod{ofield_atol:.0e}" if pod_ofield else "pod0")
-        + (f"deim{ofield_deim_atol:.0e}" if deim_ofield else "deim0"),
-        (f"pod{stokes_atol:.0e}" if pod_stokes else "pod0")
-        + (f"deim{stokes_deim_atol:.0e}" if deim_stokes else "deim0"),
-    )
-
-    if mpi.rank_world == 0:
-        with open(filename, "w") as ff:
-            ff.write(
-                f"{filename}\nTrained with {len(mus)} Parameters: {mus}\n"
-                f"Tested with {len(new_mus)} new Parameters: {new_mus}\n"
-            )
 
     ################### Start HAPOD #####################
 
@@ -475,7 +377,7 @@ if __name__ == "__main__":
         stokes_deim_basis=stokes_deim_basis,
         check_orthonormality=True,
         check_tol=1e-10,
-        products={'pfield': products[0], 'ofield': products[1], 'stokes': products[2]}
+        products={"pfield": products[0], "ofield": products[1], "stokes": products[2]},
     )
     rom = reductor.reduce()
 
@@ -487,37 +389,22 @@ if __name__ == "__main__":
     for p in range(1, len(mus)):
         u.append(rom.solve(mus[p], return_stages=False))
     U_rom = reductor.reconstruct(u)
-    Be, Ca, Pa = (float(mus[0]['Be']), float(mus[0]['Ca']), float(mus[0]['Pa']))
-    m.visualize(U_rom, prefix=f"{filename[:-4]}_Be{Be}_Ca{Ca}_Pa{Pa}", subsampling=subsampling, every_nth=visualize_step)
+    Be, Ca, Pa = (float(mus[0]["Be"]), float(mus[0]["Ca"]), float(mus[0]["Pa"]))
+    m.visualize(
+        U_rom,
+        prefix=f"{filename[:-4]}_Be{Be}_Ca{Ca}_Pa{Pa}",
+        subsampling=subsampling,
+        every_nth=visualize_step,
+    )
     del m
     del solver
-
-    # ################## calculate errors for trained parameters #######################
-    # pfield_abs_errors = (U._blocks[0] - U_rom._blocks[0]).norm()
-    # ofield_abs_errors = (U._blocks[1] - U_rom._blocks[1]).norm()
-    # stokes_abs_errors = (U._blocks[2] - U_rom._blocks[2]).norm()
-    # pfield_rel_errors = (U._blocks[0] - U_rom._blocks[0]).norm() / U._blocks[0].norm()
-    # ofield_rel_errors = (U._blocks[1] - U_rom._blocks[1]).norm() / U._blocks[1].norm()
-    # stokes_rel_errors = (U._blocks[2] - U_rom._blocks[2]).norm() / U._blocks[2].norm()
-    # pfield_norms = U._blocks[0].norm()
-    # ofield_norms = U._blocks[1].norm()
-    # stokes_norms = U._blocks[2].norm()
-    # pfield_abs_errors = mpi.comm_world.gather(pfield_abs_errors, root=0)
-    # ofield_abs_errors = mpi.comm_world.gather(ofield_abs_errors, root=0)
-    # stokes_abs_errors = mpi.comm_world.gather(stokes_abs_errors, root=0)
-    # pfield_rel_errors = mpi.comm_world.gather(pfield_rel_errors, root=0)
-    # ofield_rel_errors = mpi.comm_world.gather(ofield_rel_errors, root=0)
-    # stokes_rel_errors = mpi.comm_world.gather(stokes_rel_errors, root=0)
-    # pfield_norms = mpi.comm_world.gather(pfield_norms, root=0)
-    # ofield_norms = mpi.comm_world.gather(ofield_norms, root=0)
-    # stokes_norms = mpi.comm_world.gather(stokes_norms, root=0)
 
     ################## test new parameters #######################
     # solve full-order model for new param
     # start = timer()
     # U_new_mu = m.solve(mu=new_mus[0], return_stages=False)
     # for p in range(1, len(new_mus)):
-        # U_new_mu.append(m.solve(mu=new_mus[p], return_stages=False))
+    # U_new_mu.append(m.solve(mu=new_mus[p], return_stages=False))
     # mean_fom_time = (timer() - start) / len(new_mus)
     # Be, Ca, Pa = (float(new_mu['Be']), float(new_mu['Ca']), float(new_mu['Pa']))
     # m.visualize(U_new_mu, prefix=f"fullorder_Be{Be}_Ca{Ca}_Pa{Pa}", subsampling=subsampling, every_nth=visualize_step)
@@ -539,121 +426,38 @@ if __name__ == "__main__":
     #     subsampling=subsampling,
     #     every_nth=visualize_step)
 
-    # # calculate_errors for new mus
-    # pfield_abs_errors_new_mu = (U_new_mu._blocks[0] - U_rom_new_mu._blocks[0]).norm()
-    # ofield_abs_errors_new_mu = (U_new_mu._blocks[1] - U_rom_new_mu._blocks[1]).norm()
-    # stokes_abs_errors_new_mu = (U_new_mu._blocks[2] - U_rom_new_mu._blocks[2]).norm()
-    # pfield_rel_errors_new_mu = (
-    #     U_new_mu._blocks[0] - U_rom_new_mu._blocks[0]
-    # ).norm() / U_new_mu._blocks[0].norm()
-    # ofield_rel_errors_new_mu = (
-    #     U_new_mu._blocks[1] - U_rom_new_mu._blocks[1]
-    # ).norm() / U_new_mu._blocks[1].norm()
-    # stokes_rel_errors_new_mu = (
-    #     U_new_mu._blocks[2] - U_rom_new_mu._blocks[2]
-    # ).norm() / U_new_mu._blocks[2].norm()
-    # mean_fom_time = mpi.comm_world.gather(mean_fom_time, root=0)
-    # mean_rom_time = mpi.comm_world.gather(mean_rom_time, root=0)
-    # pfield_abs_errors_new_mus = mpi.comm_world.gather(pfield_abs_errors_new_mu, root=0)
-    # ofield_abs_errors_new_mus = mpi.comm_world.gather(ofield_abs_errors_new_mu, root=0)
-    # stokes_abs_errors_new_mus = mpi.comm_world.gather(stokes_abs_errors_new_mu, root=0)
-    # pfield_rel_errors_new_mus = mpi.comm_world.gather(pfield_rel_errors_new_mu, root=0)
-    # ofield_rel_errors_new_mus = mpi.comm_world.gather(ofield_rel_errors_new_mu, root=0)
-    # stokes_rel_errors_new_mus = mpi.comm_world.gather(stokes_rel_errors_new_mu, root=0)
-    #
     mpi.comm_world.Barrier()
-    calculate_cellmodel_errors([pfield_basis, ofield_basis, stokes_basis], [pfield_deim_basis, ofield_deim_basis, stokes_deim_basis], testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0], U_rom, mpi, filename, products=products)
-    calculate_cellmodel_errors([pfield_basis, ofield_basis, stokes_basis], [pfield_deim_basis, ofield_deim_basis, stokes_deim_basis], testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, new_mus[0], U_rom_new_mu, mpi, filename, prefix="new ", products=products)
-    # if mpi.rank_world == 0:
-    #     pfield_abs_errors = np.concatenate(pfield_abs_errors)
-    #     ofield_abs_errors = np.concatenate(ofield_abs_errors)
-    #     stokes_abs_errors = np.concatenate(stokes_abs_errors)
-    #     pfield_rel_errors = np.concatenate(pfield_rel_errors)
-    #     ofield_rel_errors = np.concatenate(ofield_rel_errors)
-    #     stokes_rel_errors = np.concatenate(stokes_rel_errors)
-    #     pfield_norms = np.concatenate(pfield_norms)
-    #     ofield_norms = np.concatenate(ofield_norms)
-    #     stokes_norms = np.concatenate(stokes_norms)
-    #     mean_fom_time = np.mean(mean_fom_time)
-    #     mean_rom_time = np.mean(mean_rom_time)
-    #     pfield_abs_errors_new_mus = np.concatenate(pfield_abs_errors_new_mus)
-    #     ofield_abs_errors_new_mus = np.concatenate(ofield_abs_errors_new_mus)
-    #     stokes_abs_errors_new_mus = np.concatenate(stokes_abs_errors_new_mus)
-    #     pfield_rel_errors_new_mus = np.concatenate(pfield_rel_errors_new_mus)
-    #     ofield_rel_errors_new_mus = np.concatenate(ofield_rel_errors_new_mus)
-    #     stokes_rel_errors_new_mus = np.concatenate(stokes_rel_errors_new_mus)
-    #     np.set_printoptions(formatter={"float": "{:.2e}".format}, threshold=sys.maxsize)
-    #     with open(filename, "a") as ff:
-    #         ff.write(
-    #             "tol_pf tol_of tol_st tol_deim_pf tol_deim_of tol_deim_st n_pf n_of n_st n_deim_pf n_deim_of n_deim_st mean_err_pf mean_err_of mean_err_st mean_rel_err_pf mean_rel_err_of mean_rel_err_st mean_err_pf_new mean_err_of_new mean_err_st_new mean_rel_err_pf_new mean_rel_err_of_new mean_rel_err_st_new mean_norm_pf mean_norm_of mean_norm_st\n"
-    #         )
-    #         ff.write(
-    #             ("{} " * 12 + "{:.2e} " * 15 + "\n").format(
-    #                 pfield_atol,
-    #                 ofield_atol,
-    #                 stokes_atol,
-    #                 pfield_deim_atol,
-    #                 ofield_deim_atol,
-    #                 stokes_deim_atol,
-    #                 len(pfield_basis),
-    #                 len(ofield_basis),
-    #                 len(stokes_basis),
-    #                 len(pfield_deim_basis) if pfield_deim_basis else 0,
-    #                 len(ofield_deim_basis) if ofield_deim_basis else 0,
-    #                 len(stokes_deim_basis) if stokes_deim_basis else 0,
-        # print(mean([err for err in pfield_abs_errors if not np.isnan(err)]), flush=True)
-    #                 mean([err for err in ofield_abs_errors if not np.isnan(err)]),
-    #                 mean([err for err in stokes_abs_errors if not np.isnan(err)]),
-    #                 mean([err for err in pfield_rel_errors if not np.isnan(err)]),
-    #                 mean([err for err in ofield_rel_errors if not np.isnan(err)]),
-    #                 mean([err for err in stokes_rel_errors if not np.isnan(err)]),
-    #                 mean([err for err in pfield_abs_errors_new_mus if not np.isnan(err)]),
-    #                 mean([err for err in ofield_abs_errors_new_mus if not np.isnan(err)]),
-    #                 mean([err for err in stokes_abs_errors_new_mus if not np.isnan(err)]),
-    #                 mean([err for err in pfield_rel_errors_new_mus if not np.isnan(err)]),
-    #                 mean([err for err in ofield_rel_errors_new_mus if not np.isnan(err)]),
-    #                 mean([err for err in stokes_rel_errors_new_mus if not np.isnan(err)]),
-    #                 mean([norm for norm in pfield_norms if not np.isnan(norm)]),
-    #                 mean([norm for norm in ofield_norms if not np.isnan(norm)]),
-    #                 mean([norm for norm in stokes_norms if not np.isnan(norm)]),
-    #             )
-    #         )
-    #         ff.write(
-    #             f"\nAbsolute errors for trained mus:\n {pfield_abs_errors}\n {ofield_abs_errors}\n {stokes_abs_errors}\n"
-    #         )
-    #         ff.write(
-    #             f"\nAbsolute errors for new mus:\n {pfield_abs_errors_new_mus}\n {ofield_abs_errors_new_mus}\n {stokes_abs_errors_new_mus}\n"
-    #         )
-    #         ff.write(
-    #             f"\nRelative errors for trained mus:\n {pfield_rel_errors}\n {ofield_rel_errors}\n {stokes_rel_errors}\n"
-    #         )
-    #         ff.write(
-    #             f"\nRelative errors for new mus:\n {pfield_rel_errors_new_mus}\n {ofield_rel_errors_new_mus}\n {stokes_rel_errors_new_mus}\n"
-    #         )
-    #         ff.write(
-    #             f"\nTimings\n {mean_fom_time} vs. {mean_rom_time}, speedup {mean_fom_time/mean_rom_time}\n"
-    #         )
-    #     print(
-    #         "****",
-    #         len(pfield_basis),
-    #         len(ofield_basis),
-    #         len(stokes_basis),
-    #         len(pfield_deim_basis) if pfield_deim_basis is not None else 0,
-    #         len(ofield_deim_basis) if ofield_deim_basis is not None else 0,
-    #         len(stokes_deim_basis) if stokes_deim_basis is not None else 0,
-    #         flush=True,
-    #     )
-    #     print("Trained mus", flush=True)
-    #     print(pfield_rel_errors, flush=True)
-    #     print(ofield_rel_errors, flush=True)
-    #     print(stokes_rel_errors, flush=True)
-    #     print("New mus", flush=True)
-    #     print(pfield_rel_errors_new_mus, flush=True)
-    #     print(ofield_rel_errors_new_mus, flush=True)
-    #     print(stokes_rel_errors_new_mus, flush=True)
-    #     print("Timings", flush=True)
-    #     print(
-    #         f"{mean_fom_time:.2f} vs. {mean_rom_time:.2f}, speedup {mean_fom_time/mean_rom_time:.2f}",
-    #         flush=True,
-    #     )
+    calculate_cellmodel_errors(
+        [pfield_basis, ofield_basis, stokes_basis],
+        [pfield_deim_basis, ofield_deim_basis, stokes_deim_basis],
+        testcase,
+        t_end,
+        dt,
+        grid_size_x,
+        grid_size_y,
+        pol_order,
+        mus[0],
+        u,
+        reductor,
+        mpi,
+        filename,
+        products=products,
+    )
+    calculate_cellmodel_errors(
+        [pfield_basis, ofield_basis, stokes_basis],
+        [pfield_deim_basis, ofield_deim_basis, stokes_deim_basis],
+        testcase,
+        t_end,
+        dt,
+        grid_size_x,
+        grid_size_y,
+        pol_order,
+        new_mus[0],
+        u_new_mu,
+        reductor,
+        mpi,
+        filename,
+        prefix="new ",
+        products=products,
+    )
     mpi.comm_world.Barrier()

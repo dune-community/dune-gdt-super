@@ -3,6 +3,7 @@ from numbers import Number
 import random
 from timeit import default_timer as timer
 import weakref
+from typing import Union
 
 import numpy as np
 from pymor.algorithms.ei import deim
@@ -11,18 +12,17 @@ from pymor.algorithms.projection import project
 from pymor.core.base import abstractmethod
 from pymor.models.interface import Model
 from pymor.operators.constructions import ProjectedOperator, VectorOperator
-from pymor.operators.ei import (
-    EmpiricalInterpolatedOperator,
-    ProjectedEmpiricalInterpolatedOperator,
-)
+from pymor.operators.ei import EmpiricalInterpolatedOperator, ProjectedEmpiricalInterpolatedOperator
 from pymor.operators.interface import Operator
 from pymor.parameters.base import Parameters, ParametricObject
 from pymor.reductors.basic import ProjectionBasedReductor
 from pymor.vectorarrays.block import BlockVectorSpace
 from pymor.vectorarrays.interface import VectorArray
+from pymor.vectorarrays.list import ListVectorArray
 from pymor.vectorarrays.numpy import NumpyVectorArray, NumpyVectorSpace
 
 import gdt.cellmodel
+from hapod.hapod import HapodParameters, local_pod, binary_tree_hapod_over_ranks
 from hapod.xt import DuneXtLaListVectorSpace, DuneXtLaVector
 
 # Parameters are Be, Ca, Pa
@@ -872,20 +872,20 @@ class CellModel(Model):
         pfield_vecarray = self.initial_pfield.as_vector()
         ofield_vecarray = self.initial_ofield.as_vector()
         stokes_vecarray = self.initial_stokes.as_vector()
-
-        if return_stages:
-            pfield_stages = pfield_vecarray.empty()
-            ofield_stages = ofield_vecarray.empty()
-            stokes_stages = stokes_vecarray.empty()
-        if return_residuals:
-            pfield_residuals = pfield_vecarray.empty()
-            ofield_residuals = ofield_vecarray.empty()
-            stokes_residuals = stokes_vecarray.empty()
-
         U_all = self.solution_space.make_array([pfield_vecarray, ofield_vecarray, stokes_vecarray])
 
+        # we do not have stages or residuals for the initial values, so we use empty lists
+        if return_stages:
+            pfield_stages = [pfield_vecarray.empty()]
+            ofield_stages = [ofield_vecarray.empty()]
+            stokes_stages = [stokes_vecarray.empty()]
+        if return_residuals:
+            pfield_residuals = [pfield_vecarray.empty()]
+            ofield_residuals = [ofield_vecarray.empty()]
+            stokes_residuals = [stokes_vecarray.empty()]
+
         i = 0
-        t = 0.
+        t = 0.0
         t_end = self.t_end
         dt = self.dt
         while t < t_end - 1e-14:
@@ -943,13 +943,9 @@ class CellModel(Model):
 
         retval = [U_all, {}]
         if return_stages:
-            retval[1]["pfield_stages"] = pfield_stages
-            retval[1]["ofield_stages"] = ofield_stages
-            retval[1]["stokes_stages"] = stokes_stages
+            retval[1]["stages"] = (pfield_stages, ofield_stages, stokes_stages)
         if return_residuals:
-            retval[1]["pfield_residuals"] = pfield_residuals
-            retval[1]["ofield_residuals"] = ofield_residuals
-            retval[1]["stokes_residuals"] = stokes_residuals
+            retval[1]["residuals"] = (pfield_residuals, ofield_residuals, stokes_residuals)
         return retval
 
     def next_time_step(
@@ -1250,13 +1246,15 @@ class CellModelReductor(ProjectionBasedReductor):
         pfield_deim_basis=None,
         ofield_deim_basis=None,
         stokes_deim_basis=None,
-        products={'pfield': None,
-                  'ofield': None,
-                  'stokes': None},
+        products={"pfield": None, "ofield": None, "stokes": None},
     ):
         bases = {"pfield": pfield_basis, "ofield": ofield_basis, "stokes": stokes_basis}
         super().__init__(
-            fom, bases, check_orthonormality=check_orthonormality, check_tol=check_tol, products=products
+            fom,
+            bases,
+            check_orthonormality=check_orthonormality,
+            check_tol=check_tol,
+            products=products,
         )
         self.__auto_init(locals())
 
@@ -1271,7 +1269,9 @@ class CellModelReductor(ProjectionBasedReductor):
         )
         pfield_op, ofield_op, stokes_op = fom.pfield_op, fom.ofield_op, fom.stokes_op
         if self.pfield_deim_basis:
-            pfield_dofs, pfield_deim_basis, _ = deim(self.pfield_deim_basis, pod=False, product=self.products['pfield'])
+            pfield_dofs, pfield_deim_basis, _ = deim(
+                self.pfield_deim_basis, pod=False, product=self.products["pfield"]
+            )
             pfield_op = EmpiricalInterpolatedOperatorWithFixComponent(
                 pfield_op, pfield_dofs, pfield_deim_basis, False
             )
@@ -1302,7 +1302,9 @@ class CellModelReductor(ProjectionBasedReductor):
                 [pfield_basis, pfield_basis, ofield_basis, stokes_basis],
             )
         if self.ofield_deim_basis:
-            ofield_dofs, ofield_deim_basis, _ = deim(self.ofield_deim_basis, pod=False, product=self.products['ofield'])
+            ofield_dofs, ofield_deim_basis, _ = deim(
+                self.ofield_deim_basis, pod=False, product=self.products["ofield"]
+            )
             ofield_op = EmpiricalInterpolatedOperatorWithFixComponent(
                 ofield_op, ofield_dofs, ofield_deim_basis, False
             )
@@ -1333,7 +1335,9 @@ class CellModelReductor(ProjectionBasedReductor):
                 [ofield_basis, pfield_basis, ofield_basis, stokes_basis],
             )
         if self.stokes_deim_basis:
-            stokes_dofs, stokes_deim_basis, _ = deim(self.stokes_deim_basis, pod=False, product=self.products['stokes'])
+            stokes_dofs, stokes_deim_basis, _ = deim(
+                self.stokes_deim_basis, pod=False, product=self.products["stokes"]
+            )
             stokes_op = EmpiricalInterpolatedOperatorWithFixComponent(
                 stokes_op, stokes_dofs, stokes_deim_basis, False
             )
@@ -1458,7 +1462,20 @@ def create_and_scatter_cellmodel_parameters(
 
 
 def calculate_cellmodel_trajectory_errors(
-    modes, deim_modes, testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu, U_rom, products
+    modes,
+    deim_modes,
+    testcase,
+    t_end,
+    dt,
+    grid_size_x,
+    grid_size_y,
+    pol_order,
+    mu,
+    u_rom,
+    reductor,
+    products,
+    U,
+    residuals,
 ):
     proj_errs = [0.0] * len(modes)
     errs = [0.0] * len(modes)
@@ -1466,103 +1483,102 @@ def calculate_cellmodel_trajectory_errors(
     # modes has length 2*num_cells+1
     num_cells = (len(modes) - 1) // 2
     assert num_cells == 1, "Not tested for more than 1 cell, most likely there are errors!"
-    solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu)
-    cellmodel = DuneCellModel(solver)
-    current_values = cellmodel.initial_values.copy()
+    if U is None:
+        solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu)
+        cellmodel = DuneCellModel(solver)
+        current_values = cellmodel.initial_values.copy()
+    else:
+        current_values = U[0]
     n = 0
-    n_deim_pf = 0
-    n_deim_of = 0
-    n_deim_st = 0
-    t = 0.
+    n_deim = [0] * 3
+    t = 0.0
     timestep_residuals = None
     while True:
         # POD basis errors
-        for k in range(num_cells):
-            proj_res = current_values.block(k) - modes[k].lincomb(
-                current_values.block(k).inner(modes[k], product=products[0])
+        U_rom = reductor.reconstruct(u_rom[n])
+        # pfield
+        for i in range(3):
+            proj_res = current_values.block(i) - modes[i].lincomb(
+                current_values.block(i).inner(modes[i], product=products[i])
             )
-            proj_errs[k] += np.sum(proj_res.pairwise_inner(proj_res, product=products[0]))
-            res = current_values.block(k) - U_rom.block(k)[n]
-            errs[k] += np.sum(res.pairwise_inner(res, product=products[0]))
-            proj_res = current_values.block(num_cells + k) - modes[num_cells + k].lincomb(
-                current_values.block(num_cells + k).inner(modes[num_cells + k], product=products[1])
-            )
-            proj_errs[num_cells + k] += np.sum(proj_res.pairwise_inner(proj_res, product=products[1]))
-            res = current_values.block(num_cells + k) - U_rom.block(num_cells + k)[n]
-            errs[num_cells + k] += np.sum(res.pairwise_inner(res, product=products[1]))
-        proj_res = current_values.block(2 * num_cells) - modes[2 * num_cells].lincomb(
-            current_values.block(2 * num_cells).inner(modes[2 * num_cells], product=products[2])
-        )
-        proj_errs[2 * num_cells] += np.sum(proj_res.pairwise_inner(proj_res, product=products[2]))
-        res = current_values.block(2*num_cells) - U_rom.block(2*num_cells)[n]
-        errs[2*num_cells] += np.sum(res.pairwise_inner(res, product=products[2]))
-        n += 1
+            proj_errs[i] += np.sum(proj_res.pairwise_inner(proj_res, product=products[i]))
+            res = current_values.block(i) - U_rom.block(i)
+            errs[i] += np.sum(res.pairwise_inner(res, product=products[i]))
         # DEIM basis errors
         if timestep_residuals is not None:
-            for k in range(num_cells):
-                if deim_modes[k] is not None:
-                    proj_res = timestep_residuals[k] - deim_modes[k].lincomb(
-                            timestep_residuals[k].inner(deim_modes[k], product=products[0])
-                            )
-                    proj_deim_errs[k] += np.sum(proj_res.pairwise_inner(proj_res, product=products[0]))
-                    n_deim_pf += len(proj_res)
-                if deim_modes[num_cells+k] is not None:
-                    proj_res = timestep_residuals[num_cells + k] - deim_modes[num_cells + k].lincomb(
-                        timestep_residuals[num_cells + k].inner(deim_modes[num_cells + k], product=products[1])
+            for i in range(3):
+                deim_res = timestep_residuals[i][n] if U is not None else timestep_residuals[i]
+                if deim_modes[i] is not None:
+                    proj_res = deim_res - deim_modes[i].lincomb(
+                        deim_res.inner(deim_modes[i], product=products[i])
                     )
-                    proj_deim_errs[num_cells + k] += np.sum(proj_res.pairwise_inner(proj_res, product=products[1]))
-                    n_deim_of += len(proj_res)
-            if deim_modes[2*num_cells] is not None:
-                proj_res = timestep_residuals[2 * num_cells] - deim_modes[2 * num_cells].lincomb(
-                    timestep_residuals[2 * num_cells].inner(deim_modes[2 * num_cells], product=products[2])
-                )
-                proj_deim_errs[2 * num_cells] += np.sum(proj_res.pairwise_inner(proj_res, product=products[2]))
-                n_deim_st += len(proj_res)
-        current_values, t, timestep_residuals = cellmodel.next_time_step(
-                    current_values,
-                    t,
-                    mu=mu,
-                    return_stages=False,
-                    return_residuals=True,
-                )
-        if current_values is None:
-            break
-
-        #     res = next_vectors[k] - modes[k].lincomb(
-        #         next_vectors[k].inner(solver.apply_pfield_product_operator(modes[k]))
-        #     )
-        #     errs[k] += np.sum(res.pairwise_inner(solver.apply_pfield_product_operator(res)))
-        #     res = next_vectors[nc + k] - modes[nc + k].lincomb(
-        #         next_vectors[nc + k].inner(solver.apply_ofield_product_operator(modes[nc + k]))
-        #     )
-        #     errs[nc + k] += np.sum(res.pairwise_inner(solver.apply_ofield_product_operator(res)))
-        # res = next_vectors[2 * nc] - modes[2 * nc].lincomb(
-        #     next_vectors[2 * nc].inner(solver.apply_stokes_product_operator(modes[2 * nc]))
-        # )
-        # errs[2 * nc] += np.sum(res.pairwise_inner(solver.apply_stokes_product_operator(res)))
-    return proj_errs, proj_deim_errs, errs, n, n_deim_pf, n_deim_of, n_deim_st
+                    proj_deim_errs[i] += np.sum(
+                        proj_res.pairwise_inner(proj_res, product=products[i])
+                    )
+                    n_deim[i] += len(proj_res)
+        # get values for next time step
+        n += 1
+        if U is None:
+            current_values, t, timestep_residuals = cellmodel.next_time_step(
+                current_values, t, mu=mu, return_stages=False, return_residuals=True
+            )
+            if current_values is None:
+                break
+        else:
+            if n < len(U):
+                current_values = U[n]
+                timestep_residuals = residuals
+            else:
+                break
+    return proj_errs, proj_deim_errs, errs, n, n_deim
 
 
 def calculate_mean_cellmodel_projection_errors(
-    modes, deim_modes, testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu, U_rom, mpi_wrapper, products
+    modes,
+    deim_modes,
+    testcase,
+    t_end,
+    dt,
+    grid_size_x,
+    grid_size_y,
+    pol_order,
+    mu,
+    u_rom,
+    reductor,
+    mpi_wrapper,
+    products,
+    U,
+    residuals,
 ):
-    trajectory_errs, deim_trajector_errs, red_trajectory_errs, num_snapshots, num_residuals_pf, num_residuals_of, num_residuals_st = calculate_cellmodel_trajectory_errors(
-        modes, deim_modes, testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu, U_rom, products
+    trajectory_errs, deim_trajector_errs, red_trajectory_errs, num_snapshots, num_residuals = calculate_cellmodel_trajectory_errors(
+        modes,
+        deim_modes,
+        testcase,
+        t_end,
+        dt,
+        grid_size_x,
+        grid_size_y,
+        pol_order,
+        mu,
+        u_rom,
+        reductor,
+        products,
+        U,
+        residuals,
     )
     print(f"Trajectory errors: {trajectory_errs}")
     proj_errs = [0.0] * len(modes)
     proj_deim_errs = proj_errs.copy()
     red_errs = [0.0] * len(modes)
     num_snapshots = mpi_wrapper.comm_world.gather(num_snapshots, root=0)
-    num_residuals_pf = mpi_wrapper.comm_world.gather(num_residuals_pf, root=0)
-    num_residuals_of = mpi_wrapper.comm_world.gather(num_residuals_of, root=0)
-    num_residuals_st = mpi_wrapper.comm_world.gather(num_residuals_st, root=0)
+    # num_residuals_list is a list of lists. The inner lists have length 3 and contain the number of residuals for each field on that rank
+    num_residuals_list = mpi_wrapper.comm_world.gather(num_residuals, root=0)
     if mpi_wrapper.rank_world == 0:
         num_snapshots = np.sum(num_snapshots)
-        num_residuals_pf = np.sum(num_residuals_pf)
-        num_residuals_of = np.sum(num_residuals_of)
-        num_residuals_st = np.sum(num_residuals_st)
-        print(num_snapshots, num_residuals_pf, num_residuals_of, num_residuals_st)
+        num_residuals = [0] * 3
+        for i in range(3):
+            num_residuals[i] = sum(nums[i] for nums in num_residuals_list)
+        print(num_snapshots, num_residuals)
     for index, trajectory_err in enumerate(trajectory_errs):
         trajectory_err = mpi_wrapper.comm_world.gather(trajectory_err, root=0)
         if mpi_wrapper.rank_world == 0:
@@ -1571,13 +1587,10 @@ def calculate_mean_cellmodel_projection_errors(
         red_err = mpi_wrapper.comm_world.gather(red_err, root=0)
         if mpi_wrapper.rank_world == 0:
             red_errs[index] = np.sqrt(np.sum(red_err) / num_snapshots)
-    pf_err = mpi_wrapper.comm_world.gather(deim_trajector_errs[0], root=0)
-    of_err = mpi_wrapper.comm_world.gather(deim_trajector_errs[1], root=0)
-    st_err = mpi_wrapper.comm_world.gather(deim_trajector_errs[2], root=0)
-    if mpi_wrapper.rank_world == 0:
-        proj_deim_errs[0] = np.sqrt(np.sum(pf_err) / num_residuals_pf)
-        proj_deim_errs[1] = np.sqrt(np.sum(of_err) / num_residuals_of)
-        proj_deim_errs[2] = np.sqrt(np.sum(st_err) / num_residuals_st)
+    for i in range(3):
+        err = mpi_wrapper.comm_world.gather(deim_trajector_errs[i], root=0)
+        if mpi_wrapper.rank_world == 0:
+            proj_deim_errs[i] = np.sqrt(np.sum(err) / num_residuals[i])
     return proj_errs, proj_deim_errs, red_errs
 
 
@@ -1591,17 +1604,34 @@ def calculate_cellmodel_errors(
     grid_size_y,
     pol_order,
     mu,
-    U_rom,
+    u_rom,
+    reductor,
     mpi_wrapper,
     logfile_name=None,
     prefix="",
-    products=[None]*3,
+    products=[None] * 3,
+    U=None,
+    residuals=None,
 ):
     """Calculates projection error. As we cannot store all snapshots due to memory restrictions, the
     problem is solved again and the error calculated on the fly"""
     start = timer()
     errs, deim_errs, red_errs = calculate_mean_cellmodel_projection_errors(
-        modes, deim_modes, testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu, U_rom, mpi_wrapper, products=products
+        modes,
+        deim_modes,
+        testcase,
+        t_end,
+        dt,
+        grid_size_x,
+        grid_size_y,
+        pol_order,
+        mu,
+        u_rom,
+        reductor,
+        mpi_wrapper,
+        products=products,
+        U=U,
+        residuals=residuals,
     )
     elapsed = timer() - start
     if mpi_wrapper.rank_world == 0 and logfile_name is not None:
@@ -1610,17 +1640,41 @@ def calculate_cellmodel_errors(
             nc = (len(modes) - 1) // 2
             print(errs, deim_errs, red_errs)
             for k in range(nc):
-                logfile.write("{}L2 projection error for {}-th pfield is: {}\n".format(prefix, k, errs[k]))
-                logfile.write("{}L2 projection error for {}-th ofield is: {}\n".format(prefix, k, errs[nc + k]))
+                logfile.write(
+                    "{}L2 projection error for {}-th pfield is: {}\n".format(prefix, k, errs[k])
+                )
+                logfile.write(
+                    "{}L2 projection error for {}-th ofield is: {}\n".format(
+                        prefix, k, errs[nc + k]
+                    )
+                )
             logfile.write("{}L2 projection error for stokes is: {}\n".format(prefix, errs[2 * nc]))
-            logfile.write("{}L2 projection DEIM error for {}-th pfield is: {}\n".format(prefix, 0, deim_errs[0]))
-            logfile.write("{}L2 projection DEIM error for {}-th ofield is: {}\n".format(prefix, 0, deim_errs[1]))
-            logfile.write("{}L2 projection DEIM error for stokes is: {}\n".format(prefix, deim_errs[2]))
+            logfile.write(
+                "{}L2 projection DEIM error for {}-th pfield is: {}\n".format(
+                    prefix, 0, deim_errs[0]
+                )
+            )
+            logfile.write(
+                "{}L2 projection DEIM error for {}-th ofield is: {}\n".format(
+                    prefix, 0, deim_errs[1]
+                )
+            )
+            logfile.write(
+                "{}L2 projection DEIM error for stokes is: {}\n".format(prefix, deim_errs[2])
+            )
             for k in range(nc):
-                logfile.write("{}L2 reduction error for {}-th pfield is: {}\n".format(prefix, k, red_errs[k]))
-                logfile.write("{}L2 reduction error for {}-th ofield is: {}\n".format(prefix, k, red_errs[nc+k]))
-            logfile.write("{}L2 reduction error for {}-th stokes is: {}\n".format(prefix, k, red_errs[2*nc]))
-                # logfile.write("{}L2 reduction error for {}-th ofield is: {}\n".format(prefix, k, red_errs[nc + k]))
+                logfile.write(
+                    "{}L2 reduction error for {}-th pfield is: {}\n".format(prefix, k, red_errs[k])
+                )
+                logfile.write(
+                    "{}L2 reduction error for {}-th ofield is: {}\n".format(
+                        prefix, k, red_errs[nc + k]
+                    )
+                )
+            logfile.write(
+                "{}L2 reduction error for {}-th stokes is: {}\n".format(prefix, k, red_errs[2 * nc])
+            )
+            # logfile.write("{}L2 reduction error for {}-th ofield is: {}\n".format(prefix, k, red_errs[nc + k]))
             # logfile.write("{}L2 reduction error for stokes is: {}\n".format(prefix, red_errs[2 * nc]))
     return errs
 
@@ -1633,7 +1687,18 @@ def get_num_chunks_and_num_timesteps(t_end, dt, chunk_size):
     assert 1 <= last_chunk_size <= chunk_size
     return num_chunks, num_time_steps
 
-def create_parameters(train_params_per_rank, test_params_per_rank, rf, mpi, excluded_param, Be0=1.0, Ca0=1.0, Pa0=1.0):
+
+def create_parameters(
+    train_params_per_rank,
+    test_params_per_rank,
+    rf,
+    mpi,
+    excluded_param,
+    filename=None,
+    Be0=1.0,
+    Ca0=1.0,
+    Pa0=1.0,
+):
     # Be0, Ca0 and Pa0 are default values for parameters
     ####### Create training parameters ######
     num_train_params = train_params_per_rank * mpi.size_world
@@ -1704,6 +1769,14 @@ def create_parameters(train_params_per_rank, test_params_per_rank, rf, mpi, excl
                 else random.uniform(lower_bound_Ca, upper_bound_Ca),
             }
         )
+    ############ write mus to file #################
+    if filename is not None:
+        if mpi.rank_world == 0:
+            with open(filename, "w") as ff:
+                ff.write(
+                    f"{filename}\nTrained with {len(mus)} Parameters: {mus}\n"
+                    f"Tested with {len(new_mus)} new Parameters: {new_mus}\n"
+                )
     ####### Scatter parameters to MPI ranks #######
     # Transform mus and new_mus from plain list to list of lists where the i-th inner list contains all parameters for rank i
     mus = np.reshape(np.array(mus), (mpi.size_world, train_params_per_rank)).tolist()
@@ -1712,3 +1785,103 @@ def create_parameters(train_params_per_rank, test_params_per_rank, rf, mpi, excl
     print(f"Mu on rank {mpi.rank_world}: {mus}")
     new_mus = mpi.comm_world.scatter(new_mus, root=0)
     return mus, new_mus
+
+
+def solver_statistics(t_end: float, dt: float, chunk_size: int):
+    num_time_steps = math.ceil(t_end / dt) + 1.0
+    num_chunks = int(math.ceil(num_time_steps / chunk_size))
+    last_chunk_size = num_time_steps - chunk_size * (num_chunks - 1)
+    assert num_chunks >= 2
+    assert 1 <= last_chunk_size <= chunk_size
+    return num_chunks, num_time_steps
+
+
+class BinaryTreeHapodResults:
+    def __init__(self, tree_depth, epsilon_ast, omega):
+        self.params = HapodParameters(tree_depth, epsilon_ast=epsilon_ast, omega=omega)
+        self.modes = None
+        self.svals = None
+        self.num_modes: Union[list[int], int, None] = 0
+        self.max_local_modes: Union[list[int], int, None] = 0
+        self.max_vectors_before_pod: Union[list[int], int, None] = 0
+        self.total_num_snapshots: Union[list[int], int, None] = 0
+        self.orth_tol: float = 0.0
+        self.final_orth_tol: float = 0.0
+        self.gathered_modes = None
+        self.num_snaps = 0
+        self.timings = {}
+        self.incremental_gramian = False
+
+
+# Performs a POD on each processor core with the data vectors computed on that core,
+# then sends resulting (scaled) modes to rank 0 on that processor.
+# The resulting modes are stored in results.gathered_modes on processor rank 0
+# results.num_snaps (on rank 0) contains the total number of snapshots
+# that have been processed (on all ranks)
+def pods_on_processor_cores_in_binary_tree_hapod(r, vecs, mpi, root, product):
+    assert isinstance(vecs, ListVectorArray)
+    print("start processor pod: ", mpi.rank_world)
+    snaps_on_rank = len(vecs)
+    r.max_vectors_before_pod = max(r.max_vectors_before_pod, snaps_on_rank)
+    vecs, svals = local_pod(
+        [vecs],
+        snaps_on_rank,
+        r.params,
+        product=product,
+        incremental_gramian=False,
+        orth_tol=r.orth_tol,
+    )
+    r.max_local_modes = max(r.max_local_modes, len(vecs))
+    vecs.scal(svals)
+    r.gathered_modes, _, r.num_snaps, _ = mpi.comm_proc.gather_on_root_rank(
+        vecs, num_snapshots_on_rank=snaps_on_rank, num_modes_equal=False, root=root
+    )
+
+
+# perform a POD with gathered modes on rank 0 on each processor/node
+def pod_on_node_in_binary_tree_hapod(r, chunk_index, num_chunks, mpi, root, product):
+    print("start node pod: ", mpi.rank_world)
+    r.total_num_snapshots += r.num_snaps
+    if chunk_index == 0:
+        r.max_vectors_before_pod = max(r.max_vectors_before_pod, len(r.gathered_modes))
+        r.modes, r.svals = local_pod(
+            [r.gathered_modes], r.num_snaps, r.params, product=product, orth_tol=r.orth_tol
+        )
+    else:
+        r.max_vectors_before_pod = max(
+            r.max_vectors_before_pod, len(r.modes) + len(r.gathered_modes)
+        )
+        root_of_tree = chunk_index == num_chunks - 1 and mpi.size_rank_group[root] == 1
+        r.modes, r.svals = local_pod(
+            [[r.modes, r.svals], r.gathered_modes],
+            r.total_num_snapshots,
+            r.params,
+            orth_tol=r.final_orth_tol if root_of_tree else r.orth_tol,
+            incremental_gramian=r.incremental_gramian,
+            product=product,
+            root_of_tree=root_of_tree,
+        )
+    r.max_local_modes = max(r.max_local_modes, len(r.modes))
+
+
+def final_hapod_in_binary_tree_hapod(r, mpi, root, product):
+    print("start final pod: ", mpi.rank_world)
+    (
+        r.modes,
+        r.svals,
+        r.total_num_snapshots,
+        max_num_input_vecs,
+        max_num_local_modes,
+    ) = binary_tree_hapod_over_ranks(
+        mpi.comm_rank_group[root],
+        r.modes,
+        r.total_num_snapshots,
+        r.params,
+        svals=r.svals,
+        last_hapod=True,
+        incremental_gramian=r.incremental_gramian,
+        product=product,
+        orth_tol=r.final_orth_tol,
+    )
+    r.max_vectors_before_pod = max(r.max_vectors_before_pod, max_num_input_vecs)
+    r.max_local_modes = max(r.max_local_modes, max_num_local_modes)

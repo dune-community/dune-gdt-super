@@ -121,12 +121,7 @@ def local_pod(
         for i in range(len(inputs)):
             modes.append(inputs[i][0])
         return pod(
-            modes,
-            product=product,
-            atol=0.0,
-            rtol=0.0,
-            l2_err=epsilon_alpha,
-            orth_tol=orth_tol,
+            modes, product=product, atol=0.0, rtol=0.0, l2_err=epsilon_alpha, orth_tol=orth_tol
         )
 
 

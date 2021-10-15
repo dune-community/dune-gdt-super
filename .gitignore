@@ -34,3 +34,5 @@ profiling_results*
 rom_grid*
 rom_*procs_*
 .vimspector.json
+results_*
+pickle_*
