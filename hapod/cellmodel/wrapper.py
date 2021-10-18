@@ -3,7 +3,7 @@ from numbers import Number
 import random
 from timeit import default_timer as timer
 import weakref
-from typing import Union
+from typing import Union, Any
 
 import numpy as np
 from pymor.algorithms.ei import deim
@@ -849,6 +849,21 @@ class CellModel(Model):
         name=None,
     ):
         self.__auto_init(locals())
+        # self.t_end = t_end
+        # self.dt = dt
+        # self.pfield_op = pfield_op
+        # self.ofield_op = ofield_op
+        # self.stokes_op = stokes_op
+        # self.initial_pfield = initial_pfield
+        # self.initial_ofield = initial_ofield
+        # self.initial_stokes = initial_stokes
+        # self.newton_params_pfield = newton_params_pfield
+        # self.newton_params_ofield = newton_params_ofield
+        # self.newton_params_stokes = newton_params_stokes
+        # self.least_squares_pfield = least_squares_pfield
+        # self.least_squares_ofield = least_squares_ofield
+        # self.least_squares_stokes = least_squares_stokes
+        # self.name = name
         self.solution_space = BlockVectorSpace(
             [
                 pfield_op.source.subspaces[0],
@@ -875,22 +890,18 @@ class CellModel(Model):
         U_all = self.solution_space.make_array([pfield_vecarray, ofield_vecarray, stokes_vecarray])
 
         # we do not have stages or residuals for the initial values, so we use empty lists
-        if return_stages:
-            pfield_stages = [pfield_vecarray.empty()]
-            ofield_stages = [ofield_vecarray.empty()]
-            stokes_stages = [stokes_vecarray.empty()]
-        if return_residuals:
-            pfield_residuals = [pfield_vecarray.empty()]
-            ofield_residuals = [ofield_vecarray.empty()]
-            stokes_residuals = [stokes_vecarray.empty()]
+        pfield_stages = [pfield_vecarray.empty()]
+        ofield_stages = [ofield_vecarray.empty()]
+        stokes_stages = [stokes_vecarray.empty()]
+        pfield_residuals = [pfield_vecarray.empty()]
+        ofield_residuals = [ofield_vecarray.empty()]
+        stokes_residuals = [stokes_vecarray.empty()]
 
         i = 0
         t = 0.0
-        t_end = self.t_end
-        dt = self.dt
-        while t < t_end - 1e-14:
+        while t < self.t_end - 1e-14:
             # match saving times and t_end_ exactly
-            actual_dt = min(dt, t_end - t)
+            actual_dt = min(self.dt, self.t_end - t)
             # do a timestep
             print("Current time: {}".format(t))
             pfield_vecarray, pfield_data = newton(
@@ -955,27 +966,17 @@ class CellModel(Model):
 
         pfield_vecs, ofield_vecs, stokes_vecs = U_last._blocks
 
-        if return_stages:
-            pfield_stages = pfield_vecs.empty()
-            ofield_stages = ofield_vecs.empty()
-            stokes_stages = stokes_vecs.empty()
-        if return_residuals:
-            pfield_residuals = pfield_vecs.empty()
-            ofield_residuals = ofield_vecs.empty()
-            stokes_residuals = stokes_vecs.empty()
-
         t_end = self.pfield_op.solver.t_end
-        dt = self.pfield_op.solver.dt
         if t > t_end - 1e-14:
-            retval = [None, t_end]
+            retval = [None, {"t": t_end}]
             if return_stages:
-                retval.append((None, None, None))
+                retval[1]["stages"] = (None, None, None)
             if return_residuals:
-                retval.append((None, None, None))
+                retval[1]["residuals"] = (None, None, None)
             return tuple(retval)
 
         # do not go past t_end
-        actual_dt = min(dt, t_end - t)
+        actual_dt = min(self.pfield_op.solver.dt, t_end - t)
         # do a timestep
         print("Current time: {}".format(t))
         pfield_vecs, pfield_data = newton(
@@ -1011,21 +1012,13 @@ class CellModel(Model):
         t += actual_dt
         U = self.solution_space.make_array([pfield_vecs, ofield_vecs, stokes_vecs])
 
+        retval = [U, {'t': t}]
         if return_stages:
-            pfield_stages.append(pfield_data["stages"])
-            ofield_stages.append(ofield_data["stages"])
-            stokes_stages.append(stokes_data["stages"])
+            retval[1]["stages"] = (pfield_data["stages"], ofield_data["stages"], stokes_data["stages"])
         if return_residuals:
-            pfield_residuals.append(pfield_data["residuals"])
-            ofield_residuals.append(ofield_data["residuals"])
-            stokes_residuals.append(stokes_data["residuals"])
-
-        retval = [U, t]
-        if return_stages:
-            retval.append((pfield_stages, ofield_stages, stokes_stages))
-        if return_residuals:
-            retval.append((pfield_residuals, ofield_residuals, stokes_residuals))
+            retval[1]["residuals"] = (pfield_data["residuals"], ofield_data["residuals"], stokes_data["residuals"])
         return retval
+
 
 
 class DuneCellModel(CellModel):
@@ -1045,14 +1038,14 @@ class DuneCellModel(CellModel):
         self.dt = solver.dt
         self.t_end = solver.t_end
         super().__init__(
-            self.dt,
-            self.t_end,
-            pfield_op,
-            ofield_op,
-            stokes_op,
-            initial_pfield,
-            initial_ofield,
-            initial_stokes,
+            t_end = self.t_end,
+            dt = self.dt,
+            pfield_op=pfield_op,
+            ofield_op=ofield_op,
+            stokes_op=stokes_op,
+            initial_pfield=initial_pfield,
+            initial_ofield=initial_ofield,
+            initial_stokes=initial_stokes,
             newton_params_pfield=NEWTON_PARAMS,
             newton_params_ofield=NEWTON_PARAMS,
             newton_params_stokes=NEWTON_PARAMS,
@@ -1519,9 +1512,11 @@ def calculate_cellmodel_trajectory_errors(
         # get values for next time step
         n += 1
         if U is None:
-            current_values, t, timestep_residuals = cellmodel.next_time_step(
+            current_values, data = cellmodel.next_time_step(
                 current_values, t, mu=mu, return_stages=False, return_residuals=True
             )
+            t = data["t"]
+            timestep_residuals = data["residuals"]
             if current_values is None:
                 break
         else:
@@ -1799,7 +1794,7 @@ def solver_statistics(t_end: float, dt: float, chunk_size: int):
 class BinaryTreeHapodResults:
     def __init__(self, tree_depth, epsilon_ast, omega):
         self.params = HapodParameters(tree_depth, epsilon_ast=epsilon_ast, omega=omega)
-        self.modes = None
+        self.modes: Union[ListVectorArray, NumpyVectorArray, None] = None
         self.svals = None
         self.num_modes: Union[list[int], int, None] = 0
         self.max_local_modes: Union[list[int], int, None] = 0
@@ -1811,6 +1806,7 @@ class BinaryTreeHapodResults:
         self.num_snaps = 0
         self.timings = {}
         self.incremental_gramian = False
+        self.win: Any = None
 
 
 # Performs a POD on each processor core with the data vectors computed on that core,

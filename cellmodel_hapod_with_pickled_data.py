@@ -204,7 +204,7 @@ if __name__ == "__main__":
     ###### Choose filename #########
     filename = "results_pickled_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_without{}_pfield{}_ofield{}_stokes{}.txt".format(
         mpi.size_world,
-        "fvproduct" if use_L2_product is not None else "noproduct",
+        "L2product" if use_L2_product is not None else "noproduct",
         grid_size_x,
         grid_size_y,
         t_end,

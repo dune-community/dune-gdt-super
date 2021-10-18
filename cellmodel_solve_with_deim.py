@@ -1,14 +1,13 @@
-import cProfile
+# import cProfile
 import random
 import resource
-from statistics import mean
 import sys
-import time
+# import time
 from timeit import default_timer as timer
+from typing import Dict, Union, Any
 
 import numpy as np
-from pymor.vectorarrays.list import ListVectorArray
-from rich import pretty, print, traceback
+from rich import pretty, traceback
 
 from hapod.cellmodel.wrapper import (
     BinaryTreeHapodResults,
@@ -36,29 +35,30 @@ pretty.install()
 
 
 def binary_tree_hapod(
-    cellmodel,
-    mus,
-    chunk_size,
-    mpi,
-    tolerances,
-    indices,
-    include_newton_stages=False,
-    omega=0.95,
-    return_snapshots=False,
-    return_newton_residuals=False,
-    incremental_gramian=False,
-    orth_tol=np.inf,
+    cellmodel: CellModel,
+    mus: "list[Dict[str, float]]",
+    chunk_size: int,
+    mpi: MPIWrapper,
+    tolerances: "list[float]",
+    indices: "list[int]",
+    include_newton_stages: bool = False,
+    omega: float = 0.95,
+    return_snapshots: bool = False,
+    return_newton_residuals: bool = False,
+    incremental_gramian: bool = False,
+    orth_tol: float = np.inf,
     # orth_tol=1e-10,
-    final_orth_tol=1e-10,
-    logfile=None,
-    products=None,
+    final_orth_tol: float = 1e-10,
+    logfile: Union[None, str] = None,
+    products: "list[Any]" = [None]*6,
 ):
 
-    assert isinstance(cellmodel, CellModel)
-    assert isinstance(mpi, MPIWrapper)
     assert len(tolerances) == 6
-    assert len(pod_indices) <= 3
-    assert len(deim_indices) <= 3
+    assert len(indices) <= 6
+    assert 0 <= omega <= 1
+    assert orth_tol >= 0
+    assert final_orth_tol >= 0
+    assert len(products) == 6
 
     # setup timings
     timings = {}
@@ -86,15 +86,15 @@ def binary_tree_hapod(
     # store initial values
     space = cellmodel.solution_space
     current_values = [cellmodel.initial_values.copy() for _ in range(len(mus))]
+    U = [space.empty() for _ in range(len(mus))]
+    U_res = [tuple(space.subspaces[i].empty() for i in range(3)) for _ in range(len(mus))]
     if return_snapshots:
-        U = [space.empty() for _ in range(len(mus))]
         for p in range(len(mus)):
             U[p].append(current_values[p])
-    if return_newton_residuals:
-        U_res = [tuple(space.subspaces[i].empty() for i in range(3)) for _ in range(len(mus))]
     # walk over time chunks
     # currently, all parameters have to use the same timestep length in all time steps
     old_t = 0.0
+    t = 0.0
     for chunk_index in range(num_chunks):
         new_vecs = [space.subspaces[i % 3].empty() for i in range(6)]
         # walk over parameters
@@ -103,12 +103,13 @@ def binary_tree_hapod(
             mu = mus[p]
             # If this is the first time step, add initial values ...
             if chunk_index == 0:
+                pod_indices = indices[0:3]
                 for k in pod_indices:
                     new_vecs[k].append(current_values[p]._blocks[k])
             # ... and do one timestep less to ensure that chunk has size chunk_size
             for time_index in range(chunk_size - 1 if chunk_index == 0 else chunk_size):
                 t1 = timer()
-                retval = cellmodel.next_time_step(
+                current_values[p], data = cellmodel.next_time_step(
                     current_values[p],
                     t,
                     mu=mu,
@@ -116,10 +117,9 @@ def binary_tree_hapod(
                     return_residuals=True,
                 )
                 timings["data"] += timer() - t1
-                current_values[p], t, *retval = retval
+                t = data["t"]
                 if include_newton_stages:
-                    timestep_stages, *retval = retval
-                timestep_residuals, *retval = retval
+                    timestep_stages = data["stages"]
                 # check if we are finished (if time == t_end, cellmodel.next_time_step returns None)
                 if current_values[p] is None:
                     assert chunk_index == num_chunks - 1
@@ -128,6 +128,7 @@ def binary_tree_hapod(
                 # store data (if requested)
                 if return_snapshots:
                     U[p].append(current_values[p])
+                timestep_residuals = data["residuals"]
                 if return_newton_residuals:
                     for q in range(3):
                         U_res[p][q].append(timestep_residuals[q])
@@ -163,7 +164,6 @@ def binary_tree_hapod(
             timings[f"POD{k}"] += timer() - t1
 
     # Finally, perform a HAPOD over a binary tree of nodes
-    r.num_modes = [0] * 6
     for k in indices:
         root_rank = k % mpi.size_proc
         r = results[k]
@@ -173,11 +173,12 @@ def binary_tree_hapod(
             timings[f"POD{k}"] += timer() - t1
 
         # calculate max number of local modes
-        r.max_vectors_before_pod = mpi.comm_world.gather(r.max_vectors_before_pod, root=0)
-        r.max_local_modes = mpi.comm_world.gather(r.max_local_modes, root=0)
-        r.num_modes = mpi.comm_world.gather(len(r.modes) if r.modes is not None else 0, root=0)
-        r.total_num_snapshots = mpi.comm_world.gather(r.total_num_snapshots, root=0)
-        gathered_timings = mpi.comm_world.gather(timings, root=0)
+        # The 'or [0]' is only here to silence pyright which otherwise complains below that we cannot apply max to None
+        r.max_vectors_before_pod = mpi.comm_world.gather(r.max_vectors_before_pod, root=0) or [0]
+        r.max_local_modes = mpi.comm_world.gather(r.max_local_modes, root=0) or [0]
+        r.num_modes = mpi.comm_world.gather(len(r.modes) if r.modes is not None else 0, root=0) or [0]
+        r.total_num_snapshots = mpi.comm_world.gather(r.total_num_snapshots, root=0) or [0]
+        gathered_timings = mpi.comm_world.gather(timings, root=0) or [0]
         if mpi.rank_world == 0:
             r.max_vectors_before_pod = max(r.max_vectors_before_pod)
             r.max_local_modes = max(r.max_local_modes)
@@ -244,14 +245,13 @@ if __name__ == "__main__":
     least_squares_pfield = True
     least_squares_ofield = True
     least_squares_stokes = True
-    # products = [CellModelPfieldProductOperator(solver), CellModelOfieldProductOperator(solver), CellModelStokesProductOperator(solver)]*2
-    products = [None] * 6
     excluded_param = "Be"
+    use_L2_product = True
 
     ###### Choose filename #########
     filename = "results_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_without{}_pfield{}_ofield{}_stokes{}.txt".format(
         mpi.size_world,
-        "fvproduct" if products[0] is not None else "noproduct",
+        "L2product" if use_L2_product is not None else "noproduct",
         grid_size_x,
         grid_size_y,
         t_end,
@@ -318,7 +318,11 @@ if __name__ == "__main__":
     m = DuneCellModel(solver)
 
     ################### Start HAPOD #####################
-
+    if use_L2_product:
+        solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])
+        products = [CellModelPfieldProductOperator(solver), CellModelOfieldProductOperator(solver), CellModelStokesProductOperator(solver)]*2
+    else:
+        products = [None] * 6
     Us, _, results = binary_tree_hapod(
         m,
         mus,

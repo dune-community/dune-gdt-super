@@ -35,4 +35,4 @@ rom_grid*
 rom_*procs_*
 .vimspector.json
 results_*
-pickle_*
+*.pickle

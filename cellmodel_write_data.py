@@ -2,14 +2,69 @@ import pickle
 import random
 import sys
 from timeit import default_timer as timer
+from typing import Dict
 
 from rich import pretty, traceback
 
-from hapod.cellmodel.wrapper import CellModelSolver, DuneCellModel, create_parameters
+from hapod.cellmodel.wrapper import (
+    CellModelSolver,
+    DuneCellModel,
+    create_parameters,
+    solver_statistics,
+)
 from hapod.mpi import MPIWrapper
 
 traceback.install()
 pretty.install()
+
+
+def solve_and_pickle(mu: Dict[str, float], m: DuneCellModel, chunk_size: int, prefix: str):
+    num_chunks, _ = solver_statistics(t_end=m.t_end, dt=m.dt, chunk_size=chunk_size)
+    current_values = m.initial_values.copy()
+    space = m.solution_space
+    t = 0.0
+    elapsed = 0.0
+    for chunk_index in range(num_chunks):
+        filename = (
+            f"{prefix}_Be{mus[0]['Be']}_Ca{mus[0]['Ca']}_Pa{mus[0]['Pa']}_chunk{chunk_index}.pickle"
+        )
+        snaps = [space.subspaces[i % 3].empty() for i in range(6)]
+        stages = [space.subspaces[i % 3].empty() for i in range(6)]
+        residuals = [space.subspaces[i % 3].empty() for i in range(6)]
+        # If this is the first time step, add initial values ...
+        if chunk_index == 0:
+            for k in range(3):
+                snaps[k].append(current_values._blocks[k])
+        # ... and do one timestep less to ensure that chunk has size chunk_size
+        for time_index in range(chunk_size - 1 if chunk_index == 0 else chunk_size):
+            t1 = timer()
+            current_values, data = m.next_time_step(
+                current_values, t, mu=mu, return_stages=True, return_residuals=True
+            )
+            elapsed += timer() - t1
+            t = data["t"]
+            # check if we are finished (if time == t_end, m.next_time_step returns None)
+            if current_values is None:
+                assert chunk_index == num_chunks - 1
+                assert time_index != 0
+                break
+            # store POD input
+            for k in range(3):
+                snaps[k].append(current_values._blocks[k])
+                stages[k].append(data["stages"][k])
+                residuals[k].append(data["residuals"][k])
+        with open(filename, "wb") as pickle_file:
+            pickle.dump(
+                {
+                    "mu": mu,
+                    "snaps": snaps,
+                    "stages": stages,
+                    "residuals": residuals,
+                    "elapsed": elapsed,
+                },
+                pickle_file,
+            )
+
 
 # example call: mpiexec -n 2 python3 cellmodel_solve_with_deim.py single_cell 1e-2 1e-3 30 30 True True
 if __name__ == "__main__":
@@ -21,22 +76,12 @@ if __name__ == "__main__":
     dt = 1e-3 if argc < 4 else float(sys.argv[3])
     grid_size_x = 30 if argc < 5 else int(sys.argv[4])
     grid_size_y = 30 if argc < 6 else int(sys.argv[5])
-    visualize = True if argc < 7 else (False if sys.argv[6] == "False" else True)
-    subsampling = True if argc < 8 else (False if sys.argv[7] == "False" else True)
-    include_newton_stages = False if argc < 9 else (False if sys.argv[8] == "False" else True)
     pol_order = 2
     chunk_size = 10
-    visualize_step = 50
-    pod_pfield = True
-    pod_ofield = True
-    pod_stokes = True
-    least_squares_pfield = True
-    least_squares_ofield = True
-    least_squares_stokes = True
 
     ####### choose parameters ####################
-    train_params_per_rank = 1 if mpi.size_world > 1 else 1
-    test_params_per_rank = 1 if mpi.size_world > 1 else 1
+    train_params_per_rank = 2
+    test_params_per_rank = 1
     rf = 10  # Factor of largest to smallest training parameter
     random.seed(123)  # create_parameters chooses some parameters randomly in some cases
     excluded_param = "Be"
@@ -52,30 +97,16 @@ if __name__ == "__main__":
         Pa0=1.0,
     )
 
-    # Solve for chosen parameter
-    assert len(mus) == 1, "Not yet implemented for more than one parameter per rank"
+    ########### Choose filename prefix #############
+    prefix = "grid{}x{}_tend{}_dt{}_without{}_".format(
+        grid_size_x, grid_size_y, t_end, dt, excluded_param
+    )
+    ########## Solve for chosen parameters #########
     solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])
     m = DuneCellModel(solver)
-    ret, data = m.solve(mu=mus[0], return_stages=include_newton_stages, return_residuals=True)
-
-    ###### Pickle results #########
-    prefix = "pickle_grid{}x{}_tend{}_dt{}_{}_without{}_".format(
-        grid_size_x,
-        grid_size_y,
-        t_end,
-        dt,
-        "snapsandstages" if include_newton_stages else "snaps",
-        excluded_param,
-    )
-    filename_mu = f"{prefix}_Be{mus[0]['Be']}_Ca{mus[0]['Ca']}_Pa{mus[0]['Pa']}"
-    filename_new_mu = f"{prefix}_Be{new_mus[0]['Be']}_Ca{new_mus[0]['Ca']}_Pa{new_mus[0]['Pa']}"
-    with open(filename_mu, "wb") as pickle_file:
-        pickle.dump([mus[0], ret, data], pickle_file)
-    del ret, data
-    start = timer()
-    ret, data = m.solve(mu=new_mus[0], return_stages=include_newton_stages, return_residuals=True)
-    data["mean_fom_time"] = (timer() - start) / len(new_mus)
-    with open(filename_new_mu, "wb") as pickle_file:
-        pickle.dump([new_mus[0], ret, data], pickle_file)
-
+    for mu in mus:
+        print("mu: {mu} done")
+        solve_and_pickle(mu, m, chunk_size, prefix)
+    for new_mu in new_mus:
+        solve_and_pickle(new_mu, m, chunk_size, prefix)
     mpi.comm_world.Barrier()
