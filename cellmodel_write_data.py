@@ -26,7 +26,7 @@ def solve_and_pickle(mu: Dict[str, float], m: DuneCellModel, chunk_size: int, pr
     elapsed = 0.0
     for chunk_index in range(num_chunks):
         filename = (
-            f"{prefix}_Be{mus[0]['Be']}_Ca{mus[0]['Ca']}_Pa{mus[0]['Pa']}_chunk{chunk_index}.pickle"
+            f"{prefix}_Be{mu['Be']}_Ca{mu['Ca']}_Pa{mu['Pa']}_chunk{chunk_index}.pickle"
         )
         snaps = [space.subspaces[i % 3].empty() for i in range(6)]
         stages = [space.subspaces[i % 3].empty() for i in range(6)]
@@ -105,8 +105,11 @@ if __name__ == "__main__":
     solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])
     m = DuneCellModel(solver)
     for mu in mus:
-        print("mu: {mu} done")
         solve_and_pickle(mu, m, chunk_size, prefix)
+        # m.solver.reset();
+        print(f"mu: {mu} done")
     for new_mu in new_mus:
         solve_and_pickle(new_mu, m, chunk_size, prefix)
+        # m.solver.reset();
+        print(f"mu: {new_mu} done")
     mpi.comm_world.Barrier()

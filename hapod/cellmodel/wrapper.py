@@ -67,6 +67,9 @@ class CellModelSolver(ParametricObject):
     def linear(self):
         return self.impl.linear()
 
+    def reset(self):
+        return self.impl.reset()
+
     def solve(self, write=False, write_step=0, filename="", subsampling=True):
         return self.dune_result_to_pymor(self.impl.solve(write, write_step, filename, subsampling))
 
@@ -966,9 +969,8 @@ class CellModel(Model):
 
         pfield_vecs, ofield_vecs, stokes_vecs = U_last._blocks
 
-        t_end = self.pfield_op.solver.t_end
-        if t > t_end - 1e-14:
-            retval = [None, {"t": t_end}]
+        if t > self.t_end - 1e-14:
+            retval = [None, {"t": self.t_end}]
             if return_stages:
                 retval[1]["stages"] = (None, None, None)
             if return_residuals:
@@ -976,9 +978,9 @@ class CellModel(Model):
             return tuple(retval)
 
         # do not go past t_end
-        actual_dt = min(self.pfield_op.solver.dt, t_end - t)
+        actual_dt = min(self.dt, self.t_end - t)
         # do a timestep
-        print("Current time: {}".format(t))
+        print("Current time: {}".format(t), flush=True)
         pfield_vecs, pfield_data = newton(
             self.pfield_op.fix_components((1, 2, 3), [pfield_vecs, ofield_vecs, stokes_vecs]),
             self.pfield_op.range.zeros(),
