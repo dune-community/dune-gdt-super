@@ -11,7 +11,6 @@ from rich import pretty, traceback
 
 from hapod.cellmodel.wrapper import (
     BinaryTreeHapodResults,
-    CellModel,
     CellModelOfieldProductOperator,
     CellModelPfieldProductOperator,
     CellModelReductor,
@@ -35,7 +34,7 @@ pretty.install()
 
 
 def binary_tree_hapod(
-    cellmodel: CellModel,
+    cellmodel: DuneCellModel,
     mus: "list[Dict[str, float]]",
     chunk_size: int,
     mpi: MPIWrapper,
@@ -67,7 +66,6 @@ def binary_tree_hapod(
         timings[f"POD{k}"] = 0.0
 
     # calculate rooted tree depth
-    mpi = MPIWrapper()
     num_chunks, _ = solver_statistics(t_end=cellmodel.t_end, dt=cellmodel.dt, chunk_size=chunk_size)
     node_binary_tree_depth = binary_tree_depth(
         mpi.comm_rank_group[0]

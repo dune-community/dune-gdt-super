@@ -5,16 +5,15 @@ import resource
 from statistics import mean
 import sys
 from timeit import default_timer as timer
-
-# import time
-
-import numpy as np
-from rich import pretty, print, traceback
+from typing import Any, Dict, Union
 
 from hapod.cellmodel.wrapper import (
     BinaryTreeHapodResults,
+    CellModelOfieldProductOperator,
+    CellModelPfieldProductOperator,
     CellModelReductor,
     CellModelSolver,
+    CellModelStokesProductOperator,
     DuneCellModel,
     calculate_cellmodel_errors,
     create_parameters,
@@ -22,40 +21,36 @@ from hapod.cellmodel.wrapper import (
     pod_on_node_in_binary_tree_hapod,
     pods_on_processor_cores_in_binary_tree_hapod,
     solver_statistics,
-    CellModelPfieldProductOperator,
-    CellModelOfieldProductOperator,
-    CellModelStokesProductOperator,
 )
 from hapod.hapod import binary_tree_depth
 from hapod.mpi import MPIWrapper
+import numpy as np
+from rich import pretty, print, traceback
 
 traceback.install()
 pretty.install()
 
 
 def binary_tree_hapod(
-    t_end,
-    dt,
-    U,
-    data,
-    chunk_size,
-    mpi,
-    tolerances,
-    indices,
-    include_newton_stages=False,
-    omega=0.95,
-    incremental_gramian=True,
-    orth_tol=np.inf,
+    cellmodel: DuneCellModel,
+    prefix: str,
+    t_end: float,
+    dt: float,
+    mus: "list[Dict[str, float]]",
+    chunk_size: int,
+    mpi: MPIWrapper,
+    tolerances: "list[float]",
+    indices: "list[int]",
+    include_newton_stages: bool = False,
+    omega: float = 0.95,
+    incremental_gramian: bool = False,
+    orth_tol: float = np.inf,
     # orth_tol=1e-10,
-    final_orth_tol=1e-10,
-    logfile=None,
-    products=None,
+    final_orth_tol: float = 1e-10,
+    logfile: Union[None, str] = None,
+    products: "list[Any]" = [None] * 6,
 ):
-
-    assert isinstance(mpi, MPIWrapper)
     assert len(tolerances) == 6
-    assert len(pod_indices) <= 3
-    assert len(deim_indices) <= 3
 
     # setup timings
     timings = {}
@@ -63,7 +58,6 @@ def binary_tree_hapod(
         timings[f"POD{k}"] = 0.0
 
     # calculate rooted tree depth
-    mpi = MPIWrapper()
     num_chunks, _ = solver_statistics(t_end=t_end, dt=dt, chunk_size=chunk_size)
     node_binary_tree_depth = binary_tree_depth(
         mpi.comm_rank_group[0]
@@ -81,24 +75,20 @@ def binary_tree_hapod(
 
     # walk over time chunks
     for chunk_index in range(num_chunks):
-        new_vecs = [U._blocks[i % 3].empty() for i in range(6)]
-        i = chunk_index * chunk_size
-        j = min((chunk_index + 1) * chunk_size, len(U))
-        for k in indices:
-            if k < 3:
-                # this is a POD index
-                new_vecs[k].append(U[i:j]._blocks[k])
-                if include_newton_stages:
-                    stages = data["stages"][k][i]
-                    for l in range(i + 1, j):
-                        stages.append(data["stages"][k][l])
-                    new_vecs[k].append(stages)
-            else:
-                # this is a DEIM index
-                residuals = data["residuals"][k - 3][i]
-                for l in range(i + 1, j):
-                    residuals.append(data["residuals"][k - 3][l])
-                new_vecs[k].append(residuals)
+        new_vecs = [cellmodel.solution_space.subspaces[i % 3].empty() for i in range(6)]
+        for mu in mus:
+            filename = f"{prefix}_Be{mu['Be']}_Ca{mu['Ca']}_Pa{mu['Pa']}_chunk{chunk_index}.pickle"
+            with open(filename, "rb") as pickle_file:
+                data = pickle.load(pickle_file)
+            for k in indices:
+                if k < 3:
+                    # this is a POD index
+                    new_vecs[k].append(data["snaps"][k])
+                    if include_newton_stages:
+                        new_vecs[k].append(data["stages"][k])
+                else:
+                    # this is a DEIM index
+                    new_vecs[k].append(data["residuals"][k - 3])
 
         # calculate POD of timestep vectors on each core
         for k in indices:
@@ -164,7 +154,7 @@ def binary_tree_hapod(
                 f"The maximum amount of memory used on rank 0 was: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1000.0 ** 2} GB\n"
             )
     mpi.comm_world.Barrier()
-    return results
+    return results, num_chunks
 
 
 # exemplary call: mpiexec -n 2 python3 cellmodel_hapod_with_pickled_data.py single_cell 1e-2 1e-3 30 30 True True False False False False 1e-3 1e-3 1e-3 1e-10 1e-10 1e-10
@@ -200,17 +190,20 @@ if __name__ == "__main__":
     least_squares_stokes = True
     excluded_param = "Be"
     use_L2_product = True
+    train_params_per_rank = 2
+    test_params_per_rank = 1
 
     ###### Choose filename #########
-    filename = "results_pickled_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_without{}_pfield{}_ofield{}_stokes{}.txt".format(
+    filename = "results_pickled_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_without{}_{}tppr_pfield{}_ofield{}_stokes{}.txt".format(
         mpi.size_world,
-        "L2product" if use_L2_product is not None else "noproduct",
+        "L2product" if use_L2_product else "noproduct",
         grid_size_x,
         grid_size_y,
         t_end,
         dt,
         "snapsandstages" if include_newton_stages else "snaps",
         excluded_param,
+        train_params_per_rank,
         (f"pod{pfield_atol:.0e}" if pod_pfield else "pod0")
         + (f"deim{pfield_deim_atol:.0e}" if deim_pfield else "deim0"),
         (f"pod{ofield_atol:.0e}" if pod_ofield else "pod0")
@@ -249,8 +242,6 @@ if __name__ == "__main__":
         indices.append(index + 3)
 
     ####### choose parameters ####################
-    train_params_per_rank = 1 if mpi.size_world > 1 else 1
-    test_params_per_rank = 1 if mpi.size_world > 1 else 1
     rf = 10  # Factor of largest to smallest training parameter
     random.seed(123)  # create_parameters choose some parameters randomly in some cases
     mus, new_mus = create_parameters(
@@ -266,35 +257,30 @@ if __name__ == "__main__":
     )
 
     ######  same filenames as in cellmodel_write_data.py     ##########
-    prefix = "pickle_grid{}x{}_tend{}_dt{}_{}_without{}_".format(
-        grid_size_x,
-        grid_size_y,
-        t_end,
-        dt,
-        "snapsandstages" if include_newton_stages else "snaps",
-        excluded_param,
+    prefix = "grid{}x{}_tend{}_dt{}_without{}_".format(
+        grid_size_x, grid_size_y, t_end, dt, excluded_param
     )
-    filename_mu = f"{prefix}_Be{mus[0]['Be']}_Ca{mus[0]['Ca']}_Pa{mus[0]['Pa']}"
-    filename_new_mu = f"{prefix}_Be{new_mus[0]['Be']}_Ca{new_mus[0]['Ca']}_Pa{new_mus[0]['Pa']}"
-
-    ####### load pickled data for training parameters ###############
-    with open(filename_mu, "rb") as pickle_file:
-        _, U, data = pickle.load(pickle_file)
+    solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])
+    m = DuneCellModel(solver)
     if use_L2_product:
-        solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])
-        products = [CellModelPfieldProductOperator(solver), CellModelOfieldProductOperator(solver), CellModelStokesProductOperator(solver)]*2
+        products = [
+            CellModelPfieldProductOperator(solver),
+            CellModelOfieldProductOperator(solver),
+            CellModelStokesProductOperator(solver),
+        ] * 2
     else:
         products = [None] * 6
-    results = binary_tree_hapod(
-        t_end,
-        dt,
-        U,
-        data,
-        chunk_size,
-        mpi,
-        hapod_tols,
-        indices,
-        include_newton_stages,
+    results, num_chunks = binary_tree_hapod(
+        cellmodel=m,
+        prefix=prefix,
+        t_end=t_end,
+        dt=dt,
+        mus=mus,
+        chunk_size=chunk_size,
+        mpi=mpi,
+        tolerances=hapod_tols,
+        indices=indices,
+        include_newton_stages=include_newton_stages,
         omega=0.95,
         logfile=filename,
         products=products,
@@ -323,8 +309,6 @@ if __name__ == "__main__":
         + (f"deim{stokes_deim_atol:.0e}" if deim_stokes else "deim0"),
     )
 
-    solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])
-    m = DuneCellModel(solver)
     reductor = CellModelReductor(
         m,
         pfield_basis,
@@ -344,35 +328,38 @@ if __name__ == "__main__":
     rom = reductor.reduce()
 
     ################## solve reduced model for trained parameters ####################
-    u, _ = rom.solve(mus[0], return_stages=False)
+    us = []
+    for mu in mus:
+        u, _ = rom.solve(mu, return_stages=False)
+        us.append(u)
     # U_rom = reductor.reconstruct(u)
 
     ########## Compute errors for trained parameters #################
     mpi.comm_world.Barrier()
     calculate_cellmodel_errors(
-        [pfield_basis, ofield_basis, stokes_basis],
-        [pfield_deim_basis, ofield_deim_basis, stokes_deim_basis],
-        testcase,
-        t_end,
-        dt,
-        grid_size_x,
-        grid_size_y,
-        pol_order,
-        mus[0],
-        u,
-        reductor,
-        mpi,
-        filename,
+        modes=[pfield_basis, ofield_basis, stokes_basis],
+        deim_modes=[pfield_deim_basis, ofield_deim_basis, stokes_deim_basis],
+        testcase=testcase,
+        t_end=t_end,
+        dt=dt,
+        grid_size_x=grid_size_x,
+        grid_size_y=grid_size_y,
+        pol_order=pol_order,
+        mus=mus,
+        reduced_us=us,
+        reductor=reductor,
+        mpi_wrapper=mpi,
+        logfile_name=filename,
         products=products,
-        U=U,
-        residuals=data["residuals"],
+        pickled_data_available=True,
+        num_chunks=num_chunks,
+        pickle_prefix=prefix,
     )
-    del U, u, data
 
     ################## test new parameters #######################
     # solve full-order model for new param
-    with open(filename_new_mu, "rb") as pickle_file:
-        _, U_new_mu, data_new_mu = pickle.load(pickle_file)
+    # with open(filename_new_mu, "rb") as pickle_file:
+    # _, U_new_mu, data_new_mu = pickle.load(pickle_file)
     # Be, Ca, Pa = (float(new_mu['Be']), float(new_mu['Ca']), float(new_mu['Pa']))
     # m.visualize(U_new_mu, prefix=f"fullorder_Be{Be}_Ca{Ca}_Pa{Pa}", subsampling=subsampling, every_nth=visualize_step)
 
@@ -381,7 +368,10 @@ if __name__ == "__main__":
     # cProfile.run(
     #     "u_new_mu = rom.solve(new_mus[0], return_stages=False)", f"rom{mpi.rank_world}.cprof"
     # )
-    u_new_mu, _ = rom.solve(new_mus[0], return_stages=False)
+    us_new_mu = []
+    for new_mu in new_mus:
+        u, _ = rom.solve(new_mu, return_stages=False)
+        us_new_mu.append(u)
     mean_rom_time = (timer() - start) / len(new_mus)
     # U_rom_new_mu = reductor.reconstruct(u_new_mu)
     # Be, Ca, Pa = (float(new_mu['Be']), float(new_mu['Ca']), float(new_mu['Pa']))
@@ -391,39 +381,28 @@ if __name__ == "__main__":
     #     subsampling=subsampling,
     #     every_nth=visualize_step)
 
-    # again, the 'or [0]' is only here to silence pyright
-    mean_fom_time = mpi.comm_world.gather(data_new_mu["mean_fom_time"], root=0) or [0]
-    mean_rom_time = mpi.comm_world.gather(mean_rom_time, root=0) or [0]
-
     ############### Compute errors for new parameters ##################
     mpi.comm_world.Barrier()
     calculate_cellmodel_errors(
-        [pfield_basis, ofield_basis, stokes_basis],
-        [pfield_deim_basis, ofield_deim_basis, stokes_deim_basis],
-        testcase,
-        t_end,
-        dt,
-        grid_size_x,
-        grid_size_y,
-        pol_order,
-        new_mus[0],
-        u_new_mu,
-        reductor,
-        mpi,
-        filename,
+        modes=[pfield_basis, ofield_basis, stokes_basis],
+        deim_modes=[pfield_deim_basis, ofield_deim_basis, stokes_deim_basis],
+        testcase=testcase,
+        t_end=t_end,
+        dt=dt,
+        grid_size_x=grid_size_x,
+        grid_size_y=grid_size_y,
+        pol_order=pol_order,
+        mus=new_mus,
+        reduced_us=us_new_mu,
+        reductor=reductor,
+        mpi_wrapper=mpi,
+        logfile_name=filename,
         prefix="new ",
         products=products,
-        U=U_new_mu,
-        residuals=data_new_mu["residuals"],
+        pickled_data_available=True,
+        num_chunks=num_chunks,
+        pickle_prefix=prefix,
+        rom_time=mean_rom_time,
     )
-    mpi.comm_world.Barrier()
     sys.stdout.flush()
-    if mpi.rank_world == 0:
-        mean_fom_time = mean(mean_fom_time)
-        mean_rom_time = mean(mean_rom_time)
-        print("Timings", flush=True)
-        print(
-            f"{mean_fom_time:.2f} vs. {mean_rom_time:.2f}, speedup {mean_fom_time/mean_rom_time:.2f}",
-            flush=True,
-        )
     mpi.comm_world.Barrier()

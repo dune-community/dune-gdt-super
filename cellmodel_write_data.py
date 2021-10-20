@@ -25,9 +25,7 @@ def solve_and_pickle(mu: Dict[str, float], m: DuneCellModel, chunk_size: int, pr
     t = 0.0
     elapsed = 0.0
     for chunk_index in range(num_chunks):
-        filename = (
-            f"{prefix}_Be{mu['Be']}_Ca{mu['Ca']}_Pa{mu['Pa']}_chunk{chunk_index}.pickle"
-        )
+        filename = f"{prefix}_Be{mu['Be']}_Ca{mu['Ca']}_Pa{mu['Pa']}_chunk{chunk_index}.pickle"
         snaps = [space.subspaces[i % 3].empty() for i in range(6)]
         stages = [space.subspaces[i % 3].empty() for i in range(6)]
         residuals = [space.subspaces[i % 3].empty() for i in range(6)]

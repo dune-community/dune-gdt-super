@@ -1,4 +1,6 @@
 import math
+from statistics import mean
+import pickle
 from numbers import Number
 import random
 from timeit import default_timer as timer
@@ -1469,51 +1471,51 @@ def calculate_cellmodel_trajectory_errors(
     u_rom,
     reductor,
     products,
-    U,
-    residuals,
+    pickled_data_available,
+    num_chunks,
+    pickle_prefix,
 ):
     proj_errs = [0.0] * len(modes)
-    errs = [0.0] * len(modes)
+    red_errs = [0.0] * len(modes)
+    rel_red_errs = [0.0] * len(modes)
     proj_deim_errs = [0.0] * len(deim_modes)
     # modes has length 2*num_cells+1
     num_cells = (len(modes) - 1) // 2
     assert num_cells == 1, "Not tested for more than 1 cell, most likely there are errors!"
-    if U is None:
-        solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu)
-        cellmodel = DuneCellModel(solver)
-        current_values = cellmodel.initial_values.copy()
-    else:
-        current_values = U[0]
     n = 0
     n_deim = [0] * 3
     t = 0.0
     timestep_residuals = None
-    while True:
-        # POD basis errors
-        U_rom = reductor.reconstruct(u_rom[n])
-        # pfield
-        for i in range(3):
-            proj_res = current_values.block(i) - modes[i].lincomb(
-                current_values.block(i).inner(modes[i], product=products[i])
-            )
-            proj_errs[i] += np.sum(proj_res.pairwise_inner(proj_res, product=products[i]))
-            res = current_values.block(i) - U_rom.block(i)
-            errs[i] += np.sum(res.pairwise_inner(res, product=products[i]))
-        # DEIM basis errors
-        if timestep_residuals is not None:
+    if not pickled_data_available:
+        solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu)
+        cellmodel = DuneCellModel(solver)
+        current_values = cellmodel.initial_values.copy()
+        while True:
+            # POD basis errors
+            U_rom = reductor.reconstruct(u_rom[n])
             for i in range(3):
-                deim_res = timestep_residuals[i][n] if U is not None else timestep_residuals[i]
-                if deim_modes[i] is not None:
-                    proj_res = deim_res - deim_modes[i].lincomb(
-                        deim_res.inner(deim_modes[i], product=products[i])
-                    )
-                    proj_deim_errs[i] += np.sum(
-                        proj_res.pairwise_inner(proj_res, product=products[i])
-                    )
-                    n_deim[i] += len(proj_res)
-        # get values for next time step
-        n += 1
-        if U is None:
+                vals = current_values.block(i)
+                proj_res = vals - modes[i].lincomb(vals.inner(modes[i], product=products[i]))
+                proj_errs[i] += np.sum(proj_res.pairwise_inner(proj_res, product=products[i]))
+                res = vals - U_rom.block(i)
+                res_norms2 = res.pairwise_inner(res, product=products[i])
+                red_errs[i] += np.sum(res_norms2)
+                vals_norms2 = vals.pairwise_inner(vals, product=products[i])
+                rel_red_errs[i] += np.sum(res_norms2/vals_norms2)
+            # DEIM basis errors
+            if timestep_residuals is not None:
+                for i in range(3):
+                    deim_res = timestep_residuals[i][n]
+                    if deim_modes[i] is not None:
+                        proj_res = deim_res - deim_modes[i].lincomb(
+                            deim_res.inner(deim_modes[i], product=products[i])
+                        )
+                        proj_deim_errs[i] += np.sum(
+                            proj_res.pairwise_inner(proj_res, product=products[i])
+                        )
+                        n_deim[i] += len(proj_res)
+            # get values for next time step
+            n += 1
             current_values, data = cellmodel.next_time_step(
                 current_values, t, mu=mu, return_stages=False, return_residuals=True
             )
@@ -1521,13 +1523,40 @@ def calculate_cellmodel_trajectory_errors(
             timestep_residuals = data["residuals"]
             if current_values is None:
                 break
-        else:
-            if n < len(U):
-                current_values = U[n]
-                timestep_residuals = residuals
-            else:
-                break
-    return proj_errs, proj_deim_errs, errs, n, n_deim
+        fom_time = None
+    else:
+        n = 0
+        for chunk_index in range(num_chunks):
+            with open(f'{pickle_prefix}{chunk_index}.pickle', 'rb') as f:
+                chunk_data = pickle.load(f)
+            chunk_size = len(chunk_data["snaps"][0])
+            U_rom = reductor.reconstruct(u_rom[n:n+chunk_size])
+            for i in range(3):
+                # POD basis errors
+                vals = chunk_data["snaps"][i]
+                proj_res = vals - modes[i].lincomb(
+                    vals.inner(modes[i], product=products[i])
+                )
+                proj_errs[i] += np.sum(proj_res.pairwise_inner(proj_res, product=products[i]))
+                res = vals - U_rom.block(i)
+                res_norms2 = res.pairwise_inner(res, product=products[i])
+                red_errs[i] += np.sum(res_norms2)
+                vals_norms2 = vals.pairwise_inner(vals, product=products[i])
+                rel_red_errs[i] += np.sum(res_norms2/vals_norms2)
+                # DEIM basis errors
+                for i in range(3):
+                    deim_res = chunk_data["residuals"][i]
+                    if deim_modes[i] is not None:
+                        proj_res = deim_res - deim_modes[i].lincomb(
+                            deim_res.inner(deim_modes[i], product=products[i])
+                        )
+                        proj_deim_errs[i] += np.sum(
+                            proj_res.pairwise_inner(proj_res, product=products[i])
+                        )
+                        n_deim[i] += len(proj_res)
+            n += chunk_size
+        fom_time = chunk_data["elapsed"]
+    return proj_errs, proj_deim_errs, red_errs, rel_red_errs, n, n_deim, fom_time
 
 
 def calculate_mean_cellmodel_projection_errors(
@@ -1539,56 +1568,90 @@ def calculate_mean_cellmodel_projection_errors(
     grid_size_x,
     grid_size_y,
     pol_order,
-    mu,
-    u_rom,
+    mus,
+    reduced_us,
     reductor,
     mpi_wrapper,
     products,
-    U,
-    residuals,
+    pickled_data_available,
+    num_chunks,
+    pickle_prefix,
+    rom_time,
 ):
-    trajectory_errs, deim_trajector_errs, red_trajectory_errs, num_snapshots, num_residuals = calculate_cellmodel_trajectory_errors(
-        modes,
-        deim_modes,
-        testcase,
-        t_end,
-        dt,
-        grid_size_x,
-        grid_size_y,
-        pol_order,
-        mu,
-        u_rom,
-        reductor,
-        products,
-        U,
-        residuals,
-    )
-    print(f"Trajectory errors: {trajectory_errs}")
+    proj_errs_sum = [0] * 3
+    proj_deim_errs_sum = [0] * 3
+    red_errs_sum = [0] * 3
+    rel_red_errs_sum = [0] * 3
+    num_residuals = [0] * 3
+    num_snapshots = 0
+    mean_fom_time=0.
+    for mu, u_rom in zip(mus, reduced_us):
+        pickle_prefix_mu = f"{pickle_prefix}_Be{mu['Be']}_Ca{mu['Ca']}_Pa{mu['Pa']}_chunk"
+        proj_errs, proj_deim_errs, red_errs, rel_red_errs, n, n_deim, fom_time = calculate_cellmodel_trajectory_errors(
+            modes=modes,
+            deim_modes=deim_modes,
+            testcase=testcase,
+            t_end=t_end,
+            dt=dt,
+            grid_size_x=grid_size_x,
+            grid_size_y=grid_size_y,
+            pol_order=pol_order,
+            mu=mu,
+            u_rom=u_rom,
+            reductor=reductor,
+            products=products,
+            pickled_data_available=pickled_data_available,
+            num_chunks=num_chunks,
+            pickle_prefix=pickle_prefix_mu
+        )
+        for i in range(3):
+            proj_errs_sum[i] += proj_errs[i]
+            proj_deim_errs_sum[i] += proj_deim_errs[i]
+            red_errs_sum[i] += red_errs[i]
+            rel_red_errs_sum[i] += rel_red_errs[i]
+            num_residuals[i] += n_deim[i]
+        num_snapshots += n
+        if fom_time is not None:
+            mean_fom_time += fom_time
+        else:
+            mean_fom_time = None
+    mean_fom_time = mean_fom_time/len(mus) if mean_fom_time is not None else None
     proj_errs = [0.0] * len(modes)
     proj_deim_errs = proj_errs.copy()
     red_errs = [0.0] * len(modes)
+    rel_red_errs = [0.0] * len(modes)
     num_snapshots = mpi_wrapper.comm_world.gather(num_snapshots, root=0)
+    if fom_time is not None:
+        fom_time = mpi_wrapper.comm_world.gather(fom_time, root=0)
+    if rom_time is not None:
+        rom_time = mpi_wrapper.comm_world.gather(rom_time, root=0)
     # num_residuals_list is a list of lists. The inner lists have length 3 and contain the number of residuals for each field on that rank
     num_residuals_list = mpi_wrapper.comm_world.gather(num_residuals, root=0)
+    mean_rom_time = None
     if mpi_wrapper.rank_world == 0:
         num_snapshots = np.sum(num_snapshots)
+        mean_fom_time = mean(fom_time) if mean_fom_time is not None else None
+        mean_rom_time = mean(rom_time) if rom_time is not None else None
         num_residuals = [0] * 3
         for i in range(3):
             num_residuals[i] = sum(nums[i] for nums in num_residuals_list)
-        print(num_snapshots, num_residuals)
-    for index, trajectory_err in enumerate(trajectory_errs):
-        trajectory_err = mpi_wrapper.comm_world.gather(trajectory_err, root=0)
+    for index, err in enumerate(proj_errs_sum):
+        err = mpi_wrapper.comm_world.gather(err, root=0)
         if mpi_wrapper.rank_world == 0:
-            proj_errs[index] = np.sqrt(np.sum(trajectory_err) / num_snapshots)
-    for index, red_err in enumerate(red_trajectory_errs):
+            proj_errs[index] = np.sqrt(np.sum(err) / num_snapshots)
+    for index, red_err in enumerate(red_errs_sum):
         red_err = mpi_wrapper.comm_world.gather(red_err, root=0)
         if mpi_wrapper.rank_world == 0:
             red_errs[index] = np.sqrt(np.sum(red_err) / num_snapshots)
+    for index, rel_red_err in enumerate(rel_red_errs_sum):
+        rel_red_err = mpi_wrapper.comm_world.gather(rel_red_err, root=0)
+        if mpi_wrapper.rank_world == 0:
+            rel_red_errs[index] = np.sqrt(np.sum(rel_red_err) / num_snapshots)
     for i in range(3):
-        err = mpi_wrapper.comm_world.gather(deim_trajector_errs[i], root=0)
+        err = mpi_wrapper.comm_world.gather(proj_deim_errs_sum[i], root=0)
         if mpi_wrapper.rank_world == 0:
             proj_deim_errs[i] = np.sqrt(np.sum(err) / num_residuals[i])
-    return proj_errs, proj_deim_errs, red_errs
+    return proj_errs, proj_deim_errs, red_errs, rel_red_errs, mean_fom_time, mean_rom_time
 
 
 def calculate_cellmodel_errors(
@@ -1600,42 +1663,45 @@ def calculate_cellmodel_errors(
     grid_size_x,
     grid_size_y,
     pol_order,
-    mu,
-    u_rom,
+    mus,
+    reduced_us,
     reductor,
     mpi_wrapper,
     logfile_name=None,
     prefix="",
     products=[None] * 3,
-    U=None,
-    residuals=None,
+    pickled_data_available=False,
+    num_chunks=0,
+    pickle_prefix=None,
+    rom_time=None
 ):
     """Calculates projection error. As we cannot store all snapshots due to memory restrictions, the
     problem is solved again and the error calculated on the fly"""
     start = timer()
-    errs, deim_errs, red_errs = calculate_mean_cellmodel_projection_errors(
-        modes,
-        deim_modes,
-        testcase,
-        t_end,
-        dt,
-        grid_size_x,
-        grid_size_y,
-        pol_order,
-        mu,
-        u_rom,
-        reductor,
-        mpi_wrapper,
+    errs, deim_errs, red_errs, rel_red_errs, mean_fom_time, mean_rom_time = calculate_mean_cellmodel_projection_errors(
+        modes=modes,
+        deim_modes=deim_modes,
+        testcase=testcase,
+        t_end=t_end,
+        dt=dt,
+        grid_size_x=grid_size_x,
+        grid_size_y=grid_size_y,
+        pol_order=pol_order,
+        mus=mus,
+        reduced_us=reduced_us,
+        reductor=reductor,
+        mpi_wrapper=mpi_wrapper,
         products=products,
-        U=U,
-        residuals=residuals,
+        pickled_data_available=pickled_data_available,
+        num_chunks=num_chunks,
+        pickle_prefix=pickle_prefix,
+        rom_time=rom_time,
     )
     elapsed = timer() - start
     if mpi_wrapper.rank_world == 0 and logfile_name is not None:
         with open(logfile_name, "a") as logfile:
             logfile.write("Time used for calculating error: " + str(elapsed) + "\n")
             nc = (len(modes) - 1) // 2
-            print(errs, deim_errs, red_errs)
             for k in range(nc):
                 logfile.write(
                     "{}L2 projection error for {}-th pfield is: {}\n".format(prefix, k, errs[k])
@@ -1669,8 +1735,24 @@ def calculate_cellmodel_errors(
                     )
                 )
             logfile.write(
-                "{}L2 reduction error for {}-th stokes is: {}\n".format(prefix, k, red_errs[2 * nc])
+                "{}L2 reduction error for {}-th stokes is: {}\n".format(prefix, 0, red_errs[2 * nc])
             )
+            for k in range(nc):
+                logfile.write(
+                    "{}L2 relative reduction error for {}-th pfield is: {}\n".format(prefix, k, rel_red_errs[k])
+                )
+                logfile.write(
+                    "{}L2 relative reduction error for {}-th ofield is: {}\n".format(
+                        prefix, k, rel_red_errs[nc + k]
+                    )
+                )
+            logfile.write(
+                "{}L2 relative reduction error for {}-th stokes is: {}\n".format(prefix, 0, rel_red_errs[2 * nc])
+            )
+            if mean_fom_time is not None and mean_rom_time is not None:
+                logfile.write(
+                        f"{mean_fom_time:.2f} vs. {mean_rom_time:.2f}, speedup {mean_fom_time/mean_rom_time:.2f}",
+                        )
             # logfile.write("{}L2 reduction error for {}-th ofield is: {}\n".format(prefix, k, red_errs[nc + k]))
             # logfile.write("{}L2 reduction error for stokes is: {}\n".format(prefix, red_errs[2 * nc]))
     return errs
@@ -1843,7 +1925,7 @@ def pod_on_node_in_binary_tree_hapod(r, chunk_index, num_chunks, mpi, root, prod
     if chunk_index == 0:
         r.max_vectors_before_pod = max(r.max_vectors_before_pod, len(r.gathered_modes))
         r.modes, r.svals = local_pod(
-            [r.gathered_modes], r.num_snaps, r.params, product=product, orth_tol=r.orth_tol
+            inputs=[r.gathered_modes], num_snaps_in_leafs=r.num_snaps, parameters=r.params, product=product, orth_tol=r.orth_tol, incremental_gramian=False
         )
     else:
         r.max_vectors_before_pod = max(
@@ -1851,9 +1933,9 @@ def pod_on_node_in_binary_tree_hapod(r, chunk_index, num_chunks, mpi, root, prod
         )
         root_of_tree = chunk_index == num_chunks - 1 and mpi.size_rank_group[root] == 1
         r.modes, r.svals = local_pod(
-            [[r.modes, r.svals], r.gathered_modes],
-            r.total_num_snapshots,
-            r.params,
+            inputs=[[r.modes, r.svals], r.gathered_modes],
+            num_snaps_in_leafs=r.total_num_snapshots,
+            parameters=r.params,
             orth_tol=r.final_orth_tol if root_of_tree else r.orth_tol,
             incremental_gramian=r.incremental_gramian,
             product=product,
