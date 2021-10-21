@@ -7,7 +7,10 @@ from typing import Dict
 from rich import pretty, traceback
 
 from hapod.cellmodel.wrapper import (
+    CellModelOfieldProductOperator,
+    CellModelPfieldProductOperator,
     CellModelSolver,
+    CellModelStokesProductOperator,
     DuneCellModel,
     create_parameters,
     solver_statistics,
@@ -76,6 +79,8 @@ if __name__ == "__main__":
     grid_size_y = 30 if argc < 6 else int(sys.argv[5])
     pol_order = 2
     chunk_size = 10
+    # use_L2_product = True
+    use_L2_product = False
 
     ####### choose parameters ####################
     train_params_per_rank = 2
@@ -99,9 +104,20 @@ if __name__ == "__main__":
     prefix = "grid{}x{}_tend{}_dt{}_without{}_".format(
         grid_size_x, grid_size_y, t_end, dt, excluded_param
     )
-    ########## Solve for chosen parameters #########
+    ########## Create products #####################
     solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])
-    m = DuneCellModel(solver)
+    if use_L2_product:
+        products = [
+            CellModelPfieldProductOperator(solver),
+            CellModelOfieldProductOperator(solver),
+            CellModelStokesProductOperator(solver),
+        ] * 2
+    else:
+        products = [None] * 6
+
+    ########## Solve for chosen parameters #########
+    m = DuneCellModel(solver,
+        products={"pfield": products[0], "ofield": products[1], "stokes": products[2]})
     for mu in mus:
         solve_and_pickle(mu, m, chunk_size, prefix)
         # m.solver.reset();

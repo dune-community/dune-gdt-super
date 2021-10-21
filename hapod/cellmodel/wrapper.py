@@ -300,6 +300,7 @@ class CellModelSolver(ParametricObject):
 class CellModelPfieldProductOperator(Operator):
     def __init__(self, solver):
         self.solver = solver
+        self.source = self.range = self.solver.pfield_solution_space
         self.linear = True
 
     def apply(self, U, mu=None, numpy=False):
@@ -309,6 +310,7 @@ class CellModelPfieldProductOperator(Operator):
 class CellModelOfieldProductOperator(Operator):
     def __init__(self, solver):
         self.solver = solver
+        self.source = self.range = self.solver.ofield_solution_space
         self.linear = True
 
     def apply(self, U, mu=None):
@@ -318,6 +320,7 @@ class CellModelOfieldProductOperator(Operator):
 class CellModelStokesProductOperator(Operator):
     def __init__(self, solver):
         self.solver = solver
+        self.source = self.range = self.solver.stokes_solution_space
         self.linear = True
 
     def apply(self, U, mu=None):
@@ -852,6 +855,7 @@ class CellModel(Model):
         least_squares_ofield=False,
         least_squares_stokes=False,
         name=None,
+        products={"pfield": None, "ofield": None, "stokes": None},
     ):
         self.__auto_init(locals())
         # self.t_end = t_end
@@ -908,17 +912,19 @@ class CellModel(Model):
             # match saving times and t_end_ exactly
             actual_dt = min(self.dt, self.t_end - t)
             # do a timestep
-            print("Current time: {}".format(t))
+            print("Current time: {}".format(t), flush=True)
             pfield_vecarray, pfield_data = newton(
                 self.pfield_op.fix_components(
                     (1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]
                 ),
-                self.pfield_op.range.zeros(),
+                self.pfield_op.range.zeros(),  # pfield_op has same range as pfield_op with fixed components
                 initial_guess=pfield_vecarray,
                 mu=mu,
                 least_squares=self.least_squares_pfield,
                 return_stages=return_stages,
                 return_residuals=return_residuals,
+                source_product=self.products["pfield"],  # TODO: use correct product here
+                range_product=self.products["pfield"],  # TODO: use correct product here
                 **self.newton_params_pfield,
             )
             ofield_vecarray, ofield_data = newton(
@@ -931,6 +937,8 @@ class CellModel(Model):
                 least_squares=self.least_squares_ofield,
                 return_stages=return_stages,
                 return_residuals=return_residuals,
+                source_product=self.products["ofield"],
+                range_product=self.products["ofield"],
                 **self.newton_params_ofield,
             )
             stokes_vecarray, stokes_data = newton(
@@ -941,6 +949,8 @@ class CellModel(Model):
                 least_squares=self.least_squares_stokes,
                 return_stages=return_stages,
                 return_residuals=return_residuals,
+                source_product=self.products["stokes"],
+                range_product=self.products["stokes"],
                 **self.newton_params_stokes,
             )
             i += 1
@@ -983,14 +993,19 @@ class CellModel(Model):
         actual_dt = min(self.dt, self.t_end - t)
         # do a timestep
         print("Current time: {}".format(t), flush=True)
+        pfield_op_with_fixed_components = self.pfield_op.fix_components(
+            (1, 2, 3), [pfield_vecs, ofield_vecs, stokes_vecs]
+        )
         pfield_vecs, pfield_data = newton(
-            self.pfield_op.fix_components((1, 2, 3), [pfield_vecs, ofield_vecs, stokes_vecs]),
-            self.pfield_op.range.zeros(),
+            pfield_op_with_fixed_components,
+            pfield_op_with_fixed_components.range.zeros(),
             initial_guess=pfield_vecs,
             mu=mu,
             least_squares=self.least_squares_pfield,
             return_stages=return_stages,
             return_residuals=return_residuals,
+            source_product=self.products["pfield"],
+            range_product=self.products["pfield"],
             **self.newton_params_pfield,
         )
         ofield_vecs, ofield_data = newton(
@@ -1001,6 +1016,8 @@ class CellModel(Model):
             least_squares=self.least_squares_ofield,
             return_stages=return_stages,
             return_residuals=return_residuals,
+            source_product=self.products["ofield"],
+            range_product=self.products["ofield"],
             **self.newton_params_ofield,
         )
         stokes_vecs, stokes_data = newton(
@@ -1011,22 +1028,31 @@ class CellModel(Model):
             least_squares=self.least_squares_stokes,
             return_stages=return_stages,
             return_residuals=return_residuals,
+            source_product=self.products["stokes"],
+            range_product=self.products["stokes"],
             **self.newton_params_stokes,
         )
         t += actual_dt
         U = self.solution_space.make_array([pfield_vecs, ofield_vecs, stokes_vecs])
 
-        retval = [U, {'t': t}]
+        retval = [U, {"t": t}]
         if return_stages:
-            retval[1]["stages"] = (pfield_data["stages"], ofield_data["stages"], stokes_data["stages"])
+            retval[1]["stages"] = (
+                pfield_data["stages"],
+                ofield_data["stages"],
+                stokes_data["stages"],
+            )
         if return_residuals:
-            retval[1]["residuals"] = (pfield_data["residuals"], ofield_data["residuals"], stokes_data["residuals"])
+            retval[1]["residuals"] = (
+                pfield_data["residuals"],
+                ofield_data["residuals"],
+                stokes_data["residuals"],
+            )
         return retval
 
 
-
 class DuneCellModel(CellModel):
-    def __init__(self, solver, name=None):
+    def __init__(self, solver, products, name=None):
         pfield_op = CellModelPfieldOperator(solver, 0)
         ofield_op = CellModelOfieldOperator(solver, 0)
         stokes_op = CellModelStokesOperator(solver)
@@ -1042,8 +1068,8 @@ class DuneCellModel(CellModel):
         self.dt = solver.dt
         self.t_end = solver.t_end
         super().__init__(
-            t_end = self.t_end,
-            dt = self.dt,
+            t_end=self.t_end,
+            dt=self.dt,
             pfield_op=pfield_op,
             ofield_op=ofield_op,
             stokes_op=stokes_op,
@@ -1054,6 +1080,7 @@ class DuneCellModel(CellModel):
             newton_params_ofield=NEWTON_PARAMS,
             newton_params_stokes=NEWTON_PARAMS,
             name=name,
+            products=products,
         )
         self.parameters_own = CELLMODEL_PARAMETER_TYPE
         self.solver = solver
@@ -1180,7 +1207,7 @@ class FixedComponentEmpiricalInterpolatedOperator(EmpiricalInterpolatedOperator)
             self.source = self.operator.source
 
 
-class ProjectedFixedComponentEmpiricalInterpolatedOperator(Operator):
+class ProjectedEmpiricalInterpolatedOperatorWithFixComponents(Operator):
     """A projected |EmpiricalInterpolatedOperator|."""
 
     def __init__(
@@ -1277,7 +1304,9 @@ class CellModelReductor(ProjectionBasedReductor):
                     np.eye(len(pfield_deim_basis))
                 )  # assumes that pfield_deim_basis is ONB!!!
                 if self.least_squares_pfield
-                else NumpyVectorSpace.make_array(pfield_deim_basis.dot(pfield_basis))
+                else NumpyVectorSpace.make_array(
+                    pfield_deim_basis.inner(pfield_basis, product=products["pfield"])
+                )
             )
             source_basis_dofs = [
                 NumpyVectorSpace.make_array(pfield_basis.dofs(pfield_op.source_dofs[0])),
@@ -1285,7 +1314,7 @@ class CellModelReductor(ProjectionBasedReductor):
                 NumpyVectorSpace.make_array(ofield_basis.dofs(pfield_op.source_dofs[2])),
                 NumpyVectorSpace.make_array(stokes_basis.dofs(pfield_op.source_dofs[3])),
             ]
-            pfield_op = ProjectedFixedComponentEmpiricalInterpolatedOperator(
+            pfield_op = ProjectedEmpiricalInterpolatedOperatorWithFixComponents(
                 pfield_op.restricted_operator,
                 pfield_op.interpolation_matrix,
                 source_basis_dofs,
@@ -1310,7 +1339,9 @@ class CellModelReductor(ProjectionBasedReductor):
                     np.eye(len(ofield_deim_basis))
                 )  # assumes that ofield_deim_basis is ONB!!!
                 if self.least_squares_ofield
-                else NumpyVectorSpace.make_array(ofield_deim_basis.dot(ofield_basis))
+                else NumpyVectorSpace.make_array(
+                    ofield_deim_basis.inner(ofield_basis, product=products["ofield"])
+                )
             )
             source_basis_dofs = [
                 NumpyVectorSpace.make_array(ofield_basis.dofs(ofield_op.source_dofs[0])),
@@ -1318,7 +1349,7 @@ class CellModelReductor(ProjectionBasedReductor):
                 NumpyVectorSpace.make_array(ofield_basis.dofs(ofield_op.source_dofs[2])),
                 NumpyVectorSpace.make_array(stokes_basis.dofs(ofield_op.source_dofs[3])),
             ]
-            ofield_op = ProjectedFixedComponentEmpiricalInterpolatedOperator(
+            ofield_op = ProjectedEmpiricalInterpolatedOperatorWithFixComponents(
                 ofield_op.restricted_operator,
                 ofield_op.interpolation_matrix,
                 source_basis_dofs,
@@ -1343,14 +1374,16 @@ class CellModelReductor(ProjectionBasedReductor):
                     np.eye(len(stokes_deim_basis))
                 )  # assumes that stokes_deim_basis is ONB!!!
                 if self.least_squares_stokes
-                else NumpyVectorSpace.make_array(stokes_deim_basis.dot(stokes_basis))
+                else NumpyVectorSpace.make_array(
+                    stokes_deim_basis.inner(stokes_basis, product=self.products["stokes"])
+                )
             )
             source_basis_dofs = [
                 NumpyVectorSpace.make_array(stokes_basis.dofs(stokes_op.source_dofs[0])),
                 NumpyVectorSpace.make_array(pfield_basis.dofs(stokes_op.source_dofs[1])),
                 NumpyVectorSpace.make_array(ofield_basis.dofs(stokes_op.source_dofs[2])),
             ]
-            stokes_op = ProjectedFixedComponentEmpiricalInterpolatedOperator(
+            stokes_op = ProjectedEmpiricalInterpolatedOperatorWithFixComponents(
                 stokes_op.restricted_operator,
                 stokes_op.interpolation_matrix,
                 source_basis_dofs,
@@ -1370,6 +1403,9 @@ class CellModelReductor(ProjectionBasedReductor):
             "initial_pfield": project(fom.initial_pfield, pfield_basis, None),
             "initial_ofield": project(fom.initial_ofield, ofield_basis, None),
             "initial_stokes": project(fom.initial_stokes, stokes_basis, None),
+            "products": {
+                k: project(v, self.bases[k], self.bases[k]) for k, v in fom.products.items()
+            },
         }
         return projected_operators
 
@@ -1389,27 +1425,12 @@ class CellModelReductor(ProjectionBasedReductor):
         )
 
     def reconstruct(self, u):  # , basis='RB'):
-        pfield_basis, ofield_basis, stokes_basis = (
-            self.bases["pfield"],
-            self.bases["ofield"],
-            self.bases["stokes"],
-        )
-        pfield = (
-            pfield_basis.lincomb(u._blocks[0].to_numpy())
-            if pfield_basis is not None
-            else u._blocks[0]
-        )
-        ofield = (
-            ofield_basis.lincomb(u._blocks[1].to_numpy())
-            if ofield_basis is not None
-            else u._blocks[1]
-        )
-        stokes = (
-            stokes_basis.lincomb(u._blocks[2].to_numpy())
-            if stokes_basis is not None
-            else u._blocks[2]
-        )
-        return self.fom.solution_space.make_array([pfield, ofield, stokes])
+        ret = []
+        for i, s in enumerate(["pfield", "ofield", "stokes"]):
+            basis = self.bases[s]
+            u_i = u._blocks[i]
+            ret.append(basis.lincomb(u_i.to_numpy()) if basis is not None else u_i)
+        return self.fom.solution_space.make_array(ret)
 
 
 def create_and_scatter_cellmodel_parameters(
@@ -1495,13 +1516,17 @@ def calculate_cellmodel_trajectory_errors(
             U_rom = reductor.reconstruct(u_rom[n])
             for i in range(3):
                 vals = current_values.block(i)
+                # projection errors
                 proj_res = vals - modes[i].lincomb(vals.inner(modes[i], product=products[i]))
                 proj_errs[i] += np.sum(proj_res.pairwise_inner(proj_res, product=products[i]))
+                # model reduction errors
                 res = vals - U_rom.block(i)
                 res_norms2 = res.pairwise_inner(res, product=products[i])
                 red_errs[i] += np.sum(res_norms2)
+                # relative model reduction errors
                 vals_norms2 = vals.pairwise_inner(vals, product=products[i])
-                rel_red_errs[i] += np.sum(res_norms2/vals_norms2)
+                rel_errs_list = res_norms2 / vals_norms2
+                rel_red_errs[i] += np.sum([e for e in rel_errs_list if not np.isnan(e)])
             # DEIM basis errors
             if timestep_residuals is not None:
                 for i in range(3):
@@ -1527,22 +1552,32 @@ def calculate_cellmodel_trajectory_errors(
     else:
         n = 0
         for chunk_index in range(num_chunks):
-            with open(f'{pickle_prefix}{chunk_index}.pickle', 'rb') as f:
+            with open(f"{pickle_prefix}{chunk_index}.pickle", "rb") as f:
                 chunk_data = pickle.load(f)
             chunk_size = len(chunk_data["snaps"][0])
-            U_rom = reductor.reconstruct(u_rom[n:n+chunk_size])
+            U_rom = reductor.reconstruct(u_rom[n : n + chunk_size])
             for i in range(3):
                 # POD basis errors
                 vals = chunk_data["snaps"][i]
-                proj_res = vals - modes[i].lincomb(
-                    vals.inner(modes[i], product=products[i])
-                )
+                # projection errors
+                proj_res = vals - modes[i].lincomb(vals.inner(modes[i], product=products[i]))
                 proj_errs[i] += np.sum(proj_res.pairwise_inner(proj_res, product=products[i]))
+                # model reduction errors
                 res = vals - U_rom.block(i)
                 res_norms2 = res.pairwise_inner(res, product=products[i])
                 red_errs[i] += np.sum(res_norms2)
+                # relative model reduction errors
                 vals_norms2 = vals.pairwise_inner(vals, product=products[i])
-                rel_red_errs[i] += np.sum(res_norms2/vals_norms2)
+                reconstructed_norms2 = U_rom.block(i).pairwise_inner(
+                    U_rom.block(i), product=products[i]
+                )
+                print("red_errs: ", red_errs[i], flush=True)
+                print("residual_norms2: ", res_norms2, flush=True)
+                print("vals_norms2: ", vals_norms2, flush=True)
+                print("reconstructed_norms2: ", reconstructed_norms2, flush=True)
+                rel_errs_list = res_norms2 / vals_norms2
+                print("rel_errs: ", rel_errs_list, flush=True)
+                rel_red_errs[i] += np.sum([e for e in rel_errs_list if not np.isnan(e)])
                 # DEIM basis errors
                 for i in range(3):
                     deim_res = chunk_data["residuals"][i]
@@ -1584,7 +1619,7 @@ def calculate_mean_cellmodel_projection_errors(
     rel_red_errs_sum = [0] * 3
     num_residuals = [0] * 3
     num_snapshots = 0
-    mean_fom_time=0.
+    mean_fom_time = 0.0
     for mu, u_rom in zip(mus, reduced_us):
         pickle_prefix_mu = f"{pickle_prefix}_Be{mu['Be']}_Ca{mu['Ca']}_Pa{mu['Pa']}_chunk"
         proj_errs, proj_deim_errs, red_errs, rel_red_errs, n, n_deim, fom_time = calculate_cellmodel_trajectory_errors(
@@ -1602,7 +1637,7 @@ def calculate_mean_cellmodel_projection_errors(
             products=products,
             pickled_data_available=pickled_data_available,
             num_chunks=num_chunks,
-            pickle_prefix=pickle_prefix_mu
+            pickle_prefix=pickle_prefix_mu,
         )
         for i in range(3):
             proj_errs_sum[i] += proj_errs[i]
@@ -1615,7 +1650,7 @@ def calculate_mean_cellmodel_projection_errors(
             mean_fom_time += fom_time
         else:
             mean_fom_time = None
-    mean_fom_time = mean_fom_time/len(mus) if mean_fom_time is not None else None
+    mean_fom_time = mean_fom_time / len(mus) if mean_fom_time is not None else None
     proj_errs = [0.0] * len(modes)
     proj_deim_errs = proj_errs.copy()
     red_errs = [0.0] * len(modes)
@@ -1673,7 +1708,7 @@ def calculate_cellmodel_errors(
     pickled_data_available=False,
     num_chunks=0,
     pickle_prefix=None,
-    rom_time=None
+    rom_time=None,
 ):
     """Calculates projection error. As we cannot store all snapshots due to memory restrictions, the
     problem is solved again and the error calculated on the fly"""
@@ -1739,7 +1774,9 @@ def calculate_cellmodel_errors(
             )
             for k in range(nc):
                 logfile.write(
-                    "{}L2 relative reduction error for {}-th pfield is: {}\n".format(prefix, k, rel_red_errs[k])
+                    "{}L2 relative reduction error for {}-th pfield is: {}\n".format(
+                        prefix, k, rel_red_errs[k]
+                    )
                 )
                 logfile.write(
                     "{}L2 relative reduction error for {}-th ofield is: {}\n".format(
@@ -1747,12 +1784,14 @@ def calculate_cellmodel_errors(
                     )
                 )
             logfile.write(
-                "{}L2 relative reduction error for {}-th stokes is: {}\n".format(prefix, 0, rel_red_errs[2 * nc])
+                "{}L2 relative reduction error for {}-th stokes is: {}\n".format(
+                    prefix, 0, rel_red_errs[2 * nc]
+                )
             )
             if mean_fom_time is not None and mean_rom_time is not None:
                 logfile.write(
-                        f"{mean_fom_time:.2f} vs. {mean_rom_time:.2f}, speedup {mean_fom_time/mean_rom_time:.2f}",
-                        )
+                    f"{mean_fom_time:.2f} vs. {mean_rom_time:.2f}, speedup {mean_fom_time/mean_rom_time:.2f}"
+                )
             # logfile.write("{}L2 reduction error for {}-th ofield is: {}\n".format(prefix, k, red_errs[nc + k]))
             # logfile.write("{}L2 reduction error for stokes is: {}\n".format(prefix, red_errs[2 * nc]))
     return errs
@@ -1925,7 +1964,12 @@ def pod_on_node_in_binary_tree_hapod(r, chunk_index, num_chunks, mpi, root, prod
     if chunk_index == 0:
         r.max_vectors_before_pod = max(r.max_vectors_before_pod, len(r.gathered_modes))
         r.modes, r.svals = local_pod(
-            inputs=[r.gathered_modes], num_snaps_in_leafs=r.num_snaps, parameters=r.params, product=product, orth_tol=r.orth_tol, incremental_gramian=False
+            inputs=[r.gathered_modes],
+            num_snaps_in_leafs=r.num_snaps,
+            parameters=r.params,
+            product=product,
+            orth_tol=r.orth_tol,
+            incremental_gramian=False,
         )
     else:
         r.max_vectors_before_pod = max(

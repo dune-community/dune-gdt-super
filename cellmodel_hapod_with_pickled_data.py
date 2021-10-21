@@ -189,7 +189,8 @@ if __name__ == "__main__":
     least_squares_ofield = True
     least_squares_stokes = True
     excluded_param = "Be"
-    use_L2_product = True
+    use_L2_product = False
+    # use_L2_product = True
     train_params_per_rank = 2
     test_params_per_rank = 1
 
@@ -261,7 +262,6 @@ if __name__ == "__main__":
         grid_size_x, grid_size_y, t_end, dt, excluded_param
     )
     solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])
-    m = DuneCellModel(solver)
     if use_L2_product:
         products = [
             CellModelPfieldProductOperator(solver),
@@ -270,6 +270,8 @@ if __name__ == "__main__":
         ] * 2
     else:
         products = [None] * 6
+    m = DuneCellModel(solver,
+        products={"pfield": products[0], "ofield": products[1], "stokes": products[2]})
     results, num_chunks = binary_tree_hapod(
         cellmodel=m,
         prefix=prefix,
@@ -335,6 +337,7 @@ if __name__ == "__main__":
     # U_rom = reductor.reconstruct(u)
 
     ########## Compute errors for trained parameters #################
+    sys.stdout.flush()
     mpi.comm_world.Barrier()
     calculate_cellmodel_errors(
         modes=[pfield_basis, ofield_basis, stokes_basis],
