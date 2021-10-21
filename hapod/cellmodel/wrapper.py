@@ -1404,7 +1404,7 @@ class CellModelReductor(ProjectionBasedReductor):
             "initial_ofield": project(fom.initial_ofield, ofield_basis, None),
             "initial_stokes": project(fom.initial_stokes, stokes_basis, None),
             "products": {
-                k: project(v, self.bases[k], self.bases[k]) for k, v in fom.products.items()
+                k: project(v, self.bases[k], self.bases[k]) if v is not None else None for k, v in fom.products.items()
             },
         }
         return projected_operators
