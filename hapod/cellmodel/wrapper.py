@@ -908,6 +908,13 @@ class CellModel(Model):
 
         i = 0
         t = 0.0
+        # For the full-order model, we want to use the provided products in the newton scheme.
+        # However, for the reduced model, the projected products are just the Euclidean products
+        # (at least for the l2 and L2 products that we use) and, if we use DEIM, the range of
+        # the operators is the space of DEIM coefficient, for which we do not have a custom product.
+        # So for the reduced model, we want to use the Euclidean product both for source and range.
+        # To be able to do that, we need to check if this method is called from the fom or the rom.
+        is_fom = isinstance(self.pfield_op, CellModelPfieldOperator)
         while t < self.t_end - 1e-14:
             # match saving times and t_end_ exactly
             actual_dt = min(self.dt, self.t_end - t)
@@ -923,8 +930,8 @@ class CellModel(Model):
                 least_squares=self.least_squares_pfield,
                 return_stages=return_stages,
                 return_residuals=return_residuals,
-                source_product=self.products["pfield"],  # TODO: use correct product here
-                range_product=self.products["pfield"],  # TODO: use correct product here
+                source_product=self.products["pfield"] if is_fom else None,
+                range_product=self.products["pfield"] if is_fom else None,
                 **self.newton_params_pfield,
             )
             ofield_vecarray, ofield_data = newton(
@@ -937,8 +944,8 @@ class CellModel(Model):
                 least_squares=self.least_squares_ofield,
                 return_stages=return_stages,
                 return_residuals=return_residuals,
-                source_product=self.products["ofield"],
-                range_product=self.products["ofield"],
+                source_product=self.products["ofield"] if is_fom else None,
+                range_product=self.products["ofield"] if is_fom else None,
                 **self.newton_params_ofield,
             )
             stokes_vecarray, stokes_data = newton(
@@ -949,8 +956,8 @@ class CellModel(Model):
                 least_squares=self.least_squares_stokes,
                 return_stages=return_stages,
                 return_residuals=return_residuals,
-                source_product=self.products["stokes"],
-                range_product=self.products["stokes"],
+                source_product=self.products["stokes"] if is_fom else None,
+                range_product=self.products["stokes"] if is_fom else None,
                 **self.newton_params_stokes,
             )
             i += 1
@@ -991,21 +998,25 @@ class CellModel(Model):
 
         # do not go past t_end
         actual_dt = min(self.dt, self.t_end - t)
+        # see _compute_solution
+        is_fom = isinstance(self.pfield_op, CellModelPfieldOperator)
         # do a timestep
         print("Current time: {}".format(t), flush=True)
         pfield_op_with_fixed_components = self.pfield_op.fix_components(
             (1, 2, 3), [pfield_vecs, ofield_vecs, stokes_vecs]
         )
         pfield_vecs, pfield_data = newton(
-            pfield_op_with_fixed_components,
-            pfield_op_with_fixed_components.range.zeros(),
+                self.pfield_op.fix_components(
+                    (1, 2, 3), [pfield_vecs, ofield_vecs, stokes_vecs]
+                ),
+            self.pfield_op.range.zeros(), # pfield_op has same range as the pfield_op with fixed components
             initial_guess=pfield_vecs,
             mu=mu,
             least_squares=self.least_squares_pfield,
             return_stages=return_stages,
             return_residuals=return_residuals,
-            source_product=self.products["pfield"],
-            range_product=self.products["pfield"],
+            source_product=self.products["pfield"] if is_fom else None,
+            range_product=self.products["pfield"] if is_fom else None,
             **self.newton_params_pfield,
         )
         ofield_vecs, ofield_data = newton(
@@ -1016,8 +1027,8 @@ class CellModel(Model):
             least_squares=self.least_squares_ofield,
             return_stages=return_stages,
             return_residuals=return_residuals,
-            source_product=self.products["ofield"],
-            range_product=self.products["ofield"],
+            source_product=self.products["ofield"] if is_fom else None,
+            range_product=self.products["ofield"] if is_fom else None,
             **self.newton_params_ofield,
         )
         stokes_vecs, stokes_data = newton(
@@ -1028,8 +1039,8 @@ class CellModel(Model):
             least_squares=self.least_squares_stokes,
             return_stages=return_stages,
             return_residuals=return_residuals,
-            source_product=self.products["stokes"],
-            range_product=self.products["stokes"],
+            source_product=self.products["stokes"] if is_fom else None,
+            range_product=self.products["stokes"] if is_fom else None,
             **self.newton_params_stokes,
         )
         t += actual_dt
@@ -1423,9 +1434,6 @@ class CellModelReductor(ProjectionBasedReductor):
             "initial_pfield": project(fom.initial_pfield, pfield_basis, None, product=fom.products['pfield']),
             "initial_ofield": project(fom.initial_ofield, ofield_basis, None, product=fom.products['ofield']),
             "initial_stokes": project(fom.initial_stokes, stokes_basis, None, product=fom.products['stokes']),
-            "products": {
-                k: project(v, self.bases[k], self.bases[k]) if v is not None else None for k, v in fom.products.items()
-            },
         }
         return projected_operators
 
@@ -1444,12 +1452,14 @@ class CellModelReductor(ProjectionBasedReductor):
             **projected_operators,
         )
 
-    def reconstruct(self, u):  # , basis='RB'):
+    def reconstruct(self, u, basis='RB'):
+        if basis != 'RB':
+            raise NotImplementedError
         ret = []
         for i, s in enumerate(["pfield", "ofield", "stokes"]):
-            basis = self.bases[s]
+            basis_s = self.bases[s]
             u_i = u._blocks[i]
-            ret.append(basis.lincomb(u_i.to_numpy()) if basis is not None else u_i)
+            ret.append(basis_s.lincomb(u_i.to_numpy()) if basis_s is not None else u_i)
         return self.fom.solution_space.make_array(ret)
 
 

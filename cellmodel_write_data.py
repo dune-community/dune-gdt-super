@@ -79,8 +79,8 @@ if __name__ == "__main__":
     grid_size_y = 30 if argc < 6 else int(sys.argv[5])
     pol_order = 2
     chunk_size = 10
-    # use_L2_product = True
-    use_L2_product = False
+    use_L2_product = True
+    # use_L2_product = False
 
     ####### choose parameters ####################
     train_params_per_rank = 2
