@@ -189,8 +189,8 @@ if __name__ == "__main__":
     least_squares_ofield = True
     least_squares_stokes = True
     excluded_param = "Be"
-    use_L2_product = False
-    # use_L2_product = True
+    # use_L2_product = False
+    use_L2_product = True
     train_params_per_rank = 2
     test_params_per_rank = 1
 
@@ -334,7 +334,8 @@ if __name__ == "__main__":
     for mu in mus:
         u, _ = rom.solve(mu, return_stages=False)
         us.append(u)
-    # U_rom = reductor.reconstruct(u)
+        # U_rom = reductor.reconstruct(u)
+        # m.visualize(U_rom, prefix=f"noprod_Be{mu['Be']}_Ca{mu['Ca']}_Pa{mu['Pa']}", subsampling=subsampling, every_nth=visualize_step)
 
     ########## Compute errors for trained parameters #################
     sys.stdout.flush()
@@ -360,13 +361,6 @@ if __name__ == "__main__":
     )
 
     ################## test new parameters #######################
-    # solve full-order model for new param
-    # with open(filename_new_mu, "rb") as pickle_file:
-    # _, U_new_mu, data_new_mu = pickle.load(pickle_file)
-    # Be, Ca, Pa = (float(new_mu['Be']), float(new_mu['Ca']), float(new_mu['Pa']))
-    # m.visualize(U_new_mu, prefix=f"fullorder_Be{Be}_Ca{Ca}_Pa{Pa}", subsampling=subsampling, every_nth=visualize_step)
-
-    # solve reduced model for new params
     start = timer()
     # cProfile.run(
     #     "u_new_mu = rom.solve(new_mus[0], return_stages=False)", f"rom{mpi.rank_world}.cprof"
@@ -376,13 +370,6 @@ if __name__ == "__main__":
         u, _ = rom.solve(new_mu, return_stages=False)
         us_new_mu.append(u)
     mean_rom_time = (timer() - start) / len(new_mus)
-    # U_rom_new_mu = reductor.reconstruct(u_new_mu)
-    # Be, Ca, Pa = (float(new_mu['Be']), float(new_mu['Ca']), float(new_mu['Pa']))
-    # m.visualize(
-    #     U_rom_new_mu,
-    #     prefix=f"{reduced_prefix}_Be{Be}_Ca{Ca}_Pa{Pa}",
-    #     subsampling=subsampling,
-    #     every_nth=visualize_step)
 
     ############### Compute errors for new parameters ##################
     mpi.comm_world.Barrier()

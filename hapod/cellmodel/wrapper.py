@@ -1299,6 +1299,26 @@ class CellModelReductor(ProjectionBasedReductor):
             pfield_op = EmpiricalInterpolatedOperatorWithFixComponent(
                 pfield_op, pfield_dofs, pfield_deim_basis, False
             )
+            # If the full-order residual formulation is R(U) = 0, then
+            # the Galerkin DEIM reduced model is (using the Euclidean inner product)
+            #   V^T Z (E^T Z)^{-1} E^T R(Vu) = 0,
+            # where V and Z have the POD and DEIM basis as their columns, respectively,
+            # and E = (e_{k_1}, ..., e_{k_l}) contains the unit vectors corresponding to the DEIM indices.
+            # The pfield_deim_basis.inner(pfield_basis) part computes V^T Z.
+            # If we use least squares projection, we do not project via V^T, but we solve
+            # argmin_u ||Z (E^T Z)^{-1} E^T R(Vu)||_W
+            # where W is the positive definite matrix which defines the inner product.
+            # Since
+            #   argmin_u ||Z (E^T Z)^{-1} E^T R(Vu)||_W
+            # = argmin_u ||Z (E^T Z)^{-1} E^T R(Vu)||_W^2
+            # = argmin_u (Z (E^T Z)^{-1} E^T R(Vu))^T W (Z (E^T Z)^{-1} E^T R(Vu))
+            # = argmin_u R(Vu)^T E (E^T Z)^{-T} Z^T W Z (E^T Z)^{-1} E^T R(Vu)
+            # = argmin_u R(Vu)^T E (E^T Z)^{-T} (E^T Z)^{-1} E^T R(Vu)
+            # = argmin_u ||(E^T Z)^{-1} E^T R(Vu)||^2
+            # = argmin_u ||(E^T Z)^{-1} E^T R(Vu)||
+            # if the DEIM basis is W-orthonormal, i.e., Z^T W Z = I, we can compute
+            # the minimum in the space of DEIM coefficients (i.e., project the collateral_basis
+            # to its own spanned space which gives the unit matrix).
             projected_collateral_basis = (
                 NumpyVectorSpace.make_array(
                     np.eye(len(pfield_deim_basis))
@@ -1400,9 +1420,9 @@ class CellModelReductor(ProjectionBasedReductor):
             "pfield_op": pfield_op,
             "ofield_op": ofield_op,
             "stokes_op": stokes_op,
-            "initial_pfield": project(fom.initial_pfield, pfield_basis, None),
-            "initial_ofield": project(fom.initial_ofield, ofield_basis, None),
-            "initial_stokes": project(fom.initial_stokes, stokes_basis, None),
+            "initial_pfield": project(fom.initial_pfield, pfield_basis, None, product=fom.products['pfield']),
+            "initial_ofield": project(fom.initial_ofield, ofield_basis, None, product=fom.products['ofield']),
+            "initial_stokes": project(fom.initial_stokes, stokes_basis, None, product=fom.products['stokes']),
             "products": {
                 k: project(v, self.bases[k], self.bases[k]) if v is not None else None for k, v in fom.products.items()
             },
@@ -1571,12 +1591,7 @@ def calculate_cellmodel_trajectory_errors(
                 reconstructed_norms2 = U_rom.block(i).pairwise_inner(
                     U_rom.block(i), product=products[i]
                 )
-                print("red_errs: ", red_errs[i], flush=True)
-                print("residual_norms2: ", res_norms2, flush=True)
-                print("vals_norms2: ", vals_norms2, flush=True)
-                print("reconstructed_norms2: ", reconstructed_norms2, flush=True)
                 rel_errs_list = res_norms2 / vals_norms2
-                print("rel_errs: ", rel_errs_list, flush=True)
                 rel_red_errs[i] += np.sum([e for e in rel_errs_list if not np.isnan(e)])
                 # DEIM basis errors
                 for i in range(3):
