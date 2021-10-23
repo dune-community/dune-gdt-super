@@ -189,8 +189,8 @@ if __name__ == "__main__":
     least_squares_ofield = True
     least_squares_stokes = True
     excluded_param = "Be"
-    # use_L2_product = False
     use_L2_product = True
+    # use_L2_product = False
     train_params_per_rank = 2
     test_params_per_rank = 1
 
