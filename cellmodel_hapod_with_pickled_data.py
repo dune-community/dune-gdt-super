@@ -188,6 +188,12 @@ if __name__ == "__main__":
     least_squares_pfield = True
     least_squares_ofield = True
     least_squares_stokes = True
+    if not pod_pfield:
+        least_squares_pfield = False
+    if not pod_ofield:
+        least_squares_ofield = False
+    if not pod_stokes:
+        least_squares_stokes = False
     excluded_param = "Be"
     use_L2_product = True
     # use_L2_product = False
@@ -195,7 +201,8 @@ if __name__ == "__main__":
     test_params_per_rank = 1
 
     ###### Choose filename #########
-    filename = "results_pickled_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_without{}_{}tppr_pfield{}_ofield{}_stokes{}.txt".format(
+    filename = "results_pickled_{}_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_without{}_{}tppr_pfield{}_ofield{}_stokes{}.txt".format(
+            testcase,
         mpi.size_world,
         "L2product" if use_L2_product else "noproduct",
         grid_size_x,
@@ -258,8 +265,8 @@ if __name__ == "__main__":
     )
 
     ######  same filenames as in cellmodel_write_data.py     ##########
-    prefix = "grid{}x{}_tend{}_dt{}_without{}_".format(
-        grid_size_x, grid_size_y, t_end, dt, excluded_param
+    prefix = "{}_grid{}x{}_tend{}_dt{}_without{}_".format(
+        testcase, grid_size_x, grid_size_y, t_end, dt, excluded_param
     )
     solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])
     if use_L2_product:

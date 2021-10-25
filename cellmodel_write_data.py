@@ -101,8 +101,8 @@ if __name__ == "__main__":
     )
 
     ########### Choose filename prefix #############
-    prefix = "grid{}x{}_tend{}_dt{}_without{}_".format(
-        grid_size_x, grid_size_y, t_end, dt, excluded_param
+    prefix = "{}_grid{}x{}_tend{}_dt{}_without{}_".format(
+        testcase, grid_size_x, grid_size_y, t_end, dt, excluded_param
     )
     ########## Create products #####################
     solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])

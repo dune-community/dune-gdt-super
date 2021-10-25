@@ -1295,6 +1295,22 @@ class CellModelReductor(ProjectionBasedReductor):
 
     reduce = ProjectionBasedReductor._reduce  # hack to allow bases which are None
 
+    # copied from ProjectionBasedReductor, added the `if U is None` check
+    def _check_orthonormality(self, basis, offset=0):
+        if not self.check_orthonormality or basis not in self.products:
+            return
+
+        U = self.bases[basis]
+        if U is None:
+            return
+        product = self.products.get(basis, None)
+        error_matrix = U[offset:].inner(U, product)
+        error_matrix[:len(U) - offset, offset:] -= np.eye(len(U) - offset)
+        if error_matrix.size > 0:
+            err = np.max(np.abs(error_matrix))
+            if err >= self.check_tol:
+                raise AccuracyError(f"result not orthogonal (max err={err})")
+
     def project_operators(self):
         fom = self.fom
         pfield_basis, ofield_basis, stokes_basis = (
@@ -1590,8 +1606,9 @@ def calculate_cellmodel_trajectory_errors(
                 # POD basis errors
                 vals = chunk_data["snaps"][i]
                 # projection errors
-                proj_res = vals - modes[i].lincomb(vals.inner(modes[i], product=products[i]))
-                proj_errs[i] += np.sum(proj_res.pairwise_inner(proj_res, product=products[i]))
+                if modes[i] is not None:
+                    proj_res = vals - modes[i].lincomb(vals.inner(modes[i], product=products[i]))
+                    proj_errs[i] += np.sum(proj_res.pairwise_inner(proj_res, product=products[i]))
                 # model reduction errors
                 res = vals - U_rom.block(i)
                 res_norms2 = res.pairwise_inner(res, product=products[i])
