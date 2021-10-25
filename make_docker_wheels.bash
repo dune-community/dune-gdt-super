@@ -14,9 +14,11 @@ set -eu
 IMAGE=zivgitlab.wwu.io/ag-ohlberger/dune-community/docker/manylinux-2014_py${PYTHON_VERSION}:${ML_TAG}
 TEST_IMAGE=pymor/testing_py${PYTHON_VERSION}:latest
 
+DOCKER_ENVFILE=${THISDIR}/docker/env
+./.ci/shared/scripts/make_env_file.py
 # default command is "build-wheels.sh"
 # this deletes testtols and uggrid source dirs
-docker run -e DUNE_SRC_DIR=/home/dxt/src -v ${THISDIR}:/home/dxt/src \
+docker run --env-file=${DOCKER_ENVFILE} -e DUNE_SRC_DIR=/home/dxt/src -v ${THISDIR}:/home/dxt/src \
   -e LOCAL_GID=${LOCAL_GID} -e LOCAL_UID=${LOCAL_UID} -i ${IMAGE}
 
 # makes sure wheels are importable
