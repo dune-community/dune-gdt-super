@@ -1249,7 +1249,7 @@ class ProjectedEmpiricalInterpolatedOperatorWithFixComponents(Operator):
         restricted_op = self.restricted_operator
         if idx != restricted_op.mutable_state_index:
             raise NotImplementedError
-        U_dofs = [self.source_basis_dofs[j].lincomb(U[i].to_numpy()) for i, j in enumerate(idx)]
+        U_dofs = [self.source_basis_dofs[j].lincomb(U[i].to_numpy()) if self.source_basis_dofs[j] is not None else U[i] for i, j in enumerate(idx)]
         fixed_restricted_op = restricted_op.fix_components(idx, U_dofs)
         fixed_source_indices = [i for i in range(len(self.source.subspaces)) if i not in idx]
         if len(fixed_source_indices) != 1:
@@ -1357,9 +1357,9 @@ class CellModelReductor(ProjectionBasedReductor):
             )
             source_basis_dofs = [
                 NumpyVectorSpace.make_array(pfield_basis.dofs(pfield_op.source_dofs[0])),
-                NumpyVectorSpace.make_array(pfield_basis.dofs(pfield_op.source_dofs[1])),
-                NumpyVectorSpace.make_array(ofield_basis.dofs(pfield_op.source_dofs[2])),
-                NumpyVectorSpace.make_array(stokes_basis.dofs(pfield_op.source_dofs[3])),
+                NumpyVectorSpace.make_array(pfield_basis.dofs(pfield_op.source_dofs[1])) if pfield_basis is not None else None,
+                NumpyVectorSpace.make_array(ofield_basis.dofs(pfield_op.source_dofs[2])) if ofield_basis is not None else None,
+                NumpyVectorSpace.make_array(stokes_basis.dofs(pfield_op.source_dofs[3])) if stokes_basis is not None else None,
             ]
             pfield_op = ProjectedEmpiricalInterpolatedOperatorWithFixComponents(
                 pfield_op.restricted_operator,
@@ -1392,9 +1392,9 @@ class CellModelReductor(ProjectionBasedReductor):
             )
             source_basis_dofs = [
                 NumpyVectorSpace.make_array(ofield_basis.dofs(ofield_op.source_dofs[0])),
-                NumpyVectorSpace.make_array(pfield_basis.dofs(ofield_op.source_dofs[1])),
-                NumpyVectorSpace.make_array(ofield_basis.dofs(ofield_op.source_dofs[2])),
-                NumpyVectorSpace.make_array(stokes_basis.dofs(ofield_op.source_dofs[3])),
+                NumpyVectorSpace.make_array(pfield_basis.dofs(ofield_op.source_dofs[1])) if pfield_basis is not None else None,
+                NumpyVectorSpace.make_array(ofield_basis.dofs(ofield_op.source_dofs[2])) if ofield_basis is not None else None,
+                NumpyVectorSpace.make_array(stokes_basis.dofs(ofield_op.source_dofs[3])) if stokes_basis is not None else None,
             ]
             ofield_op = ProjectedEmpiricalInterpolatedOperatorWithFixComponents(
                 ofield_op.restricted_operator,
@@ -1427,8 +1427,8 @@ class CellModelReductor(ProjectionBasedReductor):
             )
             source_basis_dofs = [
                 NumpyVectorSpace.make_array(stokes_basis.dofs(stokes_op.source_dofs[0])),
-                NumpyVectorSpace.make_array(pfield_basis.dofs(stokes_op.source_dofs[1])),
-                NumpyVectorSpace.make_array(ofield_basis.dofs(stokes_op.source_dofs[2])),
+                NumpyVectorSpace.make_array(pfield_basis.dofs(stokes_op.source_dofs[1])) if pfield_basis is not None else None,
+                NumpyVectorSpace.make_array(ofield_basis.dofs(stokes_op.source_dofs[2])) if ofield_basis is not None else None,
             ]
             stokes_op = ProjectedEmpiricalInterpolatedOperatorWithFixComponents(
                 stokes_op.restricted_operator,
