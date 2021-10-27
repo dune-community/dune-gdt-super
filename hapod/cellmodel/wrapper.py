@@ -1353,24 +1353,23 @@ class CellModelReductor(ProjectionBasedReductor):
                     pfield_deim_basis.inner(pfield_basis, product=products["pfield"])
                 )
             )
-            source_basis_dofs = [
-                NumpyVectorSpace.make_array(pfield_basis.dofs(pfield_op.source_dofs[0])),
-                NumpyVectorSpace.make_array(
-                    pfield_basis.dofs(pfield_op.source_dofs[1])
-                    if pfield_basis is not None
-                    else np.eye(fom.solver.pfield_solution_space.dim, len(pfield_op.source_dofs[1]))
-                ),
-                NumpyVectorSpace.make_array(
-                    ofield_basis.dofs(pfield_op.source_dofs[2])
-                    if ofield_basis is not None
-                    else np.eye(fom.solver.ofield_solution_space.dim, len(pfield_op.source_dofs[2]))
-                ),
-                NumpyVectorSpace.make_array(
-                    stokes_basis.dofs(pfield_op.source_dofs[3])
-                    if stokes_basis is not None
-                    else np.eye(fom.solver.stokes_solution_space.dim, len(pfield_op.source_dofs[3]))
-                ),
-            ]
+            # Extract dofs for the reduced operator
+            source_basis_dofs = []
+            bases = [pfield_basis, pfield_basis, ofield_basis, stokes_basis]
+            full_order_spaces = [fom.solver.pfield_solution_space, fom.solver.pfield_solution_space, fom.solver.ofield_solution_space, fom.solver.stokes_solution_space]
+            for i, (basis, space) in enumerate(zip(bases, full_order_spaces)):
+                source_dof_indices = pfield_op.source_dofs[i]
+                if basis is not None:
+                    dofs = basis.dofs(source_dof_indices)
+                else:
+                    # If we do not have a reduced basis, basis is None here but in theory
+                    # should consists of all unit vectors of the full-dimensional space.
+                    # We thus extract the dofs from these unit vectors.
+                    dofs = np.zeros(space.dim, len(source_dof_indices))
+                    for j, dof in enumerate(source_dof_indices):
+                        dofs[dof, j] = 1
+                source_basis_dofs.append(NumpyVectorSpace.make_array(dofs))
+            # Now create reduced operator
             pfield_op = ProjectedEmpiricalInterpolatedOperatorWithFixComponents(
                 pfield_op.restricted_operator,
                 pfield_op.interpolation_matrix,
@@ -1400,24 +1399,20 @@ class CellModelReductor(ProjectionBasedReductor):
                     ofield_deim_basis.inner(ofield_basis, product=products["ofield"])
                 )
             )
-            source_basis_dofs = [
-                NumpyVectorSpace.make_array(ofield_basis.dofs(ofield_op.source_dofs[0])),
-                NumpyVectorSpace.make_array(
-                    pfield_basis.dofs(ofield_op.source_dofs[1])
-                    if pfield_basis is not None
-                    else np.eye(fom.solver.pfield_solution_space.dim, len(ofield_op.source_dofs[1]))
-                ),
-                NumpyVectorSpace.make_array(
-                    ofield_basis.dofs(ofield_op.source_dofs[2])
-                    if ofield_basis is not None
-                    else np.eye(fom.solver.ofield_solution_space.dim, len(ofield_op.source_dofs[2]))
-                ),
-                NumpyVectorSpace.make_array(
-                    stokes_basis.dofs(ofield_op.source_dofs[3])
-                    if stokes_basis is not None
-                    else np.eye(fom.solver.stokes_solution_space.dim, len(ofield_op.source_dofs[3]))
-                ),
-            ]
+            # Extract dofs for the reduced operator
+            source_basis_dofs = []
+            bases = [ofield_basis, pfield_basis, ofield_basis, stokes_basis]
+            full_order_spaces = [fom.solver.ofield_solution_space, fom.solver.pfield_solution_space, fom.solver.ofield_solution_space, fom.solver.stokes_solution_space]
+            for i, (basis, space) in enumerate(zip(bases, full_order_spaces)):
+                source_dof_indices = ofield_op.source_dofs[i]
+                if basis is not None:
+                    dofs = basis.dofs(source_dof_indices)
+                else:
+                    dofs = np.zeros(space.dim, len(source_dof_indices))
+                    for j, dof in enumerate(source_dof_indices):
+                        dofs[dof, j] = 1
+                source_basis_dofs.append(NumpyVectorSpace.make_array(dofs))
+            # Now create reduced operator
             ofield_op = ProjectedEmpiricalInterpolatedOperatorWithFixComponents(
                 ofield_op.restricted_operator,
                 ofield_op.interpolation_matrix,
@@ -1447,19 +1442,20 @@ class CellModelReductor(ProjectionBasedReductor):
                     stokes_deim_basis.inner(stokes_basis, product=self.products["stokes"])
                 )
             )
-            source_basis_dofs = [
-                NumpyVectorSpace.make_array(stokes_basis.dofs(stokes_op.source_dofs[0])),
-                NumpyVectorSpace.make_array(
-                    pfield_basis.dofs(stokes_op.source_dofs[1])
-                    if pfield_basis is not None
-                    else np.eye(fom.solver.pfield_solution_space.dim, len(stokes_op.source_dofs[1]))
-                ),
-                NumpyVectorSpace.make_array(
-                    ofield_basis.dofs(stokes_op.source_dofs[2])
-                    if ofield_basis is not None
-                    else np.eye(fom.solver.ofield_solution_space.dim, len(stokes_op.source_dofs[2]))
-                ),
-            ]
+            # Extract dofs for the reduced operator
+            source_basis_dofs = []
+            bases = [stokes_basis, pfield_basis, ofield_basis]
+            full_order_spaces = [fom.solver.stokes_solution_space, fom.solver.pfield_solution_space, fom.solver.ofield_solution_space]
+            for i, (basis, space) in enumerate(zip(bases, full_order_spaces)):
+                source_dof_indices = stokes_op.source_dofs[i]
+                if basis is not None:
+                    dofs = basis.dofs(source_dof_indices)
+                else:
+                    dofs = np.zeros(space.dim, len(source_dof_indices))
+                    for j, dof in enumerate(source_dof_indices):
+                        dofs[dof, j] = 1
+                source_basis_dofs.append(NumpyVectorSpace.make_array(dofs))
+            # Now create reduced operator
             stokes_op = ProjectedEmpiricalInterpolatedOperatorWithFixComponents(
                 stokes_op.restricted_operator,
                 stokes_op.interpolation_matrix,
