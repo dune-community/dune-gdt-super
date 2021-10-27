@@ -1365,7 +1365,7 @@ class CellModelReductor(ProjectionBasedReductor):
                     # If we do not have a reduced basis, basis is None here but in theory
                     # should consists of all unit vectors of the full-dimensional space.
                     # We thus extract the dofs from these unit vectors.
-                    dofs = np.zeros(space.dim, len(source_dof_indices))
+                    dofs = np.zeros((space.dim, len(source_dof_indices)))
                     for j, dof in enumerate(source_dof_indices):
                         dofs[dof, j] = 1
                 source_basis_dofs.append(NumpyVectorSpace.make_array(dofs))
@@ -1408,7 +1408,7 @@ class CellModelReductor(ProjectionBasedReductor):
                 if basis is not None:
                     dofs = basis.dofs(source_dof_indices)
                 else:
-                    dofs = np.zeros(space.dim, len(source_dof_indices))
+                    dofs = np.zeros((space.dim, len(source_dof_indices)))
                     for j, dof in enumerate(source_dof_indices):
                         dofs[dof, j] = 1
                 source_basis_dofs.append(NumpyVectorSpace.make_array(dofs))
@@ -1451,7 +1451,7 @@ class CellModelReductor(ProjectionBasedReductor):
                 if basis is not None:
                     dofs = basis.dofs(source_dof_indices)
                 else:
-                    dofs = np.zeros(space.dim, len(source_dof_indices))
+                    dofs = np.zeros((space.dim, len(source_dof_indices)))
                     for j, dof in enumerate(source_dof_indices):
                         dofs[dof, j] = 1
                 source_basis_dofs.append(NumpyVectorSpace.make_array(dofs))
