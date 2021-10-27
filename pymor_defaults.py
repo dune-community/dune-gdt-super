@@ -117,7 +117,7 @@ d = {}
 # d['pymor.tools.floatcmp.float_cmp.atol'                                        ] = 1e-14
 # d['pymor.tools.floatcmp.float_cmp.rtol'                                        ] = 1e-14
 
-d['pymor.tools.mpi.event_loop_settings.auto_launch'                            ] = False
+d["pymor.tools.mpi.event_loop_settings.auto_launch"] = False
 
 # d['pymor.tools.random.new_random_state.seed'                                   ] = 42
 
@@ -154,5 +154,3 @@ d['pymor.tools.mpi.event_loop_settings.auto_launch'                            ]
 # d['pymor.playground.vectorarrays.disk.basedir.path'                            ] = '/tmp/pymor.diskarray.tobias'
 
 # d['pymor.tools.pprint.format_array.compact_print'                              ] = False
-
-

@@ -2,6 +2,7 @@
 import random
 import resource
 import sys
+
 # import time
 from timeit import default_timer as timer
 from typing import Dict, Union, Any
@@ -49,7 +50,7 @@ def binary_tree_hapod(
     # orth_tol=1e-10,
     final_orth_tol: float = 1e-10,
     logfile: Union[None, str] = None,
-    products: "list[Any]" = [None]*6,
+    products: "list[Any]" = [None] * 6,
 ):
 
     assert len(tolerances) == 6
@@ -174,7 +175,9 @@ def binary_tree_hapod(
         # The 'or [0]' is only here to silence pyright which otherwise complains below that we cannot apply max to None
         r.max_vectors_before_pod = mpi.comm_world.gather(r.max_vectors_before_pod, root=0) or [0]
         r.max_local_modes = mpi.comm_world.gather(r.max_local_modes, root=0) or [0]
-        r.num_modes = mpi.comm_world.gather(len(r.modes) if r.modes is not None else 0, root=0) or [0]
+        r.num_modes = mpi.comm_world.gather(len(r.modes) if r.modes is not None else 0, root=0) or [
+            0
+        ]
         r.total_num_snapshots = mpi.comm_world.gather(r.total_num_snapshots, root=0) or [0]
         gathered_timings = mpi.comm_world.gather(timings, root=0) or [0]
         if mpi.rank_world == 0:
@@ -318,7 +321,11 @@ if __name__ == "__main__":
     ################### Start HAPOD #####################
     if use_L2_product:
         solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])
-        products = [CellModelPfieldProductOperator(solver), CellModelOfieldProductOperator(solver), CellModelStokesProductOperator(solver)]*2
+        products = [
+            CellModelPfieldProductOperator(solver),
+            CellModelOfieldProductOperator(solver),
+            CellModelStokesProductOperator(solver),
+        ] * 2
     else:
         products = [None] * 6
     Us, _, results = binary_tree_hapod(

@@ -4,6 +4,7 @@ from pymor.vectorarrays.list import Vector, ListVectorSpace, ListVectorArray
 
 from dune.xt.la import CommonVector
 
+
 class DuneXtLaVector(Vector):
     def __init__(self, impl):
         self.impl = impl
@@ -119,7 +120,9 @@ class DuneXtLaListVectorSpace(ListVectorSpace):
         self.id = id
 
     def __eq__(self, other):
-        return type(other) is DuneXtLaListVectorSpace and self.dim == other.dim and self.id == other.id
+        return (
+            type(other) is DuneXtLaListVectorSpace and self.dim == other.dim and self.id == other.id
+        )
 
     @classmethod
     def space_from_vector_obj(cls, vec, id_):

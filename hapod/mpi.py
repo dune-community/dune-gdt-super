@@ -37,7 +37,9 @@ class MPIWrapper:
         self.size_world = self.comm_world.size
 
         # use processor numbers to create a communicator on each processor
-        self.comm_proc = BoltzmannMPICommunicator(self.comm_world.Split_type(MPI.COMM_TYPE_SHARED, self.rank_world))
+        self.comm_proc = BoltzmannMPICommunicator(
+            self.comm_world.Split_type(MPI.COMM_TYPE_SHARED, self.rank_world)
+        )
         self.size_proc = self.comm_proc.size
         self.rank_proc = self.comm_proc.rank
 
@@ -48,13 +50,12 @@ class MPIWrapper:
         for k in range(self.size_proc):
             contained_in_rank_k_group = 1 if self.rank_proc == k else 0
             self.comm_rank_group.append(
-                    BoltzmannMPICommunicator(
-                        self.comm_world.Split(contained_in_rank_k_group, self.rank_world)
+                BoltzmannMPICommunicator(
+                    self.comm_world.Split(contained_in_rank_k_group, self.rank_world)
                 )
             )
             self.size_rank_group.append(self.comm_rank_group[k].size)
             self.rank_rank_group.append(self.comm_rank_group[k].rank)
-
 
     def shared_memory_bcast_modes(self, modes, returnlistvectorarray=False, proc_rank=0):
         """
@@ -105,6 +106,7 @@ class MPIWrapper:
             modes = NumpyVectorSpace.from_numpy(modes_numpy)
             return modes, win
 
+
 class BoltzmannMPICommunicator(MPI.Intracomm):
     def __init__(self, comm):
         self.comm = comm
@@ -123,7 +125,9 @@ class BoltzmannMPICommunicator(MPI.Intracomm):
 
     def recv_modes(self, source):
         comm = self.comm
-        len_modes, len_svals, total_num_snapshots, vector_length = comm.recv(source=source, tag=source + 1000)
+        len_modes, len_svals, total_num_snapshots, vector_length = comm.recv(
+            source=source, tag=source + 1000
+        )
         received_array = np.empty(shape=(len_modes, vector_length))
         comm.Recv(received_array, source=source, tag=source + 2000)
         modes = DuneXtLaListVectorSpace.from_numpy(received_array)
@@ -133,17 +137,31 @@ class BoltzmannMPICommunicator(MPI.Intracomm):
 
         return modes, svals, total_num_snapshots
 
-    def gather_on_root_rank(self, vectorarray, num_snapshots_on_rank, svals=None, num_modes_equal=False, merge=True, root=0):
+    def gather_on_root_rank(
+        self,
+        vectorarray,
+        num_snapshots_on_rank,
+        svals=None,
+        num_modes_equal=False,
+        merge=True,
+        root=0,
+    ):
         comm = self.comm
         rank = comm.Get_rank()
         if svals is not None:
             assert len(svals) == len(vectorarray)
-        num_snapshots_in_associated_leafs = comm.reduce(num_snapshots_on_rank, op=MPI.SUM, root=root)
+        num_snapshots_in_associated_leafs = comm.reduce(
+            num_snapshots_on_rank, op=MPI.SUM, root=root
+        )
         total_num_modes = comm.reduce(len(vectorarray), op=MPI.SUM, root=root)
         vector_length = vectorarray[0].dim if len(vectorarray) > 0 else 0
         # create empty numpy array on rank 0 as a buffer to receive the pod modes from each core
-        vectors_gathered = np.empty(shape=(total_num_modes, vector_length)) if rank == root else None
-        svals_gathered = np.empty(shape=(total_num_modes,)) if (rank == root and svals is not None) else None
+        vectors_gathered = (
+            np.empty(shape=(total_num_modes, vector_length)) if rank == root else None
+        )
+        svals_gathered = (
+            np.empty(shape=(total_num_modes,)) if (rank == root and svals is not None) else None
+        )
         # gather the modes (as numpy array, thus the call to data) in vectors_gathered.
         offsets = []
         offsets_svals = []
@@ -161,12 +179,20 @@ class BoltzmannMPICommunicator(MPI.Intracomm):
                 offsets = [0]
                 for j, count in enumerate(counts):
                     offsets.append(offsets[j] + count)
-                comm.Gatherv(vectorarray.to_numpy(), [vectors_gathered, counts, offsets[0:-1], MPI.DOUBLE], root=root)
+                comm.Gatherv(
+                    vectorarray.to_numpy(),
+                    [vectors_gathered, counts, offsets[0:-1], MPI.DOUBLE],
+                    root=root,
+                )
                 if svals is not None:
                     offsets_svals = [0]
                     for j, count in enumerate(counts_svals):
                         offsets_svals.append(offsets_svals[j] + count)
-                    comm.Gatherv(svals, [svals_gathered, counts_svals, offsets_svals[0:-1], MPI.DOUBLE], root=root)
+                    comm.Gatherv(
+                        svals,
+                        [svals_gathered, counts_svals, offsets_svals[0:-1], MPI.DOUBLE],
+                        root=root,
+                    )
             else:
                 comm.Gatherv(vectorarray.to_numpy(), None, root=root)
                 if svals is not None:
@@ -174,13 +200,16 @@ class BoltzmannMPICommunicator(MPI.Intracomm):
         del vectorarray
         if rank == root:
             if merge:
-                vectors_gathered = DuneXtLaListVectorSpace.from_numpy(vectors_gathered, ensure_copy=True)
+                vectors_gathered = DuneXtLaListVectorSpace.from_numpy(
+                    vectors_gathered, ensure_copy=True
+                )
             else:
                 vectors = []
                 for i in range(len(offsets) - 1):
                     vectors.append(
                         DuneXtLaListVectorSpace.from_numpy(
-                            vectors_gathered[offsets_svals[i] : offsets_svals[i + 1]], ensure_copy=True
+                            vectors_gathered[offsets_svals[i] : offsets_svals[i + 1]],
+                            ensure_copy=True,
                         )
                     )
                 vectors_gathered = vectors
@@ -191,8 +220,12 @@ class BoltzmannMPICommunicator(MPI.Intracomm):
                 svals_gathered = svals
         return vectors_gathered, svals_gathered, num_snapshots_in_associated_leafs, offsets_svals
 
-    def gather_on_rank_0(self, vectorarray, num_snapshots_on_rank, svals=None, num_modes_equal=False, merge=True):
-        return self.gather_on_root_rank(vectorarray, num_snapshots_on_rank, svals, num_modes_equal, merge, root=0)
+    def gather_on_rank_0(
+        self, vectorarray, num_snapshots_on_rank, svals=None, num_modes_equal=False, merge=True
+    ):
+        return self.gather_on_root_rank(
+            vectorarray, num_snapshots_on_rank, svals, num_modes_equal, merge, root=0
+        )
 
     def __getattr__(self, item):
         """ Redirects all request for properties and methods that are not defined in this class to self.comm """

@@ -116,8 +116,9 @@ if __name__ == "__main__":
         products = [None] * 6
 
     ########## Solve for chosen parameters #########
-    m = DuneCellModel(solver,
-        products={"pfield": products[0], "ofield": products[1], "stokes": products[2]})
+    m = DuneCellModel(
+        solver, products={"pfield": products[0], "ofield": products[1], "stokes": products[2]}
+    )
     for mu in mus:
         solve_and_pickle(mu, m, chunk_size, prefix)
         # m.solver.reset();

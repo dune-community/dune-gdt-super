@@ -202,7 +202,7 @@ if __name__ == "__main__":
 
     ###### Choose filename #########
     filename = "results_pickled_{}_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_without{}_{}tppr_pfield{}_ofield{}_stokes{}.txt".format(
-            testcase,
+        testcase,
         mpi.size_world,
         "L2product" if use_L2_product else "noproduct",
         grid_size_x,
@@ -277,8 +277,9 @@ if __name__ == "__main__":
         ] * 2
     else:
         products = [None] * 6
-    m = DuneCellModel(solver,
-        products={"pfield": products[0], "ofield": products[1], "stokes": products[2]})
+    m = DuneCellModel(
+        solver, products={"pfield": products[0], "ofield": products[1], "stokes": products[2]}
+    )
     results, num_chunks = binary_tree_hapod(
         cellmodel=m,
         prefix=prefix,
