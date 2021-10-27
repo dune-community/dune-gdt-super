@@ -1006,10 +1006,8 @@ class CellModel(Model):
             (1, 2, 3), [pfield_vecs, ofield_vecs, stokes_vecs]
         )
         pfield_vecs, pfield_data = newton(
-                self.pfield_op.fix_components(
-                    (1, 2, 3), [pfield_vecs, ofield_vecs, stokes_vecs]
-                ),
-            self.pfield_op.range.zeros(), # pfield_op has same range as the pfield_op with fixed components
+            self.pfield_op.fix_components((1, 2, 3), [pfield_vecs, ofield_vecs, stokes_vecs]),
+            self.pfield_op.range.zeros(),  # pfield_op has same range as the pfield_op with fixed components
             initial_guess=pfield_vecs,
             mu=mu,
             least_squares=self.least_squares_pfield,
@@ -1249,7 +1247,7 @@ class ProjectedEmpiricalInterpolatedOperatorWithFixComponents(Operator):
         restricted_op = self.restricted_operator
         if idx != restricted_op.mutable_state_index:
             raise NotImplementedError
-        U_dofs = [self.source_basis_dofs[j].lincomb(U[i].to_numpy()) if self.source_basis_dofs[j] is not None else U[i] for i, j in enumerate(idx)]
+        U_dofs = [self.source_basis_dofs[j].lincomb(U[i].to_numpy()) for i, j in enumerate(idx)]
         fixed_restricted_op = restricted_op.fix_components(idx, U_dofs)
         fixed_source_indices = [i for i in range(len(self.source.subspaces)) if i not in idx]
         if len(fixed_source_indices) != 1:
@@ -1305,7 +1303,7 @@ class CellModelReductor(ProjectionBasedReductor):
             return
         product = self.products.get(basis, None)
         error_matrix = U[offset:].inner(U, product)
-        error_matrix[:len(U) - offset, offset:] -= np.eye(len(U) - offset)
+        error_matrix[: len(U) - offset, offset:] -= np.eye(len(U) - offset)
         if error_matrix.size > 0:
             err = np.max(np.abs(error_matrix))
             if err >= self.check_tol:
@@ -1357,9 +1355,21 @@ class CellModelReductor(ProjectionBasedReductor):
             )
             source_basis_dofs = [
                 NumpyVectorSpace.make_array(pfield_basis.dofs(pfield_op.source_dofs[0])),
-                NumpyVectorSpace.make_array(pfield_basis.dofs(pfield_op.source_dofs[1])) if pfield_basis is not None else None,
-                NumpyVectorSpace.make_array(ofield_basis.dofs(pfield_op.source_dofs[2])) if ofield_basis is not None else None,
-                NumpyVectorSpace.make_array(stokes_basis.dofs(pfield_op.source_dofs[3])) if stokes_basis is not None else None,
+                NumpyVectorSpace.make_array(
+                    pfield_basis.dofs(pfield_op.source_dofs[1])
+                    if pfield_basis is not None
+                    else np.eye(fom.solver.pfield_solution_space.dim, len(pfield_op.source_dofs[1]))
+                ),
+                NumpyVectorSpace.make_array(
+                    ofield_basis.dofs(pfield_op.source_dofs[2])
+                    if ofield_basis is not None
+                    else np.eye(fom.solver.ofield_solution_space.dim, len(pfield_op.source_dofs[2]))
+                ),
+                NumpyVectorSpace.make_array(
+                    stokes_basis.dofs(pfield_op.source_dofs[3])
+                    if stokes_basis is not None
+                    else np.eye(fom.solver.stokes_solution_space.dim, len(pfield_op.source_dofs[3]))
+                ),
             ]
             pfield_op = ProjectedEmpiricalInterpolatedOperatorWithFixComponents(
                 pfield_op.restricted_operator,
@@ -1392,9 +1402,21 @@ class CellModelReductor(ProjectionBasedReductor):
             )
             source_basis_dofs = [
                 NumpyVectorSpace.make_array(ofield_basis.dofs(ofield_op.source_dofs[0])),
-                NumpyVectorSpace.make_array(pfield_basis.dofs(ofield_op.source_dofs[1])) if pfield_basis is not None else None,
-                NumpyVectorSpace.make_array(ofield_basis.dofs(ofield_op.source_dofs[2])) if ofield_basis is not None else None,
-                NumpyVectorSpace.make_array(stokes_basis.dofs(ofield_op.source_dofs[3])) if stokes_basis is not None else None,
+                NumpyVectorSpace.make_array(
+                    pfield_basis.dofs(ofield_op.source_dofs[1])
+                    if pfield_basis is not None
+                    else np.eye(fom.solver.pfield_solution_space.dim, len(ofield_op.source_dofs[1]))
+                ),
+                NumpyVectorSpace.make_array(
+                    ofield_basis.dofs(ofield_op.source_dofs[2])
+                    if ofield_basis is not None
+                    else np.eye(fom.solver.ofield_solution_space.dim, len(ofield_op.source_dofs[2]))
+                ),
+                NumpyVectorSpace.make_array(
+                    stokes_basis.dofs(ofield_op.source_dofs[3])
+                    if stokes_basis is not None
+                    else np.eye(fom.solver.stokes_solution_space.dim, len(ofield_op.source_dofs[3]))
+                ),
             ]
             ofield_op = ProjectedEmpiricalInterpolatedOperatorWithFixComponents(
                 ofield_op.restricted_operator,
@@ -1427,8 +1449,16 @@ class CellModelReductor(ProjectionBasedReductor):
             )
             source_basis_dofs = [
                 NumpyVectorSpace.make_array(stokes_basis.dofs(stokes_op.source_dofs[0])),
-                NumpyVectorSpace.make_array(pfield_basis.dofs(stokes_op.source_dofs[1])) if pfield_basis is not None else None,
-                NumpyVectorSpace.make_array(ofield_basis.dofs(stokes_op.source_dofs[2])) if ofield_basis is not None else None,
+                NumpyVectorSpace.make_array(
+                    pfield_basis.dofs(stokes_op.source_dofs[1])
+                    if pfield_basis is not None
+                    else np.eye(fom.solver.pfield_solution_space.dim, len(stokes_op.source_dofs[1]))
+                ),
+                NumpyVectorSpace.make_array(
+                    ofield_basis.dofs(stokes_op.source_dofs[2])
+                    if ofield_basis is not None
+                    else np.eye(fom.solver.ofield_solution_space.dim, len(stokes_op.source_dofs[2]))
+                ),
             ]
             stokes_op = ProjectedEmpiricalInterpolatedOperatorWithFixComponents(
                 stokes_op.restricted_operator,
@@ -1447,9 +1477,15 @@ class CellModelReductor(ProjectionBasedReductor):
             "pfield_op": pfield_op,
             "ofield_op": ofield_op,
             "stokes_op": stokes_op,
-            "initial_pfield": project(fom.initial_pfield, pfield_basis, None, product=fom.products['pfield']),
-            "initial_ofield": project(fom.initial_ofield, ofield_basis, None, product=fom.products['ofield']),
-            "initial_stokes": project(fom.initial_stokes, stokes_basis, None, product=fom.products['stokes']),
+            "initial_pfield": project(
+                fom.initial_pfield, pfield_basis, None, product=fom.products["pfield"]
+            ),
+            "initial_ofield": project(
+                fom.initial_ofield, ofield_basis, None, product=fom.products["ofield"]
+            ),
+            "initial_stokes": project(
+                fom.initial_stokes, stokes_basis, None, product=fom.products["stokes"]
+            ),
         }
         return projected_operators
 
@@ -1468,8 +1504,8 @@ class CellModelReductor(ProjectionBasedReductor):
             **projected_operators,
         )
 
-    def reconstruct(self, u, basis='RB'):
-        if basis != 'RB':
+    def reconstruct(self, u, basis="RB"):
+        if basis != "RB":
             raise NotImplementedError
         ret = []
         for i, s in enumerate(["pfield", "ofield", "stokes"]):
@@ -1664,7 +1700,15 @@ def calculate_mean_cellmodel_projection_errors(
     mean_fom_time = 0.0
     for mu, u_rom in zip(mus, reduced_us):
         pickle_prefix_mu = f"{pickle_prefix}_Be{mu['Be']}_Ca{mu['Ca']}_Pa{mu['Pa']}_chunk"
-        proj_errs, proj_deim_errs, red_errs, rel_red_errs, n, n_deim, fom_time = calculate_cellmodel_trajectory_errors(
+        (
+            proj_errs,
+            proj_deim_errs,
+            red_errs,
+            rel_red_errs,
+            n,
+            n_deim,
+            fom_time,
+        ) = calculate_cellmodel_trajectory_errors(
             modes=modes,
             deim_modes=deim_modes,
             testcase=testcase,
@@ -1755,7 +1799,14 @@ def calculate_cellmodel_errors(
     """Calculates projection error. As we cannot store all snapshots due to memory restrictions, the
     problem is solved again and the error calculated on the fly"""
     start = timer()
-    errs, deim_errs, red_errs, rel_red_errs, mean_fom_time, mean_rom_time = calculate_mean_cellmodel_projection_errors(
+    (
+        errs,
+        deim_errs,
+        red_errs,
+        rel_red_errs,
+        mean_fom_time,
+        mean_rom_time,
+    ) = calculate_mean_cellmodel_projection_errors(
         modes=modes,
         deim_modes=deim_modes,
         testcase=testcase,
