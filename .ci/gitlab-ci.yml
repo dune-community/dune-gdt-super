@@ -62,21 +62,30 @@ base:
   artifacts:
     paths:
       - docker/wheelhouse/final/*.whl
+  cache:
+    paths:
+      - docker/cache
 
 wheels 3.7:
   extends: .wheels_base
   variables:
     GDT_PYTHON_VERSION: "3.7"
+  cache:
+    key: $CI_COMMIT_REF_SLUG_3.7
 
 wheels 3.8:
   extends: .wheels_base
   variables:
     GDT_PYTHON_VERSION: "3.8"
+  cache:
+    key: $CI_COMMIT_REF_SLUG_3.8
 
 wheels 3.9:
   extends: .wheels_base
   variables:
     GDT_PYTHON_VERSION: "3.9"
+  cache:
+    key: $CI_COMMIT_REF_SLUG_3.9
 
 publish dune-xt:
   image: alpine:3.12
