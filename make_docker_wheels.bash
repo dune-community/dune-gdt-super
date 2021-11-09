@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-ML_TAG=bae2a97ec6937ea8a71ee6f84b096ad783deacf3
+ML_TAG=e6c39beb1ef4f1c98513e80c683c79815f5d38d0
 
 THISDIR="$(cd "$(dirname ${BASH_SOURCE[0]})" && pwd -P )"
 
@@ -14,9 +14,9 @@ set -eu
 IMAGE=zivgitlab.wwu.io/ag-ohlberger/dune-community/docker/manylinux-2014_py${PYTHON_VERSION}:${ML_TAG}
 TEST_IMAGE=pymor/testing_py${PYTHON_VERSION}:latest
 # check if we a have TTY first, else docker run would throw an error
-if [ -t 1 ] ; then 
+if [ -t 1 ] ; then
   DT="-t"
-else 
+else
   DT=""
 fi
 
