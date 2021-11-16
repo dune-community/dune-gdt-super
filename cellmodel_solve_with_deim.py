@@ -1,32 +1,25 @@
 # import cProfile
+import os
 import random
-import resource
 import sys
-
-# import time
 from timeit import default_timer as timer
-from typing import Dict, Union, Any
-
-import numpy as np
-from rich import pretty, traceback
+from typing import Dict
 
 from hapod.cellmodel.wrapper import (
-    BinaryTreeHapodResults,
     CellModelOfieldProductOperator,
     CellModelPfieldProductOperator,
     CellModelReductor,
     CellModelSolver,
     CellModelStokesProductOperator,
     DuneCellModel,
+    binary_tree_hapod,
+    binary_tree_hapod,
     calculate_cellmodel_errors,
     create_parameters,
-    final_hapod_in_binary_tree_hapod,
-    pod_on_node_in_binary_tree_hapod,
-    pods_on_processor_cores_in_binary_tree_hapod,
     solver_statistics,
 )
-from hapod.hapod import binary_tree_depth
 from hapod.mpi import MPIWrapper
+from rich import pretty, traceback
 
 traceback.install()
 pretty.install()
@@ -34,185 +27,81 @@ pretty.install()
 # set_log_levels({'pymor.algorithms.newton': 'WARN'})
 
 
-def binary_tree_hapod(
-    cellmodel: DuneCellModel,
-    mus: "list[Dict[str, float]]",
-    chunk_size: int,
-    mpi: MPIWrapper,
-    tolerances: "list[float]",
-    indices: "list[int]",
-    include_newton_stages: bool = False,
-    omega: float = 0.95,
-    return_snapshots: bool = False,
-    return_newton_residuals: bool = False,
-    incremental_gramian: bool = False,
-    orth_tol: float = np.inf,
-    # orth_tol=1e-10,
-    final_orth_tol: float = 1e-10,
-    logfile: Union[None, str] = None,
-    products: "list[Any]" = [None] * 6,
-):
+class SolverChunkGenerator:
+    def __init__(
+        self,
+        cellmodel: DuneCellModel,
+        t_end: float,
+        dt: float,
+        chunk_size: int,
+        mus: "list[Dict[str, float]]",
+        include_newton_stages: bool,
+        indices: "list[int]",
+    ):
+        self.cellmodel = cellmodel
+        self.mus = mus
+        self.include_newton_stages = include_newton_stages
+        self.indices = indices
+        self.current_chunk_index = -1
+        self.chunk_size = chunk_size
+        self.num_chunks, _ = solver_statistics(t_end=t_end, dt=dt, chunk_size=chunk_size)
 
-    assert len(tolerances) == 6
-    assert len(indices) <= 6
-    assert 0 <= omega <= 1
-    assert orth_tol >= 0
-    assert final_orth_tol >= 0
-    assert len(products) == 6
+    def __iter__(self):
+        # walk over time chunks
+        # currently, all parameters mu have to use the same timestep length in all time steps
+        old_t = 0.0
+        t = 0.0
+        current_values = [self.cellmodel.initial_values.copy() for _ in range(len(mus))]
+        for chunk_index in range(self.num_chunks):
+            self.current_chunk_index = chunk_index
+            new_vecs = [self.cellmodel.solution_space.subspaces[i % 3].empty() for i in range(6)]
+            # walk over parameters
+            for p, mu in enumerate(mus):
+                t = old_t
+                # If this is the first time step, add initial values ...
+                if chunk_index == 0:
+                    for k in self.indices:
+                        if k < 3:  # POD indices
+                            new_vecs[k].append(current_values[p]._blocks[k])
+                # ... and do one timestep less to ensure that chunk has size chunk_size
+                for time_index in range(
+                    self.chunk_size - 1 if chunk_index == 0 else self.chunk_size
+                ):
+                    # t1 = timer()
+                    current_values[p], data = self.cellmodel.next_time_step(
+                        current_values[p],
+                        t,
+                        mu=mu,
+                        return_stages=self.include_newton_stages,
+                        return_residuals=True,
+                    )
+                    # timings["data"] += timer() - t1
+                    t = data["t"]
+                    if self.include_newton_stages:
+                        timestep_stages = data["stages"]
+                    # check if we are finished (if time == t_end, cellmodel.next_time_step returns None)
+                    if current_values[p] is None:
+                        assert chunk_index == self.num_chunks - 1
+                        assert time_index != 0
+                        break
+                    # store POD input
+                    for k in indices:
+                        if k < 3:
+                            # this is a POD index
+                            new_vecs[k].append(current_values[p]._blocks[k])
+                            if self.include_newton_stages:
+                                new_vecs[k].append(timestep_stages[k])
+                        else:
+                            # this is a DEIM index
+                            new_vecs[k].append(data["residuals"][k - 3])
+            old_t = t
+            yield new_vecs
 
-    # setup timings
-    timings = {}
-    timings["data"] = 0.0
-    for k in indices:
-        timings[f"POD{k}"] = 0.0
+    def chunk_index(self):
+        return self.current_chunk_index
 
-    # calculate rooted tree depth
-    num_chunks, _ = solver_statistics(t_end=cellmodel.t_end, dt=cellmodel.dt, chunk_size=chunk_size)
-    node_binary_tree_depth = binary_tree_depth(
-        mpi.comm_rank_group[0]
-    )  # assumes same tree for all fields
-    node_binary_tree_depth = mpi.comm_proc.bcast(node_binary_tree_depth, root=0)
-    tree_depth = num_chunks + node_binary_tree_depth
-
-    # create classes that store HAPOD results and parameters for easier handling
-    results = [BinaryTreeHapodResults(tree_depth, tol, omega) for tol in tolerances]
-    # add some more properties to the results classes
-    for r in results:
-        r.orth_tol = orth_tol
-        r.final_orth_tol = final_orth_tol
-        r.incremental_gramian = incremental_gramian
-
-    # store initial values
-    space = cellmodel.solution_space
-    current_values = [cellmodel.initial_values.copy() for _ in range(len(mus))]
-    U = [space.empty() for _ in range(len(mus))]
-    U_res = [tuple(space.subspaces[i].empty() for i in range(3)) for _ in range(len(mus))]
-    if return_snapshots:
-        for p in range(len(mus)):
-            U[p].append(current_values[p])
-    # walk over time chunks
-    # currently, all parameters have to use the same timestep length in all time steps
-    old_t = 0.0
-    t = 0.0
-    for chunk_index in range(num_chunks):
-        new_vecs = [space.subspaces[i % 3].empty() for i in range(6)]
-        # walk over parameters
-        for p in range(len(mus)):
-            t = old_t
-            mu = mus[p]
-            # If this is the first time step, add initial values ...
-            if chunk_index == 0:
-                pod_indices = indices[0:3]
-                for k in pod_indices:
-                    new_vecs[k].append(current_values[p]._blocks[k])
-            # ... and do one timestep less to ensure that chunk has size chunk_size
-            for time_index in range(chunk_size - 1 if chunk_index == 0 else chunk_size):
-                t1 = timer()
-                current_values[p], data = cellmodel.next_time_step(
-                    current_values[p],
-                    t,
-                    mu=mu,
-                    return_stages=include_newton_stages,
-                    return_residuals=True,
-                )
-                timings["data"] += timer() - t1
-                t = data["t"]
-                if include_newton_stages:
-                    timestep_stages = data["stages"]
-                # check if we are finished (if time == t_end, cellmodel.next_time_step returns None)
-                if current_values[p] is None:
-                    assert chunk_index == num_chunks - 1
-                    assert time_index != 0
-                    break
-                # store data (if requested)
-                if return_snapshots:
-                    U[p].append(current_values[p])
-                timestep_residuals = data["residuals"]
-                if return_newton_residuals:
-                    for q in range(3):
-                        U_res[p][q].append(timestep_residuals[q])
-                # store POD input
-                for k in indices:
-                    if k < 3:
-                        # this is a POD index
-                        new_vecs[k].append(current_values[p]._blocks[k])
-                        if include_newton_stages:
-                            new_vecs[k].append(timestep_stages[k])
-                    else:
-                        # this is a DEIM index
-                        new_vecs[k].append(timestep_residuals[k - 3])
-        old_t = t
-
-        # calculate POD of timestep vectors on each core
-        for k in indices:
-            t1 = timer()
-            root_rank = k % mpi.size_proc
-            pods_on_processor_cores_in_binary_tree_hapod(
-                results[k], new_vecs[k], mpi, root=root_rank, product=products[k]
-            )
-            timings[f"POD{k}"] += timer() - t1
-        for k in indices:
-            t1 = timer()
-            # perform PODs in parallel for each field
-            root_rank = k % mpi.size_proc
-            if mpi.rank_proc == root_rank:
-                # perform pod on rank root_rank with gathered modes and modes from the last chunk
-                pod_on_node_in_binary_tree_hapod(
-                    results[k], chunk_index, num_chunks, mpi, root=root_rank, product=products[k]
-                )
-            timings[f"POD{k}"] += timer() - t1
-
-    # Finally, perform a HAPOD over a binary tree of nodes
-    for k in indices:
-        root_rank = k % mpi.size_proc
-        r = results[k]
-        if mpi.rank_proc == root_rank:
-            t1 = timer()
-            final_hapod_in_binary_tree_hapod(r, mpi, root=root_rank, product=products[k])
-            timings[f"POD{k}"] += timer() - t1
-
-        # calculate max number of local modes
-        # The 'or [0]' is only here to silence pyright which otherwise complains below that we cannot apply max to None
-        r.max_vectors_before_pod = mpi.comm_world.gather(r.max_vectors_before_pod, root=0) or [0]
-        r.max_local_modes = mpi.comm_world.gather(r.max_local_modes, root=0) or [0]
-        r.num_modes = mpi.comm_world.gather(len(r.modes) if r.modes is not None else 0, root=0) or [
-            0
-        ]
-        r.total_num_snapshots = mpi.comm_world.gather(r.total_num_snapshots, root=0) or [0]
-        gathered_timings = mpi.comm_world.gather(timings, root=0) or [0]
-        if mpi.rank_world == 0:
-            r.max_vectors_before_pod = max(r.max_vectors_before_pod)
-            r.max_local_modes = max(r.max_local_modes)
-            r.num_modes = max(r.num_modes)
-            r.total_num_snapshots = max(r.total_num_snapshots)
-            r.timings = {}
-            for key in timings.keys():
-                r.timings[key] = max([timing[key] for timing in gathered_timings])
-
-    # write statistics to file
-    if logfile is not None and mpi.rank_world == 0:
-        with open(logfile, "a") as ff:
-            ff.write(f"Data computation took {timings['data']} s.\n")
-            for k in indices:
-                r = results[k]
-                ff.write(f"Hapod for index {k}\n")
-                ff.write(
-                    f"The HAPOD resulted in {r.num_modes} final modes taken from a total of {r.total_num_snapshots} snapshots!\n"
-                )
-                ff.write(f"The maximal number of local modes was {r.max_local_modes}\n")
-                ff.write(
-                    f"The maximal number of input vectors to a local POD was: {r.max_vectors_before_pod}\n"
-                )
-                ff.write("PODs took {} s.\n".format(r.timings[f"POD{k}"]))
-            ff.write(
-                f"The maximum amount of memory used on rank 0 was: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1000.0 ** 2} GB\n"
-            )
-    mpi.comm_world.Barrier()
-    if not return_snapshots:
-        U = None
-    if not return_newton_residuals:
-        U_res = None
-    return U, U_res, results
+    def done(self):
+        return self.chunk_index() == self.num_chunks - 1
 
 
 # example call: mpiexec -n 2 python3 cellmodel_solve_with_deim.py single_cell 1e-2 1e-3 30 30 True True False False False False 1e-3 1e-3 1e-3 1e-10 1e-10 1e-10
@@ -248,28 +137,37 @@ if __name__ == "__main__":
     least_squares_stokes = True
     excluded_param = "Be"
     use_L2_product = True
+    train_params_per_rank = 2
+    test_params_per_rank = 1
 
     ###### Choose filename #########
-    filename = "results_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_without{}_pfield{}_ofield{}_stokes{}.txt".format(
-        mpi.size_world,
-        "L2product" if use_L2_product is not None else "noproduct",
-        grid_size_x,
-        grid_size_y,
-        t_end,
-        dt,
-        "snapsandstages" if include_newton_stages else "snaps",
-        excluded_param,
-        (f"pod{pfield_atol:.0e}" if pod_pfield else "pod0")
-        + (f"deim{pfield_deim_atol:.0e}" if deim_pfield else "deim0"),
-        (f"pod{ofield_atol:.0e}" if pod_ofield else "pod0")
-        + (f"deim{ofield_deim_atol:.0e}" if deim_ofield else "deim0"),
-        (f"pod{stokes_atol:.0e}" if pod_stokes else "pod0")
-        + (f"deim{stokes_deim_atol:.0e}" if deim_stokes else "deim0"),
+    logfile_dir = "logs"
+    if mpi.rank_world == 0:
+        if not os.path.exists(logfile_dir):
+            os.mkdir(logfile_dir)
+    logfile_name = os.path.join(
+        logfile_dir,
+        "results_{}_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_without{}_{}tppr_pfield{}_ofield{}_stokes{}.txt".format(
+            testcase,
+            mpi.size_world,
+            "L2product" if use_L2_product else "noproduct",
+            grid_size_x,
+            grid_size_y,
+            t_end,
+            dt,
+            "snapsandstages" if include_newton_stages else "snaps",
+            excluded_param,
+            train_params_per_rank,
+            (f"pod{pfield_atol:.0e}" if pod_pfield else "pod0")
+            + (f"deim{pfield_deim_atol:.0e}" if deim_pfield else "deim0"),
+            (f"pod{ofield_atol:.0e}" if pod_ofield else "pod0")
+            + (f"deim{ofield_deim_atol:.0e}" if deim_ofield else "deim0"),
+            (f"pod{stokes_atol:.0e}" if pod_stokes else "pod0")
+            + (f"deim{stokes_deim_atol:.0e}" if deim_stokes else "deim0"),
+        ),
     )
 
     ####### choose parameters ####################
-    train_params_per_rank = 1 if mpi.size_world > 1 else 1
-    test_params_per_rank = 1 if mpi.size_world > 1 else 1
     rf = 10  # Factor of largest to smallest training parameter
     random.seed(123)  # create_parameters choose some parameters randomly in some cases
     mus, new_mus = create_parameters(
@@ -278,7 +176,7 @@ if __name__ == "__main__":
         rf,
         mpi,
         excluded_param,
-        filename,
+        logfile_name,
         Be0=1.0,
         Ca0=1.0,
         Pa0=1.0,
@@ -313,14 +211,9 @@ if __name__ == "__main__":
     for index in deim_indices:
         indices.append(index + 3)
 
-    ####### Solve full-order model for training parameters #######
+    ####### Create full-order model #######
     solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])
-    num_cells = solver.num_cells
-    m = DuneCellModel(solver)
-
-    ################### Start HAPOD #####################
     if use_L2_product:
-        solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])
         products = [
             CellModelPfieldProductOperator(solver),
             CellModelOfieldProductOperator(solver),
@@ -328,27 +221,29 @@ if __name__ == "__main__":
         ] * 2
     else:
         products = [None] * 6
-    Us, _, results = binary_tree_hapod(
-        m,
-        mus,
-        chunk_size,
-        mpi,
-        hapod_tols,
-        indices,
-        include_newton_stages,
+    m = DuneCellModel(
+        solver, products={"pfield": products[0], "ofield": products[1], "stokes": products[2]}
+    )
+
+    ################### Start HAPOD #####################
+    chunk_generator = SolverChunkGenerator(
+        cellmodel=m,
+        t_end=t_end,
+        dt=dt,
+        mus=mus,
+        chunk_size=chunk_size,
+        include_newton_stages=include_newton_stages,
+        indices=indices,
+    )
+    results = binary_tree_hapod(
+        chunk_generator=chunk_generator,
+        mpi=mpi,
+        tolerances=hapod_tols,
+        indices=indices,
         omega=0.95,
-        return_snapshots=False,
-        return_newton_residuals=False,
-        logfile=filename,
+        logfile=logfile_name,
         products=products,
     )
-    # U = Us[0]
-    # U_res = Us_res[0]
-    # for p in range(1, len(mus)):
-    #     U.append(Us[p])
-    #     for q in range(3):
-    #         U_res[q].append(Us_res[p][q])
-    del Us
     for k in indices:
         r = results[k]
         r.modes, r.win = mpi.shared_memory_bcast_modes(
@@ -393,20 +288,21 @@ if __name__ == "__main__":
     ################## solve reduced model for trained parameters ####################
     mpi.comm_world.Barrier()
     # time.sleep(10)
-    u, _ = rom.solve(mus[0], return_stages=False)
-    # time.sleep(10)
-    for p in range(1, len(mus)):
-        u.append(rom.solve(mus[p], return_stages=False))
-    U_rom = reductor.reconstruct(u)
-    Be, Ca, Pa = (float(mus[0]["Be"]), float(mus[0]["Ca"]), float(mus[0]["Pa"]))
-    m.visualize(
-        U_rom,
-        prefix=f"{filename[:-4]}_Be{Be}_Ca{Ca}_Pa{Pa}",
-        subsampling=subsampling,
-        every_nth=visualize_step,
-    )
-    del m
-    del solver
+    us = []
+    for mu in mus:
+        u, _ = rom.solve(mu, return_stages=False)
+        us.append(u)
+
+    # U_rom = reductor.reconstruct(us)
+    # Be, Ca, Pa = (float(mus[0]["Be"]), float(mus[0]["Ca"]), float(mus[0]["Pa"]))
+    # m.visualize(
+    #     U_rom,
+    #     prefix=f"{filename[:-4]}_Be{Be}_Ca{Ca}_Pa{Pa}",
+    #     subsampling=subsampling,
+    #     every_nth=visualize_step,
+    # )
+    # del m
+    # del solver
 
     ################## test new parameters #######################
     # solve full-order model for new param
@@ -423,11 +319,12 @@ if __name__ == "__main__":
     # cProfile.run(
     #     "u_new_mu = rom.solve(new_mus[0], return_stages=False)", f"rom{mpi.rank_world}.cprof"
     # )
-    u_new_mu, _ = rom.solve(new_mus[0], return_stages=False)
-    for p in range(1, len(new_mus)):
-        u_new_mu.append(rom.solve(new_mus[p], return_stages=False))
+    us_new_mu = []
+    for new_mu in new_mus:
+        u, _ = rom.solve(new_mu, return_stages=False)
+        us_new_mu.append(u)
     mean_rom_time = (timer() - start) / len(new_mus)
-    U_rom_new_mu = reductor.reconstruct(u_new_mu)
+
     # Be, Ca, Pa = (float(new_mu['Be']), float(new_mu['Ca']), float(new_mu['Pa']))
     # m.visualize(
     #     U_rom_new_mu,
@@ -437,36 +334,39 @@ if __name__ == "__main__":
 
     mpi.comm_world.Barrier()
     calculate_cellmodel_errors(
-        [pfield_basis, ofield_basis, stokes_basis],
-        [pfield_deim_basis, ofield_deim_basis, stokes_deim_basis],
-        testcase,
-        t_end,
-        dt,
-        grid_size_x,
-        grid_size_y,
-        pol_order,
-        mus[0],
-        u,
-        reductor,
-        mpi,
-        filename,
+        modes=[pfield_basis, ofield_basis, stokes_basis],
+        deim_modes=[pfield_deim_basis, ofield_deim_basis, stokes_deim_basis],
+        testcase=testcase,
+        t_end=t_end,
+        dt=dt,
+        grid_size_x=grid_size_x,
+        grid_size_y=grid_size_y,
+        pol_order=pol_order,
+        mus=mus,
+        reduced_us=us,
+        reductor=reductor,
+        mpi_wrapper=mpi,
+        logfile_name=logfile_name,
         products=products,
+        pickled_data_available=False,
     )
     calculate_cellmodel_errors(
-        [pfield_basis, ofield_basis, stokes_basis],
-        [pfield_deim_basis, ofield_deim_basis, stokes_deim_basis],
-        testcase,
-        t_end,
-        dt,
-        grid_size_x,
-        grid_size_y,
-        pol_order,
-        new_mus[0],
-        u_new_mu,
-        reductor,
-        mpi,
-        filename,
+        modes=[pfield_basis, ofield_basis, stokes_basis],
+        deim_modes=[pfield_deim_basis, ofield_deim_basis, stokes_deim_basis],
+        testcase=testcase,
+        t_end=t_end,
+        dt=dt,
+        grid_size_x=grid_size_x,
+        grid_size_y=grid_size_y,
+        pol_order=pol_order,
+        mus=new_mus,
+        reduced_us=us_new_mu,
+        reductor=reductor,
+        mpi_wrapper=mpi,
+        logfile_name=logfile_name,
         prefix="new ",
         products=products,
+        pickled_data_available=False,
+        rom_time=mean_rom_time,
     )
     mpi.comm_world.Barrier()

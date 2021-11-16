@@ -1,10 +1,9 @@
+import os
 import pickle
 import random
 import sys
 from timeit import default_timer as timer
 from typing import Dict
-
-from rich import pretty, traceback
 
 from hapod.cellmodel.wrapper import (
     CellModelOfieldProductOperator,
@@ -16,19 +15,22 @@ from hapod.cellmodel.wrapper import (
     solver_statistics,
 )
 from hapod.mpi import MPIWrapper
+from rich import pretty, traceback
 
 traceback.install()
 pretty.install()
 
 
-def solve_and_pickle(mu: Dict[str, float], m: DuneCellModel, chunk_size: int, prefix: str):
+def solve_and_pickle(mu: Dict[str, float], m: DuneCellModel, chunk_size: int, pickle_prefix: str):
     num_chunks, _ = solver_statistics(t_end=m.t_end, dt=m.dt, chunk_size=chunk_size)
     current_values = m.initial_values.copy()
     space = m.solution_space
     t = 0.0
     elapsed = 0.0
     for chunk_index in range(num_chunks):
-        filename = f"{prefix}_Be{mu['Be']}_Ca{mu['Ca']}_Pa{mu['Pa']}_chunk{chunk_index}.pickle"
+        filename = (
+            f"{pickle_prefix}_Be{mu['Be']}_Ca{mu['Ca']}_Pa{mu['Pa']}_chunk{chunk_index}.pickle"
+        )
         snaps = [space.subspaces[i % 3].empty() for i in range(6)]
         stages = [space.subspaces[i % 3].empty() for i in range(6)]
         residuals = [space.subspaces[i % 3].empty() for i in range(6)]
@@ -101,8 +103,15 @@ if __name__ == "__main__":
     )
 
     ########### Choose filename prefix #############
-    prefix = "{}_grid{}x{}_tend{}_dt{}_without{}_".format(
-        testcase, grid_size_x, grid_size_y, t_end, dt, excluded_param
+    pickle_dir = "pickle_files"
+    if mpi.rank_world == 0:
+        if not os.path.exists(pickle_dir):
+            os.mkdir(pickle_dir)
+    pickle_prefix = os.path.join(
+        pickle_dir,
+        "{}_grid{}x{}_tend{}_dt{}_without{}_".format(
+            testcase, grid_size_x, grid_size_y, t_end, dt, excluded_param
+        ),
     )
     ########## Create products #####################
     solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])
@@ -120,11 +129,11 @@ if __name__ == "__main__":
         solver, products={"pfield": products[0], "ofield": products[1], "stokes": products[2]}
     )
     for mu in mus:
-        solve_and_pickle(mu, m, chunk_size, prefix)
+        solve_and_pickle(mu, m, chunk_size, pickle_prefix)
         # m.solver.reset();
         print(f"mu: {mu} done")
     for new_mu in new_mus:
-        solve_and_pickle(new_mu, m, chunk_size, prefix)
+        solve_and_pickle(new_mu, m, chunk_size, pickle_prefix)
         # m.solver.reset();
         print(f"mu: {new_mu} done")
     mpi.comm_world.Barrier()

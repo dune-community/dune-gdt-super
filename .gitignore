@@ -36,3 +36,5 @@ rom_*procs_*
 .vimspector.json
 results_*
 *.pickle
+pickle_files
+logs

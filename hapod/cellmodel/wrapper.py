@@ -1,12 +1,18 @@
 import math
-from statistics import mean
-import pickle
 from numbers import Number
+import pickle
 import random
+import resource
+from statistics import mean
 from timeit import default_timer as timer
+from typing import Any, Union
 import weakref
-from typing import Union, Any
 
+import gdt.cellmodel
+from hapod.hapod import binary_tree_depth
+from hapod.hapod import HapodParameters, binary_tree_hapod_over_ranks, local_pod
+from hapod.mpi import MPIWrapper
+from hapod.xt import DuneXtLaListVectorSpace, DuneXtLaVector
 import numpy as np
 from pymor.algorithms.ei import deim
 from pymor.algorithms.newton import newton
@@ -14,7 +20,10 @@ from pymor.algorithms.projection import project
 from pymor.core.base import abstractmethod
 from pymor.models.interface import Model
 from pymor.operators.constructions import ProjectedOperator, VectorOperator
-from pymor.operators.ei import EmpiricalInterpolatedOperator, ProjectedEmpiricalInterpolatedOperator
+from pymor.operators.ei import (
+    EmpiricalInterpolatedOperator,
+    ProjectedEmpiricalInterpolatedOperator,
+)
 from pymor.operators.interface import Operator
 from pymor.parameters.base import Parameters, ParametricObject
 from pymor.reductors.basic import ProjectionBasedReductor
@@ -22,10 +31,6 @@ from pymor.vectorarrays.block import BlockVectorSpace
 from pymor.vectorarrays.interface import VectorArray
 from pymor.vectorarrays.list import ListVectorArray
 from pymor.vectorarrays.numpy import NumpyVectorArray, NumpyVectorSpace
-
-import gdt.cellmodel
-from hapod.hapod import HapodParameters, local_pod, binary_tree_hapod_over_ranks
-from hapod.xt import DuneXtLaListVectorSpace, DuneXtLaVector
 
 # Parameters are Be, Ca, Pa
 CELLMODEL_PARAMETER_TYPE = Parameters({"Be": 1, "Ca": 1, "Pa": 1})
@@ -1002,9 +1007,6 @@ class CellModel(Model):
         is_fom = isinstance(self.pfield_op, CellModelPfieldOperator)
         # do a timestep
         print("Current time: {}".format(t), flush=True)
-        pfield_op_with_fixed_components = self.pfield_op.fix_components(
-            (1, 2, 3), [pfield_vecs, ofield_vecs, stokes_vecs]
-        )
         pfield_vecs, pfield_data = newton(
             self.pfield_op.fix_components((1, 2, 3), [pfield_vecs, ofield_vecs, stokes_vecs]),
             self.pfield_op.range.zeros(),  # pfield_op has same range as the pfield_op with fixed components
@@ -1356,7 +1358,12 @@ class CellModelReductor(ProjectionBasedReductor):
             # Extract dofs for the reduced operator
             source_basis_dofs = []
             bases = [pfield_basis, pfield_basis, ofield_basis, stokes_basis]
-            full_order_spaces = [fom.solver.pfield_solution_space, fom.solver.pfield_solution_space, fom.solver.ofield_solution_space, fom.solver.stokes_solution_space]
+            full_order_spaces = [
+                fom.solver.pfield_solution_space,
+                fom.solver.pfield_solution_space,
+                fom.solver.ofield_solution_space,
+                fom.solver.stokes_solution_space,
+            ]
             for i, (basis, space) in enumerate(zip(bases, full_order_spaces)):
                 source_dof_indices = pfield_op.source_dofs[i]
                 if basis is not None:
@@ -1402,7 +1409,12 @@ class CellModelReductor(ProjectionBasedReductor):
             # Extract dofs for the reduced operator
             source_basis_dofs = []
             bases = [ofield_basis, pfield_basis, ofield_basis, stokes_basis]
-            full_order_spaces = [fom.solver.ofield_solution_space, fom.solver.pfield_solution_space, fom.solver.ofield_solution_space, fom.solver.stokes_solution_space]
+            full_order_spaces = [
+                fom.solver.ofield_solution_space,
+                fom.solver.pfield_solution_space,
+                fom.solver.ofield_solution_space,
+                fom.solver.stokes_solution_space,
+            ]
             for i, (basis, space) in enumerate(zip(bases, full_order_spaces)):
                 source_dof_indices = ofield_op.source_dofs[i]
                 if basis is not None:
@@ -1445,7 +1457,11 @@ class CellModelReductor(ProjectionBasedReductor):
             # Extract dofs for the reduced operator
             source_basis_dofs = []
             bases = [stokes_basis, pfield_basis, ofield_basis]
-            full_order_spaces = [fom.solver.stokes_solution_space, fom.solver.pfield_solution_space, fom.solver.ofield_solution_space]
+            full_order_spaces = [
+                fom.solver.stokes_solution_space,
+                fom.solver.pfield_solution_space,
+                fom.solver.ofield_solution_space,
+            ]
             for i, (basis, space) in enumerate(zip(bases, full_order_spaces)):
                 source_dof_indices = stokes_op.source_dofs[i]
                 if basis is not None:
@@ -1587,7 +1603,9 @@ def calculate_cellmodel_trajectory_errors(
     timestep_residuals = None
     if not pickled_data_available:
         solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu)
-        cellmodel = DuneCellModel(solver)
+        cellmodel = DuneCellModel(
+            solver, products={"pfield": products[0], "ofield": products[1], "stokes": products[2]}
+        )
         current_values = cellmodel.initial_values.copy()
         while True:
             # POD basis errors
@@ -1608,7 +1626,7 @@ def calculate_cellmodel_trajectory_errors(
             # DEIM basis errors
             if timestep_residuals is not None:
                 for i in range(3):
-                    deim_res = timestep_residuals[i][n]
+                    deim_res = timestep_residuals[i]
                     if deim_modes[i] is not None:
                         proj_res = deim_res - deim_modes[i].lincomb(
                             deim_res.inner(deim_modes[i], product=products[i])
@@ -1647,9 +1665,6 @@ def calculate_cellmodel_trajectory_errors(
                 red_errs[i] += np.sum(res_norms2)
                 # relative model reduction errors
                 vals_norms2 = vals.pairwise_inner(vals, product=products[i])
-                reconstructed_norms2 = U_rom.block(i).pairwise_inner(
-                    U_rom.block(i), product=products[i]
-                )
                 rel_errs_list = res_norms2 / vals_norms2
                 rel_red_errs[i] += np.sum([e for e in rel_errs_list if not np.isnan(e)])
                 # DEIM basis errors
@@ -2047,10 +2062,10 @@ def pods_on_processor_cores_in_binary_tree_hapod(r, vecs, mpi, root, product):
 
 
 # perform a POD with gathered modes on rank 0 on each processor/node
-def pod_on_node_in_binary_tree_hapod(r, chunk_index, num_chunks, mpi, root, product):
+def pod_on_node_in_binary_tree_hapod(r, is_first_chunk, is_last_chunk, mpi, root, product):
     print("start node pod: ", mpi.rank_world)
     r.total_num_snapshots += r.num_snaps
-    if chunk_index == 0:
+    if is_first_chunk:
         r.max_vectors_before_pod = max(r.max_vectors_before_pod, len(r.gathered_modes))
         r.modes, r.svals = local_pod(
             inputs=[r.gathered_modes],
@@ -2064,7 +2079,7 @@ def pod_on_node_in_binary_tree_hapod(r, chunk_index, num_chunks, mpi, root, prod
         r.max_vectors_before_pod = max(
             r.max_vectors_before_pod, len(r.modes) + len(r.gathered_modes)
         )
-        root_of_tree = chunk_index == num_chunks - 1 and mpi.size_rank_group[root] == 1
+        root_of_tree = is_last_chunk and mpi.size_rank_group[root] == 1
         r.modes, r.svals = local_pod(
             inputs=[[r.modes, r.svals], r.gathered_modes],
             num_snaps_in_leafs=r.total_num_snapshots,
@@ -2098,3 +2113,113 @@ def final_hapod_in_binary_tree_hapod(r, mpi, root, product):
     )
     r.max_vectors_before_pod = max(r.max_vectors_before_pod, max_num_input_vecs)
     r.max_local_modes = max(r.max_local_modes, max_num_local_modes)
+
+
+def binary_tree_hapod(
+    chunk_generator,
+    mpi: MPIWrapper,
+    tolerances: "list[float]",
+    indices: "list[int]",
+    omega: float = 0.95,
+    incremental_gramian: bool = False,
+    orth_tol: float = np.inf,
+    # orth_tol=1e-10,
+    final_orth_tol: float = 1e-10,
+    logfile: Union[None, str] = None,
+    products: "list[Any]" = [None] * 6,
+):
+    assert len(tolerances) == 6
+
+    # setup timings
+    timings = {}
+    for k in indices:
+        timings[f"POD{k}"] = 0.0
+
+    # calculate rooted tree depth
+    node_binary_tree_depth = binary_tree_depth(
+        mpi.comm_rank_group[0]
+    )  # assumes same tree for all fields
+    node_binary_tree_depth = mpi.comm_proc.bcast(node_binary_tree_depth, root=0)
+    tree_depth = chunk_generator.num_chunks + node_binary_tree_depth
+
+    # create classes that store HAPOD results and parameters for easier handling
+    results = [BinaryTreeHapodResults(tree_depth, tol, omega) for tol in tolerances]
+    # add some more properties to the results classes
+    for r in results:
+        r.orth_tol = orth_tol
+        r.final_orth_tol = final_orth_tol
+        r.incremental_gramian = incremental_gramian
+
+    # walk over time chunks
+    for chunk in chunk_generator:
+        # calculate POD of timestep vectors on each core
+        for k in indices:
+            t1 = timer()
+            root_rank = k % mpi.size_proc
+            pods_on_processor_cores_in_binary_tree_hapod(
+                results[k], chunk[k], mpi, root=root_rank, product=products[k]
+            )
+            timings[f"POD{k}"] += timer() - t1
+        for k in indices:
+            t1 = timer()
+            # perform PODs in parallel for each field
+            root_rank = k % mpi.size_proc
+            if mpi.rank_proc == root_rank:
+                # perform pod on rank root_rank with gathered modes and modes from the last chunk
+                pod_on_node_in_binary_tree_hapod(
+                    results[k],
+                    is_first_chunk=chunk_generator.chunk_index() == 0,
+                    is_last_chunk=chunk_generator.done(),
+                    mpi=mpi,
+                    root=root_rank,
+                    product=products[k],
+                )
+            timings[f"POD{k}"] += timer() - t1
+
+    # Finally, perform a HAPOD over a binary tree of nodes
+    for k in indices:
+        root_rank = k % mpi.size_proc
+        r = results[k]
+        if mpi.rank_proc == root_rank:
+            t1 = timer()
+            final_hapod_in_binary_tree_hapod(r, mpi, root=root_rank, product=products[k])
+            timings[f"POD{k}"] += timer() - t1
+
+        # calculate max number of local modes
+        # The 'or [0]' is only here to silence pyright which otherwise complains below that we cannot apply max to None
+        r.max_vectors_before_pod = mpi.comm_world.gather(r.max_vectors_before_pod, root=0) or [0]
+        r.max_local_modes = mpi.comm_world.gather(r.max_local_modes, root=0) or [0]
+        r.num_modes = mpi.comm_world.gather(len(r.modes) if r.modes is not None else 0, root=0) or [
+            0
+        ]
+        r.total_num_snapshots = mpi.comm_world.gather(r.total_num_snapshots, root=0) or [0]
+        gathered_timings = mpi.comm_world.gather(timings, root=0) or [0]
+        if mpi.rank_world == 0:
+            r.max_vectors_before_pod = max(r.max_vectors_before_pod)
+            r.max_local_modes = max(r.max_local_modes)
+            r.num_modes = max(r.num_modes)
+            r.total_num_snapshots = max(r.total_num_snapshots)
+            r.timings = {}
+            for key in timings.keys():
+                r.timings[key] = max([timing[key] for timing in gathered_timings])
+
+    # write statistics to file
+    if logfile is not None and mpi.rank_world == 0:
+        with open(logfile, "a") as ff:
+            for k in indices:
+                r = results[k]
+                ff.write(f"Hapod for index {k}\n")
+                ff.write(
+                    f"The HAPOD resulted in {r.num_modes} final modes taken from a total of {r.total_num_snapshots} snapshots!\n"
+                )
+                ff.write(f"The maximal number of local modes was {r.max_local_modes}\n")
+                ff.write(
+                    f"The maximal number of input vectors to a local POD was: {r.max_vectors_before_pod}\n"
+                )
+                ff.write("PODs took {} s.\n".format(r.timings[f"POD{k}"]))
+            ff.write(
+                f"The maximum amount of memory used on rank 0 was: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1000.0 ** 2} GB\n"
+            )
+    mpi.comm_world.Barrier()
+    return results
+

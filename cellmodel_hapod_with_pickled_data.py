@@ -1,160 +1,75 @@
 # import cProfile
+import os
 import pickle
 import random
-import resource
-from statistics import mean
 import sys
 from timeit import default_timer as timer
-from typing import Any, Dict, Union
+from typing import Dict
 
 from hapod.cellmodel.wrapper import (
-    BinaryTreeHapodResults,
     CellModelOfieldProductOperator,
     CellModelPfieldProductOperator,
     CellModelReductor,
     CellModelSolver,
     CellModelStokesProductOperator,
     DuneCellModel,
+    binary_tree_hapod,
     calculate_cellmodel_errors,
     create_parameters,
-    final_hapod_in_binary_tree_hapod,
-    pod_on_node_in_binary_tree_hapod,
-    pods_on_processor_cores_in_binary_tree_hapod,
     solver_statistics,
 )
-from hapod.hapod import binary_tree_depth
 from hapod.mpi import MPIWrapper
 import numpy as np
-from rich import pretty, print, traceback
+from rich import pretty, traceback
 
 traceback.install()
 pretty.install()
 
 
-def binary_tree_hapod(
-    cellmodel: DuneCellModel,
-    prefix: str,
-    t_end: float,
-    dt: float,
-    mus: "list[Dict[str, float]]",
-    chunk_size: int,
-    mpi: MPIWrapper,
-    tolerances: "list[float]",
-    indices: "list[int]",
-    include_newton_stages: bool = False,
-    omega: float = 0.95,
-    incremental_gramian: bool = False,
-    orth_tol: float = np.inf,
-    # orth_tol=1e-10,
-    final_orth_tol: float = 1e-10,
-    logfile: Union[None, str] = None,
-    products: "list[Any]" = [None] * 6,
-):
-    assert len(tolerances) == 6
+class PickleChunkGenerator:
+    def __init__(
+        self,
+        cellmodel: DuneCellModel,
+        t_end: float,
+        dt: float,
+        chunk_size: int,
+        mus: "list[Dict[str, float]]",
+        pickle_prefix: str,
+        include_newton_stages: bool,
+        indices: "list[int]",
+    ):
+        self.cellmodel = cellmodel
+        self.mus = mus
+        self.pickle_prefix = pickle_prefix
+        self.include_newton_stages = include_newton_stages
+        self.indices = indices
+        self.current_chunk_index = -1
+        self.num_chunks, _ = solver_statistics(t_end=t_end, dt=dt, chunk_size=chunk_size)
 
-    # setup timings
-    timings = {}
-    for k in indices:
-        timings[f"POD{k}"] = 0.0
+    def __iter__(self):
+        for chunk_index in range(self.num_chunks):
+            self.current_chunk_index = chunk_index
+            new_vecs = [self.cellmodel.solution_space.subspaces[i % 3].empty() for i in range(6)]
+            for mu in self.mus:
+                filename = f"{pickle_prefix}_Be{mu['Be']}_Ca{mu['Ca']}_Pa{mu['Pa']}_chunk{chunk_index}.pickle"
+                with open(filename, "rb") as pickle_file:
+                    data = pickle.load(pickle_file)
+                for k in self.indices:
+                    if k < 3:
+                        # this is a POD index
+                        new_vecs[k].append(data["snaps"][k])
+                        if self.include_newton_stages:
+                            new_vecs[k].append(data["stages"][k])
+                    else:
+                        # this is a DEIM index
+                        new_vecs[k].append(data["residuals"][k - 3])
+            yield new_vecs
 
-    # calculate rooted tree depth
-    num_chunks, _ = solver_statistics(t_end=t_end, dt=dt, chunk_size=chunk_size)
-    node_binary_tree_depth = binary_tree_depth(
-        mpi.comm_rank_group[0]
-    )  # assumes same tree for all fields
-    node_binary_tree_depth = mpi.comm_proc.bcast(node_binary_tree_depth, root=0)
-    tree_depth = num_chunks + node_binary_tree_depth
+    def chunk_index(self):
+        return self.current_chunk_index
 
-    # create classes that store HAPOD results and parameters for easier handling
-    results = [BinaryTreeHapodResults(tree_depth, tol, omega) for tol in tolerances]
-    # add some more properties to the results classes
-    for r in results:
-        r.orth_tol = orth_tol
-        r.final_orth_tol = final_orth_tol
-        r.incremental_gramian = incremental_gramian
-
-    # walk over time chunks
-    for chunk_index in range(num_chunks):
-        new_vecs = [cellmodel.solution_space.subspaces[i % 3].empty() for i in range(6)]
-        for mu in mus:
-            filename = f"{prefix}_Be{mu['Be']}_Ca{mu['Ca']}_Pa{mu['Pa']}_chunk{chunk_index}.pickle"
-            with open(filename, "rb") as pickle_file:
-                data = pickle.load(pickle_file)
-            for k in indices:
-                if k < 3:
-                    # this is a POD index
-                    new_vecs[k].append(data["snaps"][k])
-                    if include_newton_stages:
-                        new_vecs[k].append(data["stages"][k])
-                else:
-                    # this is a DEIM index
-                    new_vecs[k].append(data["residuals"][k - 3])
-
-        # calculate POD of timestep vectors on each core
-        for k in indices:
-            t1 = timer()
-            root_rank = k % mpi.size_proc
-            pods_on_processor_cores_in_binary_tree_hapod(
-                results[k], new_vecs[k], mpi, root=root_rank, product=products[k]
-            )
-            timings[f"POD{k}"] += timer() - t1
-        for k in indices:
-            t1 = timer()
-            # perform PODs in parallel for each field
-            root_rank = k % mpi.size_proc
-            if mpi.rank_proc == root_rank:
-                # perform pod on rank root_rank with gathered modes and modes from the last chunk
-                pod_on_node_in_binary_tree_hapod(
-                    results[k], chunk_index, num_chunks, mpi, root=root_rank, product=products[k]
-                )
-            timings[f"POD{k}"] += timer() - t1
-
-    # Finally, perform a HAPOD over a binary tree of nodes
-    for k in indices:
-        root_rank = k % mpi.size_proc
-        r = results[k]
-        if mpi.rank_proc == root_rank:
-            t1 = timer()
-            final_hapod_in_binary_tree_hapod(r, mpi, root=root_rank, product=products[k])
-            timings[f"POD{k}"] += timer() - t1
-
-        # calculate max number of local modes
-        # The 'or [0]' is only here to silence pyright which otherwise complains below that we cannot apply max to None
-        r.max_vectors_before_pod = mpi.comm_world.gather(r.max_vectors_before_pod, root=0) or [0]
-        r.max_local_modes = mpi.comm_world.gather(r.max_local_modes, root=0) or [0]
-        r.num_modes = mpi.comm_world.gather(len(r.modes) if r.modes is not None else 0, root=0) or [
-            0
-        ]
-        r.total_num_snapshots = mpi.comm_world.gather(r.total_num_snapshots, root=0) or [0]
-        gathered_timings = mpi.comm_world.gather(timings, root=0) or [0]
-        if mpi.rank_world == 0:
-            r.max_vectors_before_pod = max(r.max_vectors_before_pod)
-            r.max_local_modes = max(r.max_local_modes)
-            r.num_modes = max(r.num_modes)
-            r.total_num_snapshots = max(r.total_num_snapshots)
-            r.timings = {}
-            for key in timings.keys():
-                r.timings[key] = max([timing[key] for timing in gathered_timings])
-
-    # write statistics to file
-    if logfile is not None and mpi.rank_world == 0:
-        with open(logfile, "a") as ff:
-            for k in indices:
-                r = results[k]
-                ff.write(f"Hapod for index {k}\n")
-                ff.write(
-                    f"The HAPOD resulted in {r.num_modes} final modes taken from a total of {r.total_num_snapshots} snapshots!\n"
-                )
-                ff.write(f"The maximal number of local modes was {r.max_local_modes}\n")
-                ff.write(
-                    f"The maximal number of input vectors to a local POD was: {r.max_vectors_before_pod}\n"
-                )
-                ff.write("PODs took {} s.\n".format(r.timings[f"POD{k}"]))
-            ff.write(
-                f"The maximum amount of memory used on rank 0 was: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1000.0 ** 2} GB\n"
-            )
-    mpi.comm_world.Barrier()
-    return results, num_chunks
+    def done(self):
+        return self.chunk_index() == self.num_chunks - 1
 
 
 # exemplary call: mpiexec -n 2 python3 cellmodel_hapod_with_pickled_data.py single_cell 1e-2 1e-3 30 30 True True False False False False 1e-3 1e-3 1e-3 1e-10 1e-10 1e-10
@@ -201,23 +116,30 @@ if __name__ == "__main__":
     test_params_per_rank = 1
 
     ###### Choose filename #########
-    filename = "results_pickled_{}_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_without{}_{}tppr_pfield{}_ofield{}_stokes{}.txt".format(
-        testcase,
-        mpi.size_world,
-        "L2product" if use_L2_product else "noproduct",
-        grid_size_x,
-        grid_size_y,
-        t_end,
-        dt,
-        "snapsandstages" if include_newton_stages else "snaps",
-        excluded_param,
-        train_params_per_rank,
-        (f"pod{pfield_atol:.0e}" if pod_pfield else "pod0")
-        + (f"deim{pfield_deim_atol:.0e}" if deim_pfield else "deim0"),
-        (f"pod{ofield_atol:.0e}" if pod_ofield else "pod0")
-        + (f"deim{ofield_deim_atol:.0e}" if deim_ofield else "deim0"),
-        (f"pod{stokes_atol:.0e}" if pod_stokes else "pod0")
-        + (f"deim{stokes_deim_atol:.0e}" if deim_stokes else "deim0"),
+    logfile_dir = "logs"
+    if mpi.rank_world == 0:
+        if not os.path.exists(logfile_dir):
+            os.mkdir(logfile_dir)
+    logfile_name = os.path.join(
+        logfile_dir,
+        "results_pickled_{}_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_without{}_{}tppr_pfield{}_ofield{}_stokes{}.txt".format(
+            testcase,
+            mpi.size_world,
+            "L2product" if use_L2_product else "noproduct",
+            grid_size_x,
+            grid_size_y,
+            t_end,
+            dt,
+            "snapsandstages" if include_newton_stages else "snaps",
+            excluded_param,
+            train_params_per_rank,
+            (f"pod{pfield_atol:.0e}" if pod_pfield else "pod0")
+            + (f"deim{pfield_deim_atol:.0e}" if deim_pfield else "deim0"),
+            (f"pod{ofield_atol:.0e}" if pod_ofield else "pod0")
+            + (f"deim{ofield_deim_atol:.0e}" if deim_ofield else "deim0"),
+            (f"pod{stokes_atol:.0e}" if pod_stokes else "pod0")
+            + (f"deim{stokes_deim_atol:.0e}" if deim_stokes else "deim0"),
+        ),
     )
 
     ####### Collect some settings in lists for simpler handling #####
@@ -258,15 +180,19 @@ if __name__ == "__main__":
         rf,
         mpi,
         excluded_param,
-        filename,
+        logfile_name,
         Be0=1.0,
         Ca0=1.0,
         Pa0=1.0,
     )
 
     ######  same filenames as in cellmodel_write_data.py     ##########
-    prefix = "{}_grid{}x{}_tend{}_dt{}_without{}_".format(
-        testcase, grid_size_x, grid_size_y, t_end, dt, excluded_param
+    pickle_dir = "pickle_files"
+    pickle_prefix = os.path.join(
+        pickle_dir,
+        "{}_grid{}x{}_tend{}_dt{}_without{}_".format(
+            testcase, grid_size_x, grid_size_y, t_end, dt, excluded_param
+        ),
     )
     solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])
     if use_L2_product:
@@ -280,19 +206,24 @@ if __name__ == "__main__":
     m = DuneCellModel(
         solver, products={"pfield": products[0], "ofield": products[1], "stokes": products[2]}
     )
-    results, num_chunks = binary_tree_hapod(
+
+    chunk_generator = PickleChunkGenerator(
         cellmodel=m,
-        prefix=prefix,
+        pickle_prefix=pickle_prefix,
         t_end=t_end,
         dt=dt,
         mus=mus,
         chunk_size=chunk_size,
+        include_newton_stages=include_newton_stages,
+        indices=indices,
+    )
+    results = binary_tree_hapod(
+        chunk_generator=chunk_generator,
         mpi=mpi,
         tolerances=hapod_tols,
         indices=indices,
-        include_newton_stages=include_newton_stages,
         omega=0.95,
-        logfile=filename,
+        logfile=logfile_name,
         products=products,
     )
     for k in indices:
@@ -361,11 +292,11 @@ if __name__ == "__main__":
         reduced_us=us,
         reductor=reductor,
         mpi_wrapper=mpi,
-        logfile_name=filename,
+        logfile_name=logfile_name,
         products=products,
         pickled_data_available=True,
-        num_chunks=num_chunks,
-        pickle_prefix=prefix,
+        num_chunks=chunk_generator.num_chunks,
+        pickle_prefix=pickle_prefix,
     )
 
     ################## test new parameters #######################
@@ -394,12 +325,12 @@ if __name__ == "__main__":
         reduced_us=us_new_mu,
         reductor=reductor,
         mpi_wrapper=mpi,
-        logfile_name=filename,
+        logfile_name=logfile_name,
         prefix="new ",
         products=products,
         pickled_data_available=True,
-        num_chunks=num_chunks,
-        pickle_prefix=prefix,
+        num_chunks=chunk_generator.num_chunks,
+        pickle_prefix=pickle_prefix,
         rom_time=mean_rom_time,
     )
     sys.stdout.flush()
