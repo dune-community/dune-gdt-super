@@ -1,5 +1,6 @@
 # import cProfile
 import os
+import pickle
 import random
 import sys
 from timeit import default_timer as timer
@@ -19,17 +20,25 @@ from hapod.cellmodel.wrapper import (
     solver_statistics,
 )
 from hapod.mpi import MPIWrapper
+import numpy as np
 from rich import pretty, traceback
 
 traceback.install()
 pretty.install()
 
-# set_log_levels({'pymor.algorithms.newton': 'WARN'})
+# If this is set to true, we check the computed solutions against the pickled solutions (which have to be available in that case)
+# Should usually be False, enable only for debug purposes (to ensure that we get the same result with and without pickling)
+check_against_pickled = False
+# There seem to be some errors in the order of 1e-13.
+# Not sure where these come from, pickling and unpickling the data does not seem to introduce any errors (see cellmodel_write_data.py)
+check_atol = 2e-12
+check_rtol = 0
 
 
 class SolverChunkGenerator:
     def __init__(
         self,
+        pickle_prefix: str,
         cellmodel: DuneCellModel,
         t_end: float,
         dt: float,
@@ -38,6 +47,7 @@ class SolverChunkGenerator:
         include_newton_stages: bool,
         indices: "list[int]",
     ):
+        self.pickle_prefix = pickle_prefix
         self.cellmodel = cellmodel
         self.mus = mus
         self.include_newton_stages = include_newton_stages
@@ -51,12 +61,16 @@ class SolverChunkGenerator:
         # currently, all parameters mu have to use the same timestep length in all time steps
         old_t = 0.0
         t = 0.0
-        current_values = [self.cellmodel.initial_values.copy() for _ in range(len(mus))]
+        current_values = [self.cellmodel.initial_values.copy() for _ in range(len(self.mus))]
         for chunk_index in range(self.num_chunks):
             self.current_chunk_index = chunk_index
             new_vecs = [self.cellmodel.solution_space.subspaces[i % 3].empty() for i in range(6)]
+            if check_against_pickled:
+                new_vecs2 = [
+                    self.cellmodel.solution_space.subspaces[i % 3].empty() for i in range(6)
+                ]
             # walk over parameters
-            for p, mu in enumerate(mus):
+            for p, mu in enumerate(self.mus):
                 t = old_t
                 # If this is the first time step, add initial values ...
                 if chunk_index == 0:
@@ -77,31 +91,58 @@ class SolverChunkGenerator:
                     )
                     # timings["data"] += timer() - t1
                     t = data["t"]
-                    if self.include_newton_stages:
-                        timestep_stages = data["stages"]
                     # check if we are finished (if time == t_end, cellmodel.next_time_step returns None)
                     if current_values[p] is None:
                         assert chunk_index == self.num_chunks - 1
                         assert time_index != 0
                         break
                     # store POD input
-                    for k in indices:
+                    for k in self.indices:
                         if k < 3:
                             # this is a POD index
                             new_vecs[k].append(current_values[p]._blocks[k])
                             if self.include_newton_stages:
-                                new_vecs[k].append(timestep_stages[k])
+                                new_vecs[k].append(data["stages"][k])
                         else:
                             # this is a DEIM index
                             new_vecs[k].append(data["residuals"][k - 3])
+
+                if check_against_pickled:
+                    filename = f"{self.pickle_prefix}_Be{mu['Be']}_Ca{mu['Ca']}_Pa{mu['Pa']}_chunk{chunk_index}.pickle"
+                    with open(filename, "rb") as pickle_file:
+                        data = pickle.load(pickle_file)
+                    for k in self.indices:
+                        if k < 3:
+                            # this is a POD index
+                            new_vecs2[k].append(data["snaps"][k])
+                            if self.include_newton_stages:
+                                new_vecs2[k].append(data["stages"][k])
+                        else:
+                            # this is a DEIM index
+                            new_vecs2[k].append(data["residuals"][k - 3])
             old_t = t
+
+            if check_against_pickled:
+                np.set_printoptions(precision=15)
+                for k in range(6):
+                    for j in range(len(new_vecs[k])):
+                        vec1 = new_vecs[k]._list[j].to_numpy()
+                        vec2 = new_vecs2[k]._list[j].to_numpy()
+                        for z in range(new_vecs[k]._list[j].dim):
+                            if not np.isclose(vec1[z], vec2[z], rtol=check_rtol, atol=check_atol):
+                                print(
+                                    f"{vec1[z]} vs. {vec2[z]}, err: { vec1[z] - vec2[z] }, relerr: { (vec1[z] - vec2[z]) / max(vec1[z], vec2[z]) }",
+                                    flush=True,
+                                )
+                                raise AssertionError
+
             yield new_vecs
 
     def chunk_index(self):
         return self.current_chunk_index
 
     def done(self):
-        return self.chunk_index() == self.num_chunks - 1
+        return self.chunk_index() == (self.num_chunks - 1)
 
 
 # example call: mpiexec -n 2 python3 cellmodel_solve_with_deim.py single_cell 1e-2 1e-3 30 30 True True False False False False 1e-3 1e-3 1e-3 1e-10 1e-10 1e-10
@@ -135,8 +176,15 @@ if __name__ == "__main__":
     least_squares_pfield = True
     least_squares_ofield = True
     least_squares_stokes = True
+    if not pod_pfield:
+        least_squares_pfield = False
+    if not pod_ofield:
+        least_squares_ofield = False
+    if not pod_stokes:
+        least_squares_stokes = False
     excluded_param = "Be"
     use_L2_product = True
+    # use_L2_product = False
     train_params_per_rank = 2
     test_params_per_rank = 1
 
@@ -226,8 +274,18 @@ if __name__ == "__main__":
     )
 
     ################### Start HAPOD #####################
+    # only needed if check_against_pickled is True
+    pickle_dir = "pickle_files"
+    pickle_prefix = os.path.join(
+        pickle_dir,
+        "{}_grid{}x{}_tend{}_dt{}_without{}_".format(
+            testcase, grid_size_x, grid_size_y, t_end, dt, excluded_param
+        ),
+    )
+    # create chunk_generator
     chunk_generator = SolverChunkGenerator(
         cellmodel=m,
+        pickle_prefix=pickle_prefix,
         t_end=t_end,
         dt=dt,
         mus=mus,
@@ -235,6 +293,7 @@ if __name__ == "__main__":
         include_newton_stages=include_newton_stages,
         indices=indices,
     )
+    # perform HAPOD
     results = binary_tree_hapod(
         chunk_generator=chunk_generator,
         mpi=mpi,

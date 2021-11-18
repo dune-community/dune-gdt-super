@@ -1,4 +1,5 @@
 import os
+import numpy as np
 import pickle
 import random
 import sys
@@ -20,6 +21,8 @@ from rich import pretty, traceback
 traceback.install()
 pretty.install()
 
+# If true, directly reads the pickled data back in and compares it to the written data
+check_pickling = False
 
 def solve_and_pickle(mu: Dict[str, float], m: DuneCellModel, chunk_size: int, pickle_prefix: str):
     num_chunks, _ = solver_statistics(t_end=m.t_end, dt=m.dt, chunk_size=chunk_size)
@@ -67,6 +70,30 @@ def solve_and_pickle(mu: Dict[str, float], m: DuneCellModel, chunk_size: int, pi
                 },
                 pickle_file,
             )
+        if check_pickling:
+            with open(filename, "rb") as pickle_file:
+                data = pickle.load(pickle_file)
+                # print(str(data["snaps"]), "\nvs.", str(snaps), flush=True)
+                np.set_printoptions(precision=15)
+                snaps2 = data["snaps"]
+                stages2 = data["stages"]
+                residuals2 = data["residuals"]
+                for i in range(len(snaps)):
+                    for j in range(len(snaps[i])):
+                        for z in range(snaps[i]._list[j].dim):
+                            if snaps2[i]._list[j].to_numpy()[z] != snaps[i]._list[j].to_numpy()[z]:
+                                print(f"{snaps2[i][j][z]} vs. {snaps[i][j][z]}", flush=True)
+                                raise NotImplementedError
+                    for j in range(len(stages[i])):
+                        for z in range(stages[i]._list[j].dim):
+                            if stages2[i]._list[j].to_numpy()[z] != stages[i]._list[j].to_numpy()[z]:
+                                print(f"{stages2[i][j][z]} vs. {stages[i][j][z]}", flush=True)
+                                raise NotImplementedError
+                    for j in range(len(residuals[i])):
+                        for z in range(residuals[i]._list[j].dim):
+                            if residuals2[i]._list[j].to_numpy()[z] != residuals[i]._list[j].to_numpy()[z]:
+                                print(f"{residuals2[i][j][z]} vs. {residuals[i][j][z]}", flush=True)
+                                raise NotImplementedError
 
 
 # example call: mpiexec -n 2 python3 cellmodel_solve_with_deim.py single_cell 1e-2 1e-3 30 30 True True
@@ -83,12 +110,12 @@ if __name__ == "__main__":
     chunk_size = 10
     use_L2_product = True
     # use_L2_product = False
-
-    ####### choose parameters ####################
     train_params_per_rank = 2
     test_params_per_rank = 1
-    rf = 10  # Factor of largest to smallest training parameter
     random.seed(123)  # create_parameters chooses some parameters randomly in some cases
+
+    ####### choose parameters ####################
+    rf = 10  # Factor of largest to smallest training parameter
     excluded_param = "Be"
     mus, new_mus = create_parameters(
         train_params_per_rank,

@@ -19,7 +19,6 @@ from hapod.cellmodel.wrapper import (
     solver_statistics,
 )
 from hapod.mpi import MPIWrapper
-import numpy as np
 from rich import pretty, traceback
 
 traceback.install()
@@ -51,7 +50,7 @@ class PickleChunkGenerator:
             self.current_chunk_index = chunk_index
             new_vecs = [self.cellmodel.solution_space.subspaces[i % 3].empty() for i in range(6)]
             for mu in self.mus:
-                filename = f"{pickle_prefix}_Be{mu['Be']}_Ca{mu['Ca']}_Pa{mu['Pa']}_chunk{chunk_index}.pickle"
+                filename = f"{self.pickle_prefix}_Be{mu['Be']}_Ca{mu['Ca']}_Pa{mu['Pa']}_chunk{chunk_index}.pickle"
                 with open(filename, "rb") as pickle_file:
                     data = pickle.load(pickle_file)
                 for k in self.indices:
@@ -69,7 +68,7 @@ class PickleChunkGenerator:
         return self.current_chunk_index
 
     def done(self):
-        return self.chunk_index() == self.num_chunks - 1
+        return self.chunk_index() == (self.num_chunks - 1)
 
 
 # exemplary call: mpiexec -n 2 python3 cellmodel_hapod_with_pickled_data.py single_cell 1e-2 1e-3 30 30 True True False False False False 1e-3 1e-3 1e-3 1e-10 1e-10 1e-10
@@ -114,6 +113,7 @@ if __name__ == "__main__":
     # use_L2_product = False
     train_params_per_rank = 2
     test_params_per_rank = 1
+    random.seed(123)  # create_parameters choose some parameters randomly in some cases
 
     ###### Choose filename #########
     logfile_dir = "logs"
@@ -173,7 +173,6 @@ if __name__ == "__main__":
 
     ####### choose parameters ####################
     rf = 10  # Factor of largest to smallest training parameter
-    random.seed(123)  # create_parameters choose some parameters randomly in some cases
     mus, new_mus = create_parameters(
         train_params_per_rank,
         test_params_per_rank,
