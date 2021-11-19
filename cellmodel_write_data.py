@@ -96,7 +96,7 @@ def solve_and_pickle(mu: Dict[str, float], m: DuneCellModel, chunk_size: int, pi
                                 raise NotImplementedError
 
 
-# example call: mpiexec -n 2 python3 cellmodel_solve_with_deim.py single_cell 1e-2 1e-3 30 30 True True
+# exemplary call: mpiexec -n 2 python3 cellmodel_write_data.py single_cell 1e-2 1e-3 30 30
 if __name__ == "__main__":
     mpi = MPIWrapper()
     ##### read command line arguments, additional settings #####
