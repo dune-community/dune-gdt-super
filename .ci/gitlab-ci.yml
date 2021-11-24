@@ -26,16 +26,31 @@ variables:
         name: unsafe
     script: .ci/shared/docker/update_test_dockers.py ${MODULE_NAME} ${IMAGE_NAME}
 
-base:
+base_debian-unstable_gcc:
     extends: .docker-in-docker
     stage: base
     variables:
       MODULE_NAME: BASE
-      IMAGE_NAME: BASE
+      IMAGE_NAME: debian-unstable_gcc_full
+
+base_debian_gcc:
+    extends: .docker-in-docker
+    stage: base
+    variables:
+      MODULE_NAME: BASE
+      IMAGE_NAME: debian_gcc_full
+
+base_debian_clang:
+    extends: .docker-in-docker
+    stage: base
+    variables:
+      MODULE_NAME: BASE
+      IMAGE_NAME: debian_clang_full
 
 debian-unstable_gcc_full:
     extends: .docker-in-docker
     stage: modules
+    needs: ["base_debian-unstable_gcc"]
     variables:
       MODULE_NAME: dune-gdt
       IMAGE_NAME: debian-unstable_gcc_full
@@ -43,6 +58,7 @@ debian-unstable_gcc_full:
 debian_gcc_full:
     extends: .docker-in-docker
     stage: modules
+    needs: ["base_debian_gcc"]
     variables:
       MODULE_NAME: dune-gdt
       IMAGE_NAME: debian_gcc_full
@@ -50,6 +66,7 @@ debian_gcc_full:
 debian_clang_full:
     extends: .docker-in-docker
     stage: modules
+    needs: ["base_debian_clang"]
     variables:
       MODULE_NAME: dune-gdt
       IMAGE_NAME: debian_clang_full
