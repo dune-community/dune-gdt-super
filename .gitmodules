@@ -20,7 +20,7 @@
         ignore = dirty
 [submodule "dune-gdt"]
 	path = dune-gdt
-	url = https://github.com/dune-community/dune-gdt.git
+	url = https://zivgitlab.uni-muenster.de/ag-ohlberger/dune-community/dune-gdt.git
 [submodule "dune-istl"]
 	path = dune-istl
 	url = https://github.com/dune-mirrors/dune-istl.git
