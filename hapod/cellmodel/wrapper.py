@@ -886,6 +886,8 @@ class CellModel(Model):
             ]
         )
         self.linear = False
+        self.dim_input = 0
+        self._compute_allowed_kwargs = frozenset({'return_stages', 'return_residuals'})
         self.initial_values = self.solution_space.make_array(
             [
                 self.initial_pfield.as_vector(),
