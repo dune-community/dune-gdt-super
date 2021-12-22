@@ -110,19 +110,19 @@ if __name__ == "__main__":
     chunk_size = 10
     use_L2_product = True
     # use_L2_product = False
-    train_params_per_rank = 2
+    train_params_per_rank = 1
     test_params_per_rank = 1
     random.seed(123)  # create_parameters chooses some parameters randomly in some cases
 
     ####### choose parameters ####################
-    rf = 10  # Factor of largest to smallest training parameter
-    excluded_param = "Be"
+    rf = 2  # Factor of largest to smallest training parameter
+    excluded_params = ("Be", "Pa")
     mus, new_mus = create_parameters(
         train_params_per_rank,
         test_params_per_rank,
         rf,
         mpi,
-        excluded_param,
+        excluded_params,
         None,
         Be0=1.0,
         Ca0=1.0,
@@ -134,11 +134,11 @@ if __name__ == "__main__":
     if mpi.rank_world == 0:
         if not os.path.exists(pickle_dir):
             os.mkdir(pickle_dir)
+    pickle_dir = "pickle_files"
+    pickle_prefix = f"{testcase}_grid{grid_size_x}x{grid_size_y}_tend{t_end}_dt{dt}"
     pickle_prefix = os.path.join(
         pickle_dir,
-        "{}_grid{}x{}_tend{}_dt{}_without{}_".format(
-            testcase, grid_size_x, grid_size_y, t_end, dt, excluded_param
-        ),
+        pickle_prefix
     )
     ########## Create products #####################
     solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])

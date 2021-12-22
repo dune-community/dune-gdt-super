@@ -4,7 +4,8 @@ import pickle
 import random
 import sys
 from timeit import default_timer as timer
-from typing import Dict
+from typing import Dict, Any
+import numpy as np
 
 from hapod.cellmodel.wrapper import (
     CellModelOfieldProductOperator,
@@ -36,6 +37,8 @@ class PickleChunkGenerator:
         pickle_prefix: str,
         include_newton_stages: bool,
         indices: "list[int]",
+        products: "list[Any]",
+        normalize_residuals: bool,
     ):
         self.cellmodel = cellmodel
         self.mus = mus
@@ -44,6 +47,8 @@ class PickleChunkGenerator:
         self.indices = indices
         self.current_chunk_index = -1
         self.num_chunks, _ = solver_statistics(t_end=t_end, dt=dt, chunk_size=chunk_size)
+        self.products = products
+        self.normalize_residuals = normalize_residuals
 
     def __iter__(self):
         for chunk_index in range(self.num_chunks):
@@ -61,7 +66,10 @@ class PickleChunkGenerator:
                             new_vecs[k].append(data["stages"][k])
                     else:
                         # this is a DEIM index
-                        new_vecs[k].append(data["residuals"][k - 3])
+                        residuals = data["residuals"][k - 3]
+                        if self.normalize_residuals:
+                            residuals = residuals * np.array([1/norm if norm > 0 else 1 for norm in residuals.norm(product=self.products[k])])
+                        new_vecs[k].append(residuals)
             yield new_vecs
 
     def chunk_index(self):
@@ -93,6 +101,9 @@ if __name__ == "__main__":
     pfield_deim_atol = 1e-10 if argc < 16 else float(sys.argv[15])
     ofield_deim_atol = 1e-10 if argc < 17 else float(sys.argv[16])
     stokes_deim_atol = 1e-10 if argc < 18 else float(sys.argv[17])
+    pod_method = "method_of_snapshots" if argc < 19 else sys.argv[18]
+    assert pod_method in ("qr_svd", "method_of_snapshots")
+    normalize_residuals = True
     pol_order = 2
     chunk_size = 10
     visualize_step = 50
@@ -108,10 +119,10 @@ if __name__ == "__main__":
         least_squares_ofield = False
     if not pod_stokes:
         least_squares_stokes = False
-    excluded_param = "Be"
+    excluded_params = ("Be", "Pa")
     use_L2_product = True
     # use_L2_product = False
-    train_params_per_rank = 2
+    train_params_per_rank = 1
     test_params_per_rank = 1
     random.seed(123)  # create_parameters choose some parameters randomly in some cases
 
@@ -120,37 +131,30 @@ if __name__ == "__main__":
     if mpi.rank_world == 0:
         if not os.path.exists(logfile_dir):
             os.mkdir(logfile_dir)
-    logfile_name = os.path.join(
-        logfile_dir,
-        "results_pickled_{}_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_without{}_{}tppr_pfield{}_ofield{}_stokes{}.txt".format(
-            testcase,
-            mpi.size_world,
-            "L2product" if use_L2_product else "noproduct",
-            grid_size_x,
-            grid_size_y,
-            t_end,
-            dt,
-            "snapsandstages" if include_newton_stages else "snaps",
-            excluded_param,
-            train_params_per_rank,
-            (f"pod{pfield_atol:.0e}" if pod_pfield else "pod0")
-            + (f"deim{pfield_deim_atol:.0e}" if deim_pfield else "deim0"),
-            (f"pod{ofield_atol:.0e}" if pod_ofield else "pod0")
-            + (f"deim{ofield_deim_atol:.0e}" if deim_ofield else "deim0"),
-            (f"pod{stokes_atol:.0e}" if pod_stokes else "pod0")
-            + (f"deim{stokes_deim_atol:.0e}" if deim_stokes else "deim0"),
-        ),
+    logfile_prefix = "results_pickled_{}_{}_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_{}tppr_pfield{}_ofield{}_stokes{}_without".format(
+        "mos" if pod_method == "method_of_snapshots" else "qr_svd",
+        testcase,
+        mpi.size_world,
+        "L2product" if use_L2_product else "noproduct",
+        grid_size_x,
+        grid_size_y,
+        t_end,
+        dt,
+        "snapsandstages" if include_newton_stages else "snaps",
+        train_params_per_rank,
+        (f"pod{pfield_atol:.0e}" if pod_pfield else "pod0")
+        + (f"deim{pfield_deim_atol:.0e}" if deim_pfield else "deim0"),
+        (f"pod{ofield_atol:.0e}" if pod_ofield else "pod0")
+        + (f"deim{ofield_deim_atol:.0e}" if deim_ofield else "deim0"),
+        (f"pod{stokes_atol:.0e}" if pod_stokes else "pod0")
+        + (f"deim{stokes_deim_atol:.0e}" if deim_stokes else "deim0"),
     )
+    for excluded_param in excluded_params:
+        logfile_prefix += "_" + excluded_param
+    logfile_name = os.path.join(logfile_dir, logfile_prefix + ".txt")
 
     ####### Collect some settings in lists for simpler handling #####
-    hapod_tols = [
-        pfield_atol,
-        ofield_atol,
-        stokes_atol,
-        pfield_deim_atol,
-        ofield_deim_atol,
-        stokes_deim_atol,
-    ]
+    hapod_tols = [pfield_atol, ofield_atol, stokes_atol, pfield_deim_atol, ofield_deim_atol, stokes_deim_atol]
     # store fields that should be reduced (0=pfield, 1=ofield, 2=stokes)
     pod_indices = []
     deim_indices = []
@@ -172,27 +176,15 @@ if __name__ == "__main__":
         indices.append(index + 3)
 
     ####### choose parameters ####################
-    rf = 10  # Factor of largest to smallest training parameter
+    rf = 2  # Factor of largest to smallest training parameter
     mus, new_mus = create_parameters(
-        train_params_per_rank,
-        test_params_per_rank,
-        rf,
-        mpi,
-        excluded_param,
-        logfile_name,
-        Be0=1.0,
-        Ca0=1.0,
-        Pa0=1.0,
+        train_params_per_rank, test_params_per_rank, rf, mpi, excluded_params, logfile_name, Be0=1.0, Ca0=1.0, Pa0=1.0
     )
 
     ######  same filenames as in cellmodel_write_data.py     ##########
     pickle_dir = "pickle_files"
-    pickle_prefix = os.path.join(
-        pickle_dir,
-        "{}_grid{}x{}_tend{}_dt{}_without{}_".format(
-            testcase, grid_size_x, grid_size_y, t_end, dt, excluded_param
-        ),
-    )
+    pickle_prefix = f"{testcase}_grid{grid_size_x}x{grid_size_y}_tend{t_end}_dt{dt}_"
+    pickle_prefix = os.path.join(pickle_dir, pickle_prefix)
     solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])
     if use_L2_product:
         products = [
@@ -202,9 +194,7 @@ if __name__ == "__main__":
         ] * 2
     else:
         products = [None] * 6
-    m = DuneCellModel(
-        solver, products={"pfield": products[0], "ofield": products[1], "stokes": products[2]}
-    )
+    m = DuneCellModel(solver, products={"pfield": products[0], "ofield": products[1], "stokes": products[2]})
 
     chunk_generator = PickleChunkGenerator(
         cellmodel=m,
@@ -215,6 +205,8 @@ if __name__ == "__main__":
         chunk_size=chunk_size,
         include_newton_stages=include_newton_stages,
         indices=indices,
+        products=products,
+        normalize_residuals=normalize_residuals,
     )
     results = binary_tree_hapod(
         chunk_generator=chunk_generator,
@@ -224,12 +216,11 @@ if __name__ == "__main__":
         omega=0.95,
         logfile=logfile_name,
         products=products,
+        pod_method=pod_method,
     )
     for k in indices:
         r = results[k]
-        r.modes, r.win = mpi.shared_memory_bcast_modes(
-            r.modes, returnlistvectorarray=True, proc_rank=k % mpi.size_proc
-        )
+        r.modes, r.win = mpi.shared_memory_bcast_modes(r.modes, returnlistvectorarray=True, proc_rank=k % mpi.size_proc)
 
     pfield_basis = results[0].modes if pod_pfield else None
     ofield_basis = results[1].modes if pod_ofield else None
@@ -239,7 +230,7 @@ if __name__ == "__main__":
     stokes_deim_basis = results[5].modes if deim_stokes else None
 
     reduced_prefix = "without{}_{}_pfield_{}_ofield_{}_stokes_{}".format(
-        excluded_param,
+        excluded_params,
         "snapsandstages" if include_newton_stages else "snaps",
         (f"pod{pfield_atol:.0e}" if pod_pfield else "pod0")
         + (f"deim{pfield_deim_atol:.0e}" if deim_pfield else "deim0"),
@@ -299,38 +290,38 @@ if __name__ == "__main__":
     )
 
     ################## test new parameters #######################
-    start = timer()
-    # cProfile.run(
-    #     "u_new_mu = rom.solve(new_mus[0], return_stages=False)", f"rom{mpi.rank_world}.cprof"
-    # )
-    us_new_mu = []
-    for new_mu in new_mus:
-        u, _ = rom.solve(new_mu, return_stages=False)
-        us_new_mu.append(u)
-    mean_rom_time = (timer() - start) / len(new_mus)
+    # start = timer()
+    # # cProfile.run(
+    # #     "u_new_mu = rom.solve(new_mus[0], return_stages=False)", f"rom{mpi.rank_world}.cprof"
+    # # )
+    # us_new_mu = []
+    # for new_mu in new_mus:
+    #     u, _ = rom.solve(new_mu, return_stages=False)
+    #     us_new_mu.append(u)
+    # mean_rom_time = (timer() - start) / len(new_mus)
 
-    ############### Compute errors for new parameters ##################
-    mpi.comm_world.Barrier()
-    calculate_cellmodel_errors(
-        modes=[pfield_basis, ofield_basis, stokes_basis],
-        deim_modes=[pfield_deim_basis, ofield_deim_basis, stokes_deim_basis],
-        testcase=testcase,
-        t_end=t_end,
-        dt=dt,
-        grid_size_x=grid_size_x,
-        grid_size_y=grid_size_y,
-        pol_order=pol_order,
-        mus=new_mus,
-        reduced_us=us_new_mu,
-        reductor=reductor,
-        mpi_wrapper=mpi,
-        logfile_name=logfile_name,
-        prefix="new ",
-        products=products,
-        pickled_data_available=True,
-        num_chunks=chunk_generator.num_chunks,
-        pickle_prefix=pickle_prefix,
-        rom_time=mean_rom_time,
-    )
+    # ############### Compute errors for new parameters ##################
+    # mpi.comm_world.Barrier()
+    # calculate_cellmodel_errors(
+    #     modes=[pfield_basis, ofield_basis, stokes_basis],
+    #     deim_modes=[pfield_deim_basis, ofield_deim_basis, stokes_deim_basis],
+    #     testcase=testcase,
+    #     t_end=t_end,
+    #     dt=dt,
+    #     grid_size_x=grid_size_x,
+    #     grid_size_y=grid_size_y,
+    #     pol_order=pol_order,
+    #     mus=new_mus,
+    #     reduced_us=us_new_mu,
+    #     reductor=reductor,
+    #     mpi_wrapper=mpi,
+    #     logfile_name=logfile_name,
+    #     prefix="new ",
+    #     products=products,
+    #     pickled_data_available=True,
+    #     num_chunks=chunk_generator.num_chunks,
+    #     pickle_prefix=pickle_prefix,
+    #     rom_time=mean_rom_time,
+    # )
     sys.stdout.flush()
     mpi.comm_world.Barrier()

@@ -20,10 +20,7 @@ from pymor.algorithms.projection import project
 from pymor.core.base import abstractmethod
 from pymor.models.interface import Model
 from pymor.operators.constructions import ProjectedOperator, VectorOperator
-from pymor.operators.ei import (
-    EmpiricalInterpolatedOperator,
-    ProjectedEmpiricalInterpolatedOperator,
-)
+from pymor.operators.ei import EmpiricalInterpolatedOperator, ProjectedEmpiricalInterpolatedOperator
 from pymor.operators.interface import Operator
 from pymor.parameters.base import Parameters, ParametricObject
 from pymor.reductors.basic import ProjectionBasedReductor
@@ -107,12 +104,9 @@ class CellModelSolver(ParametricObject):
             U_out = [self.impl.apply_pfield_product_operator(vec.impl) for vec in U._list]
             return pfield_space.make_array(U_out)
         else:
-            U_list = pfield_space.make_array(
-                [pfield_space.vector_from_numpy(vec).impl for vec in U.to_numpy()]
-            )
+            U_list = pfield_space.make_array([pfield_space.vector_from_numpy(vec).impl for vec in U.to_numpy()])
             U_out = [
-                DuneXtLaVector(self.impl.apply_pfield_product_operator(vec.impl)).to_numpy(True)
-                for vec in U_list._list
+                DuneXtLaVector(self.impl.apply_pfield_product_operator(vec.impl)).to_numpy(True) for vec in U_list._list
             ]
             return self.pfield_numpy_space.make_array(U_out)
 
@@ -228,9 +222,7 @@ class CellModelSolver(ParametricObject):
             U = self.numpy_vecarray_to_xt_listvecarray(U)
         else:
             assert U.dim == self.pfield_solution_space.dim
-        U_out = [
-            self.impl.apply_pfield_operator(vec.impl, cell_index, restricted) for vec in U._list
-        ]
+        U_out = [self.impl.apply_pfield_operator(vec.impl, cell_index, restricted) for vec in U._list]
         return self.pfield_solution_space.make_array(U_out)
 
     def apply_ofield_operator(self, U, cell_index, restricted=False):
@@ -238,9 +230,7 @@ class CellModelSolver(ParametricObject):
             U = self.numpy_vecarray_to_xt_listvecarray(U)
         else:
             assert U.dim == self.ofield_solution_space.dim
-        U_out = [
-            self.impl.apply_ofield_operator(vec.impl, cell_index, restricted) for vec in U._list
-        ]
+        U_out = [self.impl.apply_ofield_operator(vec.impl, cell_index, restricted) for vec in U._list]
         return self.ofield_solution_space.make_array(U_out)
 
     def apply_stokes_operator(self, U, restricted=False):
@@ -273,18 +263,14 @@ class CellModelSolver(ParametricObject):
     def apply_pfield_jacobian(self, U, cell_index, restricted=False):
         if restricted:
             U = self.numpy_vecarray_to_xt_listvecarray(U)
-        U_out = [
-            self.impl.apply_pfield_jacobian(vec.impl, cell_index, restricted) for vec in U._list
-        ]
+        U_out = [self.impl.apply_pfield_jacobian(vec.impl, cell_index, restricted) for vec in U._list]
         ret = self.pfield_solution_space.make_array(U_out)
         return ret
 
     def apply_ofield_jacobian(self, U, cell_index, restricted=False):
         if restricted:
             U = self.numpy_vecarray_to_xt_listvecarray(U)
-        U_out = [
-            self.impl.apply_ofield_jacobian(vec.impl, cell_index, restricted) for vec in U._list
-        ]
+        U_out = [self.impl.apply_ofield_jacobian(vec.impl, cell_index, restricted) for vec in U._list]
         return self.ofield_solution_space.make_array(U_out)
 
     def apply_stokes_jacobian(self, U, restricted=False):
@@ -294,9 +280,7 @@ class CellModelSolver(ParametricObject):
         return self.stokes_solution_space.make_array(U_out)
 
     def update_pfield_parameters(self, mu, cell_index=0, restricted=False):
-        self.impl.update_pfield_parameters(
-            float(mu["Be"]), float(mu["Ca"]), float(mu["Pa"]), cell_index, restricted
-        )
+        self.impl.update_pfield_parameters(float(mu["Be"]), float(mu["Ca"]), float(mu["Pa"]), cell_index, restricted)
 
     def update_ofield_parameters(self, mu, cell_index=0, restricted=False):
         self.impl.update_ofield_parameters(float(mu["Pa"]), cell_index, restricted)
@@ -353,16 +337,11 @@ class MutableStateComponentOperator(Operator):
     def _set_state(self, dofs, mu):
         new_pfield_dofs = None if dofs[0] == self.solver._last_pfield_dofs else dofs[0]
         new_ofield_dofs = None if dofs[1] == self.solver._last_ofield_dofs else dofs[1]
-        new_stokes_dofs = (
-            None if len(dofs) < 3 or dofs[2] == self.solver._last_stokes_dofs else dofs[2]
-        )
+        new_stokes_dofs = None if len(dofs) < 3 or dofs[2] == self.solver._last_stokes_dofs else dofs[2]
         new_mu = None if mu == self.solver._last_mu else mu
         if not new_pfield_dofs == new_ofield_dofs == new_stokes_dofs == new_mu == None:
             self._change_state(
-                pfield_dofs=new_pfield_dofs,
-                ofield_dofs=new_ofield_dofs,
-                stokes_dofs=new_stokes_dofs,
-                mu=new_mu,
+                pfield_dofs=new_pfield_dofs, ofield_dofs=new_ofield_dofs, stokes_dofs=new_stokes_dofs, mu=new_mu
             )
         if new_pfield_dofs is not None:
             self.solver._last_pfield_dofs = new_pfield_dofs
@@ -375,9 +354,7 @@ class MutableStateComponentOperator(Operator):
 
     @property
     def fixed_component_source(self):
-        subspaces = tuple(
-            s for i, s in enumerate(self.source.subspaces) if i not in self.mutable_state_index
-        )
+        subspaces = tuple(s for i, s in enumerate(self.source.subspaces) if i not in self.mutable_state_index)
         return subspaces[0] if len(subspaces) == 1 else BlockVectorSpace(subspaces)
 
     def apply(self, U, mu):
@@ -437,9 +414,7 @@ class MutableStateComponentJacobianOperator(MutableStateComponentOperator):
     def _change_jacobian_state(self, jacobian_value):
         pass
 
-    def _need_to_invalidate_jacobian_state(
-        self, pfield_changed, ofield_changed, stokes_changed, mu_changed
-    ):
+    def _need_to_invalidate_jacobian_state(self, pfield_changed, ofield_changed, stokes_changed, mu_changed):
         return pfield_changed or ofield_changed or stokes_changed or mu_changed
 
     @abstractmethod
@@ -454,9 +429,7 @@ class MutableStateComponentJacobianOperator(MutableStateComponentOperator):
         pfield_changed = dofs[0] != self.solver._last_pfield_dofs
         ofield_changed = dofs[1] != self.solver._last_ofield_dofs
         stokes_changed = False if len(dofs) < 3 else dofs[2] != self.solver._last_stokes_dofs
-        if self._need_to_invalidate_jacobian_state(
-            pfield_changed, ofield_changed, stokes_changed, mu_changed
-        ):
+        if self._need_to_invalidate_jacobian_state(pfield_changed, ofield_changed, stokes_changed, mu_changed):
             self._last_jacobian_value = None
         super()._set_state(dofs, mu)
 
@@ -471,11 +444,7 @@ class MutableStateComponentJacobianOperator(MutableStateComponentOperator):
         assert mu is None or mu == self.solver._last_mu
         return MutableStateFixedComponentJacobianOperator(
             self,
-            (
-                self.solver._last_pfield_dofs,
-                self.solver._last_ofield_dofs,
-                self.solver._last_stokes_dofs,
-            ),
+            (self.solver._last_pfield_dofs, self.solver._last_ofield_dofs, self.solver._last_stokes_dofs),
             self.solver._last_mu,
             U,
         )
@@ -512,9 +481,7 @@ class MutableStateFixedComponentJacobianOperator(Operator):
             )
             for i, value in enumerate(self.component_value)
         ]
-        restricted_jacobian_value = NumpyVectorSpace.make_array(
-            self.jacobian_value.dofs(restricted_source_dofs)
-        )
+        restricted_jacobian_value = NumpyVectorSpace.make_array(self.jacobian_value.dofs(restricted_source_dofs))
         ret_op = self.with_(
             operator=restricted_operator,
             component_value=restricted_component_value,
@@ -552,13 +519,9 @@ class CellModelRestrictedPfieldOperator(MutableStateComponentJacobianOperator):
 
     def _change_jacobian_state(self, jacobian_value):
         assert jacobian_value.dim == len(self._fixed_component_source_dofs)
-        self.solver.set_pfield_jacobian_state_dofs(
-            jacobian_value.to_numpy().ravel(), self.cell_index
-        )
+        self.solver.set_pfield_jacobian_state_dofs(jacobian_value.to_numpy().ravel(), self.cell_index)
 
-    def _need_to_invalidate_jacobian_state(
-        self, pfield_changed, ofield_changed, stokes_changed, mu_changed
-    ):
+    def _need_to_invalidate_jacobian_state(self, pfield_changed, ofield_changed, stokes_changed, mu_changed):
         return pfield_changed or mu_changed
 
     def _fixed_component_apply(self, U):
@@ -607,9 +570,7 @@ class CellModelPfieldOperator(MutableStateComponentJacobianOperator):
     def _change_jacobian_state(self, jacobian_value):
         self.solver.set_pfield_jacobian_state(jacobian_value._list[0], self.cell_index)
 
-    def _need_to_invalidate_jacobian_state(
-        self, pfield_changed, ofield_changed, stokes_changed, mu_changed
-    ):
+    def _need_to_invalidate_jacobian_state(self, pfield_changed, ofield_changed, stokes_changed, mu_changed):
         return pfield_changed or mu_changed
 
     def _fixed_component_apply(self, U):
@@ -619,9 +580,7 @@ class CellModelPfieldOperator(MutableStateComponentJacobianOperator):
         raise NotImplementedError
         assert sum(V.norm()) == 0.0, "Not implemented for non-zero rhs!"
         assert not least_squares, "Least squares not implemented!"
-        return self.solver.apply_inverse_pfield_operator(
-            self.solver.pfield_vector(self.cell_index), self.cell_index
-        )
+        return self.solver.apply_inverse_pfield_operator(self.solver.pfield_vector(self.cell_index), self.cell_index)
 
     def _fixed_component_jacobian_apply(self, U):
         return self.solver.apply_pfield_jacobian(U, self.cell_index)
@@ -664,13 +623,9 @@ class CellModelRestrictedOfieldOperator(MutableStateComponentJacobianOperator):
 
     def _change_jacobian_state(self, jacobian_value):
         assert jacobian_value.dim == len(self._fixed_component_source_dofs)
-        self.solver.set_ofield_jacobian_state_dofs(
-            jacobian_value.to_numpy().ravel(), self.cell_index
-        )
+        self.solver.set_ofield_jacobian_state_dofs(jacobian_value.to_numpy().ravel(), self.cell_index)
 
-    def _need_to_invalidate_jacobian_state(
-        self, pfield_changed, ofield_changed, stokes_changed, mu_changed
-    ):
+    def _need_to_invalidate_jacobian_state(self, pfield_changed, ofield_changed, stokes_changed, mu_changed):
         return ofield_changed or mu_changed
 
     def _fixed_component_apply(self, U):
@@ -719,9 +674,7 @@ class CellModelOfieldOperator(MutableStateComponentJacobianOperator):
     def _change_jacobian_state(self, jacobian_value):
         self.solver.set_ofield_jacobian_state(jacobian_value._list[0], self.cell_index)
 
-    def _need_to_invalidate_jacobian_state(
-        self, pfield_changed, ofield_changed, stokes_changed, mu_changed
-    ):
+    def _need_to_invalidate_jacobian_state(self, pfield_changed, ofield_changed, stokes_changed, mu_changed):
         return ofield_changed or mu_changed
 
     def _fixed_component_apply(self, U):
@@ -731,9 +684,7 @@ class CellModelOfieldOperator(MutableStateComponentJacobianOperator):
         raise NotImplementedError
         assert sum(V.norm()) == 0.0, "Not implemented for non-zero rhs!"
         assert not least_squares, "Least squares not implemented!"
-        return self.solver.apply_inverse_ofield_operator(
-            self.solver.ofield_vector(self.cell_index), self.cell_index
-        )
+        return self.solver.apply_inverse_ofield_operator(self.solver.ofield_vector(self.cell_index), self.cell_index)
 
     def _fixed_component_jacobian_apply(self, U):
         return self.solver.apply_ofield_jacobian(U, self.cell_index)
@@ -772,9 +723,7 @@ class CellModelRestrictedStokesOperator(MutableStateComponentJacobianOperator):
     def _change_jacobian_state(self, jacobian_value):
         pass
 
-    def _need_to_invalidate_jacobian_state(
-        self, pfield_changed, ofield_changed, stokes_changed, mu_changed
-    ):
+    def _need_to_invalidate_jacobian_state(self, pfield_changed, ofield_changed, stokes_changed, mu_changed):
         return False
 
     def _fixed_component_apply(self, U):
@@ -798,11 +747,7 @@ class CellModelStokesOperator(MutableStateComponentJacobianOperator):
         self.__auto_init(locals())
         self.linear = False
         self.source = BlockVectorSpace(
-            [
-                self.solver.stokes_solution_space,
-                self.solver.pfield_solution_space,
-                self.solver.ofield_solution_space,
-            ]
+            [self.solver.stokes_solution_space, self.solver.pfield_solution_space, self.solver.ofield_solution_space]
         )
         self.range = self.solver.stokes_solution_space
 
@@ -817,9 +762,7 @@ class CellModelStokesOperator(MutableStateComponentJacobianOperator):
     def _change_jacobian_state(self, jacobian_value):
         pass
 
-    def _need_to_invalidate_jacobian_state(
-        self, pfield_changed, ofield_changed, stokes_changed, mu_changed
-    ):
+    def _need_to_invalidate_jacobian_state(self, pfield_changed, ofield_changed, stokes_changed, mu_changed):
         return False
 
     def _fixed_component_apply(self, U):
@@ -879,21 +822,13 @@ class CellModel(Model):
         # self.least_squares_stokes = least_squares_stokes
         # self.name = name
         self.solution_space = BlockVectorSpace(
-            [
-                pfield_op.source.subspaces[0],
-                ofield_op.source.subspaces[0],
-                stokes_op.source.subspaces[0],
-            ]
+            [pfield_op.source.subspaces[0], ofield_op.source.subspaces[0], stokes_op.source.subspaces[0]]
         )
         self.linear = False
         self.dim_input = 0
-        self._compute_allowed_kwargs = frozenset({'return_stages', 'return_residuals'})
+        self._compute_allowed_kwargs = frozenset({"return_stages", "return_residuals"})
         self.initial_values = self.solution_space.make_array(
-            [
-                self.initial_pfield.as_vector(),
-                self.initial_ofield.as_vector(),
-                self.initial_stokes.as_vector(),
-            ]
+            [self.initial_pfield.as_vector(), self.initial_ofield.as_vector(), self.initial_stokes.as_vector()]
         )
 
     def _compute_solution(self, mu=None, **kwargs):
@@ -928,9 +863,7 @@ class CellModel(Model):
             # do a timestep
             print("Current time: {}".format(t), flush=True)
             pfield_vecarray, pfield_data = newton(
-                self.pfield_op.fix_components(
-                    (1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]
-                ),
+                self.pfield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]),
                 self.pfield_op.range.zeros(),  # pfield_op has same range as pfield_op with fixed components
                 initial_guess=pfield_vecarray,
                 mu=mu,
@@ -942,9 +875,7 @@ class CellModel(Model):
                 **self.newton_params_pfield,
             )
             ofield_vecarray, ofield_data = newton(
-                self.ofield_op.fix_components(
-                    (1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]
-                ),
+                self.ofield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]),
                 self.ofield_op.range.zeros(),
                 initial_guess=ofield_vecarray,
                 mu=mu,
@@ -988,9 +919,7 @@ class CellModel(Model):
             retval[1]["residuals"] = (pfield_residuals, ofield_residuals, stokes_residuals)
         return retval
 
-    def next_time_step(
-        self, U_last, t, mu=None, return_output=False, return_stages=False, return_residuals=False
-    ):
+    def next_time_step(self, U_last, t, mu=None, return_output=False, return_stages=False, return_residuals=False):
         assert not return_output
 
         pfield_vecs, ofield_vecs, stokes_vecs = U_last._blocks
@@ -1050,17 +979,9 @@ class CellModel(Model):
 
         retval = [U, {"t": t}]
         if return_stages:
-            retval[1]["stages"] = (
-                pfield_data["stages"],
-                ofield_data["stages"],
-                stokes_data["stages"],
-            )
+            retval[1]["stages"] = (pfield_data["stages"], ofield_data["stages"], stokes_data["stages"])
         if return_residuals:
-            retval[1]["residuals"] = (
-                pfield_data["residuals"],
-                ofield_data["residuals"],
-                stokes_data["residuals"],
-            )
+            retval[1]["residuals"] = (pfield_data["residuals"], ofield_data["residuals"], stokes_data["residuals"])
         return retval
 
 
@@ -1069,15 +990,9 @@ class DuneCellModel(CellModel):
         pfield_op = CellModelPfieldOperator(solver, 0)
         ofield_op = CellModelOfieldOperator(solver, 0)
         stokes_op = CellModelStokesOperator(solver)
-        initial_pfield = VectorOperator(
-            solver.pfield_solution_space.make_array([solver.pfield_vector(0)])
-        )
-        initial_ofield = VectorOperator(
-            solver.ofield_solution_space.make_array([solver.ofield_vector(0)])
-        )
-        initial_stokes = VectorOperator(
-            solver.stokes_solution_space.make_array([solver.stokes_vector()])
-        )
+        initial_pfield = VectorOperator(solver.pfield_solution_space.make_array([solver.pfield_vector(0)]))
+        initial_ofield = VectorOperator(solver.ofield_solution_space.make_array([solver.ofield_vector(0)]))
+        initial_stokes = VectorOperator(solver.stokes_solution_space.make_array([solver.stokes_vector()]))
         self.dt = solver.dt
         self.t_end = solver.t_end
         super().__init__(
@@ -1136,9 +1051,7 @@ class ProjectedSystemOperator(Operator):
             self.source = NumpyVectorSpace(len(source_bases))
         else:
             assert len(source_bases) == len(operator.source.subspaces)
-            assert all(
-                sb is None or sb in ss for sb, ss in zip(source_bases, operator.source.subspaces)
-            )
+            assert all(sb is None or sb in ss for sb, ss in zip(source_bases, operator.source.subspaces))
             source_bases = tuple(None if sb is None else sb.copy() for sb in source_bases)
             self.blocked_source_basis = True
             self.source = BlockVectorSpace(
@@ -1202,10 +1115,7 @@ class FixedComponentEmpiricalInterpolatedOperator(EmpiricalInterpolatedOperator)
             subspaces = restricted_op.source.subspaces
             if idx != restricted_op.mutable_state_index:
                 raise NotImplementedError
-            U_restricted = [
-                subspaces[j].from_numpy(U[i].dofs(ei_operator.source_dofs[j]))
-                for i, j in enumerate(idx)
-            ]
+            U_restricted = [subspaces[j].from_numpy(U[i].dofs(ei_operator.source_dofs[j])) for i, j in enumerate(idx)]
             self.restricted_operator = restricted_op.fix_components(idx, U_restricted)
             fixed_source_indices = [i for i in range(len(subspaces)) if i not in idx]
             if len(fixed_source_indices) != 1:
@@ -1286,13 +1196,7 @@ class CellModelReductor(ProjectionBasedReductor):
         products={"pfield": None, "ofield": None, "stokes": None},
     ):
         bases = {"pfield": pfield_basis, "ofield": ofield_basis, "stokes": stokes_basis}
-        super().__init__(
-            fom,
-            bases,
-            check_orthonormality=check_orthonormality,
-            check_tol=check_tol,
-            products=products,
-        )
+        super().__init__(fom, bases, check_orthonormality=check_orthonormality, check_tol=check_tol, products=products)
         self.__auto_init(locals())
 
     reduce = ProjectionBasedReductor._reduce  # hack to allow bases which are None
@@ -1315,19 +1219,11 @@ class CellModelReductor(ProjectionBasedReductor):
 
     def project_operators(self):
         fom = self.fom
-        pfield_basis, ofield_basis, stokes_basis = (
-            self.bases["pfield"],
-            self.bases["ofield"],
-            self.bases["stokes"],
-        )
+        pfield_basis, ofield_basis, stokes_basis = (self.bases["pfield"], self.bases["ofield"], self.bases["stokes"])
         pfield_op, ofield_op, stokes_op = fom.pfield_op, fom.ofield_op, fom.stokes_op
         if self.pfield_deim_basis:
-            pfield_dofs, pfield_deim_basis, _ = deim(
-                self.pfield_deim_basis, pod=False, product=self.products["pfield"]
-            )
-            pfield_op = EmpiricalInterpolatedOperatorWithFixComponent(
-                pfield_op, pfield_dofs, pfield_deim_basis, False
-            )
+            pfield_dofs, pfield_deim_basis, _ = deim(self.pfield_deim_basis, pod=False, product=self.products["pfield"])
+            pfield_op = EmpiricalInterpolatedOperatorWithFixComponent(pfield_op, pfield_dofs, pfield_deim_basis, False)
             # If the full-order residual formulation is R(U) = 0, then
             # the Galerkin DEIM reduced model is (using the Euclidean inner product)
             #   V^T Z (E^T Z)^{-1} E^T R(Vu) = 0,
@@ -1349,13 +1245,9 @@ class CellModelReductor(ProjectionBasedReductor):
             # the minimum in the space of DEIM coefficients (i.e., project the collateral_basis
             # to its own spanned space which gives the unit matrix).
             projected_collateral_basis = (
-                NumpyVectorSpace.make_array(
-                    np.eye(len(pfield_deim_basis))
-                )  # assumes that pfield_deim_basis is ONB!!!
+                NumpyVectorSpace.make_array(np.eye(len(pfield_deim_basis)))  # assumes that pfield_deim_basis is ONB!!!
                 if self.least_squares_pfield
-                else NumpyVectorSpace.make_array(
-                    pfield_deim_basis.inner(pfield_basis, product=products["pfield"])
-                )
+                else NumpyVectorSpace.make_array(pfield_deim_basis.inner(pfield_basis, product=products["pfield"]))
             )
             # Extract dofs for the reduced operator
             source_basis_dofs = []
@@ -1393,20 +1285,12 @@ class CellModelReductor(ProjectionBasedReductor):
                 [pfield_basis, pfield_basis, ofield_basis, stokes_basis],
             )
         if self.ofield_deim_basis:
-            ofield_dofs, ofield_deim_basis, _ = deim(
-                self.ofield_deim_basis, pod=False, product=self.products["ofield"]
-            )
-            ofield_op = EmpiricalInterpolatedOperatorWithFixComponent(
-                ofield_op, ofield_dofs, ofield_deim_basis, False
-            )
+            ofield_dofs, ofield_deim_basis, _ = deim(self.ofield_deim_basis, pod=False, product=self.products["ofield"])
+            ofield_op = EmpiricalInterpolatedOperatorWithFixComponent(ofield_op, ofield_dofs, ofield_deim_basis, False)
             projected_collateral_basis = (
-                NumpyVectorSpace.make_array(
-                    np.eye(len(ofield_deim_basis))
-                )  # assumes that ofield_deim_basis is ONB!!!
+                NumpyVectorSpace.make_array(np.eye(len(ofield_deim_basis)))  # assumes that ofield_deim_basis is ONB!!!
                 if self.least_squares_ofield
-                else NumpyVectorSpace.make_array(
-                    ofield_deim_basis.inner(ofield_basis, product=products["ofield"])
-                )
+                else NumpyVectorSpace.make_array(ofield_deim_basis.inner(ofield_basis, product=products["ofield"]))
             )
             # Extract dofs for the reduced operator
             source_basis_dofs = []
@@ -1441,20 +1325,12 @@ class CellModelReductor(ProjectionBasedReductor):
                 [ofield_basis, pfield_basis, ofield_basis, stokes_basis],
             )
         if self.stokes_deim_basis:
-            stokes_dofs, stokes_deim_basis, _ = deim(
-                self.stokes_deim_basis, pod=False, product=self.products["stokes"]
-            )
-            stokes_op = EmpiricalInterpolatedOperatorWithFixComponent(
-                stokes_op, stokes_dofs, stokes_deim_basis, False
-            )
+            stokes_dofs, stokes_deim_basis, _ = deim(self.stokes_deim_basis, pod=False, product=self.products["stokes"])
+            stokes_op = EmpiricalInterpolatedOperatorWithFixComponent(stokes_op, stokes_dofs, stokes_deim_basis, False)
             projected_collateral_basis = (
-                NumpyVectorSpace.make_array(
-                    np.eye(len(stokes_deim_basis))
-                )  # assumes that stokes_deim_basis is ONB!!!
+                NumpyVectorSpace.make_array(np.eye(len(stokes_deim_basis)))  # assumes that stokes_deim_basis is ONB!!!
                 if self.least_squares_stokes
-                else NumpyVectorSpace.make_array(
-                    stokes_deim_basis.inner(stokes_basis, product=self.products["stokes"])
-                )
+                else NumpyVectorSpace.make_array(stokes_deim_basis.inner(stokes_basis, product=self.products["stokes"]))
             )
             # Extract dofs for the reduced operator
             source_basis_dofs = []
@@ -1491,15 +1367,9 @@ class CellModelReductor(ProjectionBasedReductor):
             "pfield_op": pfield_op,
             "ofield_op": ofield_op,
             "stokes_op": stokes_op,
-            "initial_pfield": project(
-                fom.initial_pfield, pfield_basis, None, product=fom.products["pfield"]
-            ),
-            "initial_ofield": project(
-                fom.initial_ofield, ofield_basis, None, product=fom.products["ofield"]
-            ),
-            "initial_stokes": project(
-                fom.initial_stokes, stokes_basis, None, product=fom.products["stokes"]
-            ),
+            "initial_pfield": project(fom.initial_pfield, pfield_basis, None, product=fom.products["pfield"]),
+            "initial_ofield": project(fom.initial_ofield, ofield_basis, None, product=fom.products["ofield"]),
+            "initial_stokes": project(fom.initial_stokes, stokes_basis, None, product=fom.products["stokes"]),
         }
         return projected_operators
 
@@ -1530,32 +1400,14 @@ class CellModelReductor(ProjectionBasedReductor):
 
 
 def create_and_scatter_cellmodel_parameters(
-    comm,
-    Be_min=0.3 / 3,
-    Be_max=0.3 * 3,
-    Ca_min=0.1 / 3,
-    Ca_max=0.1 * 3,
-    Pa_min=1.0 / 3,
-    Pa_max=1.0 * 3,
+    comm, Be_min=0.3 / 3, Be_max=0.3 * 3, Ca_min=0.1 / 3, Ca_max=0.1 * 3, Pa_min=1.0 / 3, Pa_max=1.0 * 3
 ):
     """Samples all 3 parameters uniformly with the same width and adds random parameter combinations until
     comm.Get_size() parameters are created. After that, parameter combinations are scattered to ranks."""
     num_samples_per_parameter = int(comm.Get_size() ** (1.0 / 3.0) + 0.1)
-    sample_width_Be = (
-        (Be_max - Be_min) / (num_samples_per_parameter - 1)
-        if num_samples_per_parameter > 1
-        else 1e10
-    )
-    sample_width_Ca = (
-        (Ca_max - Ca_min) / (num_samples_per_parameter - 1)
-        if num_samples_per_parameter > 1
-        else 1e10
-    )
-    sample_width_Pa = (
-        (Pa_max - Pa_min) / (num_samples_per_parameter - 1)
-        if num_samples_per_parameter > 1
-        else 1e10
-    )
+    sample_width_Be = (Be_max - Be_min) / (num_samples_per_parameter - 1) if num_samples_per_parameter > 1 else 1e10
+    sample_width_Ca = (Ca_max - Ca_min) / (num_samples_per_parameter - 1) if num_samples_per_parameter > 1 else 1e10
+    sample_width_Pa = (Pa_max - Pa_min) / (num_samples_per_parameter - 1) if num_samples_per_parameter > 1 else 1e10
     Be_range = np.arange(Be_min, Be_max + 1e-15, sample_width_Be)
     Ca_range = np.arange(Ca_min, Ca_max + 1e-15, sample_width_Ca)
     Pa_range = np.arange(Pa_min, Pa_max + 1e-15, sample_width_Pa)
@@ -1596,6 +1448,7 @@ def calculate_cellmodel_trajectory_errors(
     red_errs = [0.0] * len(modes)
     rel_red_errs = [0.0] * len(modes)
     proj_deim_errs = [0.0] * len(deim_modes)
+    norms = [[], [], [], [], [], []]
     # modes has length 2*num_cells+1
     num_cells = (len(modes) - 1) // 2
     assert num_cells == 1, "Not tested for more than 1 cell, most likely there are errors!"
@@ -1616,26 +1469,22 @@ def calculate_cellmodel_trajectory_errors(
                 vals = current_values.block(i)
                 # projection errors
                 proj_res = vals - modes[i].lincomb(vals.inner(modes[i], product=products[i]))
-                proj_errs[i] += np.sum(proj_res.pairwise_inner(proj_res, product=products[i]))
+                proj_errs[i] += np.sum(proj_res.norm2(product=products[i]))
                 # model reduction errors
                 res = vals - U_rom.block(i)
-                res_norms2 = res.pairwise_inner(res, product=products[i])
+                res_norms2 = res.norm2(product=products[i])
                 red_errs[i] += np.sum(res_norms2)
                 # relative model reduction errors
-                vals_norms2 = vals.pairwise_inner(vals, product=products[i])
-                rel_errs_list = res_norms2 / vals_norms2
-                rel_red_errs[i] += np.sum([e for e in rel_errs_list if not np.isnan(e)])
+                vals_norms2 = vals.norm2(product=products[i])
+                rel_errs_list = [res_norm2 / val_norm2 for res_norm2, val_norm2 in zip(res_norms2, vals_norms2) if not np.isclose(val_norm2, 0)]
+                rel_red_errs[i] += np.sum(rel_errs_list)
             # DEIM basis errors
             if timestep_residuals is not None:
                 for i in range(3):
                     deim_res = timestep_residuals[i]
                     if deim_modes[i] is not None:
-                        proj_res = deim_res - deim_modes[i].lincomb(
-                            deim_res.inner(deim_modes[i], product=products[i])
-                        )
-                        proj_deim_errs[i] += np.sum(
-                            proj_res.pairwise_inner(proj_res, product=products[i])
-                        )
+                        proj_res = deim_res - deim_modes[i].lincomb(deim_res.inner(deim_modes[i], product=products[i]))
+                        proj_deim_errs[i] += np.sum(proj_res.norm2(product=products[i]))
                         n_deim[i] += len(proj_res)
             # get values for next time step
             n += 1
@@ -1654,35 +1503,34 @@ def calculate_cellmodel_trajectory_errors(
                 chunk_data = pickle.load(f)
             chunk_size = len(chunk_data["snaps"][0])
             U_rom = reductor.reconstruct(u_rom[n : n + chunk_size])
+            # POD basis errors
             for i in range(3):
-                # POD basis errors
                 vals = chunk_data["snaps"][i]
+                # norms[i].extend(vals.norm(product=products[i]).tolist())
                 # projection errors
                 if modes[i] is not None:
                     proj_res = vals - modes[i].lincomb(vals.inner(modes[i], product=products[i]))
-                    proj_errs[i] += np.sum(proj_res.pairwise_inner(proj_res, product=products[i]))
+                    proj_errs[i] += np.sum(proj_res.norm2(product=products[i]))
                 # model reduction errors
                 res = vals - U_rom.block(i)
-                res_norms2 = res.pairwise_inner(res, product=products[i])
+                res_norms2 = res.norm2(product=products[i])
                 red_errs[i] += np.sum(res_norms2)
                 # relative model reduction errors
-                vals_norms2 = vals.pairwise_inner(vals, product=products[i])
-                rel_errs_list = res_norms2 / vals_norms2
-                rel_red_errs[i] += np.sum([e for e in rel_errs_list if not np.isnan(e)])
-                # DEIM basis errors
-                for i in range(3):
-                    deim_res = chunk_data["residuals"][i]
-                    if deim_modes[i] is not None:
-                        proj_res = deim_res - deim_modes[i].lincomb(
-                            deim_res.inner(deim_modes[i], product=products[i])
-                        )
-                        proj_deim_errs[i] += np.sum(
-                            proj_res.pairwise_inner(proj_res, product=products[i])
-                        )
-                        n_deim[i] += len(proj_res)
+                vals_norms2 = vals.norm2(product=products[i])
+                rel_errs_list = [res_norm2 / val_norm2 for res_norm2, val_norm2 in zip(res_norms2, vals_norms2) if not np.isclose(val_norm2, 0)]
+                rel_red_errs[i] += np.sum(rel_errs_list)
+            # DEIM basis errors
+            for i in range(3):
+                deim_res = chunk_data["residuals"][i]
+                # deim_res = deim_res * np.array([1/norm if norm > 0 else 1 for norm in deim_res.norm(product=products[i])])
+                # norms[3+i].extend(deim_res.norm(product=products[i]).tolist())
+                if deim_modes[i] is not None:
+                    proj_res = deim_res - deim_modes[i].lincomb(deim_res.inner(deim_modes[i], product=products[i]))
+                    proj_deim_errs[i] += np.sum(proj_res.norm2(product=products[i]))
+                    n_deim[i] += len(proj_res)
             n += chunk_size
         fom_time = chunk_data["elapsed"]
-    return proj_errs, proj_deim_errs, red_errs, rel_red_errs, n, n_deim, fom_time
+    return proj_errs, proj_deim_errs, red_errs, rel_red_errs, n, n_deim, fom_time, norms
 
 
 def calculate_mean_cellmodel_projection_errors(
@@ -1711,6 +1559,7 @@ def calculate_mean_cellmodel_projection_errors(
     num_residuals = [0] * 3
     num_snapshots = 0
     mean_fom_time = 0.0
+    norms = 0
     for mu, u_rom in zip(mus, reduced_us):
         pickle_prefix_mu = f"{pickle_prefix}_Be{mu['Be']}_Ca{mu['Ca']}_Pa{mu['Pa']}_chunk"
         (
@@ -1721,6 +1570,7 @@ def calculate_mean_cellmodel_projection_errors(
             n,
             n_deim,
             fom_time,
+            norms,
         ) = calculate_cellmodel_trajectory_errors(
             modes=modes,
             deim_modes=deim_modes,
@@ -1784,8 +1634,8 @@ def calculate_mean_cellmodel_projection_errors(
     for i in range(3):
         err = mpi_wrapper.comm_world.gather(proj_deim_errs_sum[i], root=0)
         if mpi_wrapper.rank_world == 0:
-            proj_deim_errs[i] = np.sqrt(np.sum(err) / num_residuals[i])
-    return proj_errs, proj_deim_errs, red_errs, rel_red_errs, mean_fom_time, mean_rom_time
+            proj_deim_errs[i] = np.sqrt(np.sum(err) / num_residuals[i]) if num_residuals[i] != 0 else 0
+    return proj_errs, proj_deim_errs, red_errs, rel_red_errs, mean_fom_time, mean_rom_time, norms
 
 
 def calculate_cellmodel_errors(
@@ -1819,6 +1669,7 @@ def calculate_cellmodel_errors(
         rel_red_errs,
         mean_fom_time,
         mean_rom_time,
+        norms,
     ) = calculate_mean_cellmodel_projection_errors(
         modes=modes,
         deim_modes=deim_modes,
@@ -1844,62 +1695,35 @@ def calculate_cellmodel_errors(
             logfile.write("Time used for calculating error: " + str(elapsed) + "\n")
             nc = (len(modes) - 1) // 2
             for k in range(nc):
-                logfile.write(
-                    "{}L2 projection error for {}-th pfield is: {}\n".format(prefix, k, errs[k])
-                )
-                logfile.write(
-                    "{}L2 projection error for {}-th ofield is: {}\n".format(
-                        prefix, k, errs[nc + k]
-                    )
-                )
+                logfile.write("{}L2 projection error for {}-th pfield is: {}\n".format(prefix, k, errs[k]))
+                logfile.write("{}L2 projection error for {}-th ofield is: {}\n".format(prefix, k, errs[nc + k]))
             logfile.write("{}L2 projection error for stokes is: {}\n".format(prefix, errs[2 * nc]))
-            logfile.write(
-                "{}L2 projection DEIM error for {}-th pfield is: {}\n".format(
-                    prefix, 0, deim_errs[0]
-                )
-            )
-            logfile.write(
-                "{}L2 projection DEIM error for {}-th ofield is: {}\n".format(
-                    prefix, 0, deim_errs[1]
-                )
-            )
-            logfile.write(
-                "{}L2 projection DEIM error for stokes is: {}\n".format(prefix, deim_errs[2])
-            )
+            logfile.write("{}L2 projection DEIM error for {}-th pfield is: {}\n".format(prefix, 0, deim_errs[0]))
+            logfile.write("{}L2 projection DEIM error for {}-th ofield is: {}\n".format(prefix, 0, deim_errs[1]))
+            logfile.write("{}L2 projection DEIM error for stokes is: {}\n".format(prefix, deim_errs[2]))
+            for k in range(nc):
+                logfile.write("{}L2 reduction error for {}-th pfield is: {}\n".format(prefix, k, red_errs[k]))
+                logfile.write("{}L2 reduction error for {}-th ofield is: {}\n".format(prefix, k, red_errs[nc + k]))
+            logfile.write("{}L2 reduction error for {}-th stokes is: {}\n".format(prefix, 0, red_errs[2 * nc]))
             for k in range(nc):
                 logfile.write(
-                    "{}L2 reduction error for {}-th pfield is: {}\n".format(prefix, k, red_errs[k])
+                    "{}L2 relative reduction error for {}-th pfield is: {}\n".format(prefix, k, rel_red_errs[k])
                 )
                 logfile.write(
-                    "{}L2 reduction error for {}-th ofield is: {}\n".format(
-                        prefix, k, red_errs[nc + k]
-                    )
+                    "{}L2 relative reduction error for {}-th ofield is: {}\n".format(prefix, k, rel_red_errs[nc + k])
                 )
             logfile.write(
-                "{}L2 reduction error for {}-th stokes is: {}\n".format(prefix, 0, red_errs[2 * nc])
-            )
-            for k in range(nc):
-                logfile.write(
-                    "{}L2 relative reduction error for {}-th pfield is: {}\n".format(
-                        prefix, k, rel_red_errs[k]
-                    )
-                )
-                logfile.write(
-                    "{}L2 relative reduction error for {}-th ofield is: {}\n".format(
-                        prefix, k, rel_red_errs[nc + k]
-                    )
-                )
-            logfile.write(
-                "{}L2 relative reduction error for {}-th stokes is: {}\n".format(
-                    prefix, 0, rel_red_errs[2 * nc]
-                )
+                "{}L2 relative reduction error for {}-th stokes is: {}\n".format(prefix, 0, rel_red_errs[2 * nc])
             )
             if mean_fom_time is not None and mean_rom_time is not None:
-                logfile.write(
-                    f"{mean_fom_time:.2f} vs. {mean_rom_time:.2f}, speedup {mean_fom_time/mean_rom_time:.2f}"
-                )
+                logfile.write(f"{mean_fom_time:.2f} vs. {mean_rom_time:.2f}, speedup {mean_fom_time/mean_rom_time:.2f}")
             # logfile.write("{}L2 reduction error for {}-th ofield is: {}\n".format(prefix, k, red_errs[nc + k]))
             # logfile.write("{}L2 reduction error for stokes is: {}\n".format(prefix, red_errs[2 * nc]))
+        # for i, filename in enumerate(("norms_pfield_40.txt", "norms_ofield_40.txt", "norms_stokes_40.txt", "norms_pfield_deim_40.txt", "norms_ofield_deim_40.txt", "norms_stokes_deim_40.txt")):
+        #     with open(filename, "w") as f:
+        #         f.write("index norm\n")
+        #         for index, norm in enumerate(norms[i]):
+        #             f.write(f"{index} {norm}\n")
     return errs
 
 
@@ -1913,68 +1737,69 @@ def get_num_chunks_and_num_timesteps(t_end, dt, chunk_size):
 
 
 def create_parameters(
-    train_params_per_rank,
-    test_params_per_rank,
-    rf,
-    mpi,
-    excluded_param,
-    filename=None,
-    Be0=1.0,
-    Ca0=1.0,
-    Pa0=1.0,
+    train_params_per_rank, test_params_per_rank, rf, mpi, excluded_params, filename=None, Be0=1.0, Ca0=1.0, Pa0=1.0
 ):
+    # check excluded_params
+    for param in excluded_params:
+        if param not in ("Be", "Ca", "Pa"):
+            raise NotImplementedError(f"Unknown excluded parameter {param}")
     # Be0, Ca0 and Pa0 are default values for parameters
     ####### Create training parameters ######
     num_train_params = train_params_per_rank * mpi.size_world
     num_test_params = test_params_per_rank * mpi.size_world
-    # we have two parameters and want to sample both of these parameters with the same number of values
-    values_per_parameter_train = int(math.sqrt(num_train_params))
+    # We have three parameters minus the excluded ones and want to sample all of these parameters with the same number of values
+    num_sampled_parameters = 3 - len(excluded_params)
+    values_per_sampled_parameter = int(num_train_params ** (1 / num_sampled_parameters))
     rf = np.sqrt(rf)
-    lower_bound_Ca = Ca0 / rf
-    upper_bound_Ca = Ca0 * rf
     lower_bound_Be = Be0 / rf
     upper_bound_Be = Be0 * rf
+    step_Be = (
+        (upper_bound_Be - lower_bound_Be) / (values_per_sampled_parameter - 1)
+        if values_per_sampled_parameter > 1
+        else 0
+    )
+    lower_bound_Ca = Ca0 / rf
+    upper_bound_Ca = Ca0 * rf
+    step_Ca = (
+        (upper_bound_Ca - lower_bound_Ca) / (values_per_sampled_parameter - 1)
+        if values_per_sampled_parameter > 1
+        else 0
+    )
     lower_bound_Pa = Pa0 / rf
     upper_bound_Pa = Pa0 * rf
-    # Compute factors such that mu_i/mu_{i+1} = const and mu_0 = default_value/sqrt(rf), mu_last = default_value*sqrt(rf)
-    # factors = np.array([1.])
-    factors = np.array(
-        [
-            (rf ** 2) ** (i / (values_per_parameter_train - 1)) / rf
-            for i in range(values_per_parameter_train)
-        ]
-        if values_per_parameter_train > 1
-        else [1.0]
+    step_Pa = (
+        (upper_bound_Pa - lower_bound_Pa) / (values_per_sampled_parameter - 1)
+        if values_per_sampled_parameter > 1
+        else 0
     )
     # Actually create training parameters.
-    # Currently, only two parameters vary, the other one is set to the default value
+    # Parameters in excluded_params are set to the default value
     mus = []
-    if excluded_param == "Ca":
-        for Be in factors * Be0:
-            for Pa in factors * Pa0:
-                mus.append({"Pa": Pa, "Be": Be, "Ca": Ca0})
-    elif excluded_param == "Be":
-        for Ca in factors * Ca0:
-            for Pa in factors * Pa0:
-                mus.append({"Pa": Pa, "Be": Be0, "Ca": Ca})
-    elif excluded_param == "Pa":
-        for Ca in factors * Ca0:
-            for Be in factors * Be0:
-                mus.append({"Pa": Pa0, "Be": Be, "Ca": Ca})
-    else:
-        raise NotImplementedError(f"Wrong value of excluded_param: {excluded_param}")
+    Be_values = (
+        [lower_bound_Be + i * step_Be for i in range(values_per_sampled_parameter)]
+        if "Be" not in excluded_params and step_Be > 0
+        else [Be0]
+    )
+    Ca_values = (
+        [lower_bound_Ca + i * step_Ca for i in range(values_per_sampled_parameter)]
+        if "Ca" not in excluded_params and step_Ca > 0
+        else [Ca0]
+    )
+    Pa_values = (
+        [lower_bound_Pa + i * step_Pa for i in range(values_per_sampled_parameter)]
+        if "Pa" not in excluded_params and step_Pa > 0
+        else [Pa0]
+    )
+    for Be in Be_values:
+        for Ca in Ca_values:
+            for Pa in Pa_values:
+                mus.append({"Pa": Pa, "Be": Be, "Ca": Ca})
     while len(mus) < num_train_params:
         mus.append(
             {
-                "Pa": Pa0
-                if excluded_param == "Pa"
-                else random.uniform(lower_bound_Pa, upper_bound_Pa),
-                "Be": Be0
-                if excluded_param == "Be"
-                else random.uniform(lower_bound_Be, upper_bound_Be),
-                "Ca": Ca0
-                if excluded_param == "Ca"
-                else random.uniform(lower_bound_Ca, upper_bound_Ca),
+                "Be": Be0 if "Be" in excluded_params else random.uniform(lower_bound_Be, upper_bound_Be),
+                "Ca": Ca0 if "Ca" in excluded_params else random.uniform(lower_bound_Ca, upper_bound_Ca),
+                "Pa": Pa0 if "Pa" in excluded_params else random.uniform(lower_bound_Pa, upper_bound_Pa),
             }
         )
     ####### Create test parameters ########
@@ -1982,15 +1807,9 @@ def create_parameters(
     for _ in range(num_test_params):
         new_mus.append(
             {
-                "Pa": Pa0
-                if excluded_param == "Pa"
-                else random.uniform(lower_bound_Pa, upper_bound_Pa),
-                "Be": Be0
-                if excluded_param == "Be"
-                else random.uniform(lower_bound_Be, upper_bound_Be),
-                "Ca": Ca0
-                if excluded_param == "Ca"
-                else random.uniform(lower_bound_Ca, upper_bound_Ca),
+                "Be": Be0 if "Be" in excluded_params else random.uniform(lower_bound_Be, upper_bound_Be),
+                "Ca": Ca0 if "Ca" in excluded_params else random.uniform(lower_bound_Ca, upper_bound_Ca),
+                "Pa": Pa0 if "Pa" in excluded_params else random.uniform(lower_bound_Pa, upper_bound_Pa),
             }
         )
     ############ write mus to file #################
@@ -2043,18 +1862,13 @@ class BinaryTreeHapodResults:
 # The resulting modes are stored in results.gathered_modes on processor rank 0
 # results.num_snaps (on rank 0) contains the total number of snapshots
 # that have been processed (on all ranks)
-def pods_on_processor_cores_in_binary_tree_hapod(r, vecs, mpi, root, product):
+def pods_on_processor_cores_in_binary_tree_hapod(r, vecs, mpi, root, product, method="method_of_snapshots"):
     assert isinstance(vecs, ListVectorArray)
     print("start processor pod: ", mpi.rank_world)
     snaps_on_rank = len(vecs)
     r.max_vectors_before_pod = max(r.max_vectors_before_pod, snaps_on_rank)
     vecs, svals = local_pod(
-        [vecs],
-        snaps_on_rank,
-        r.params,
-        product=product,
-        incremental_gramian=False,
-        orth_tol=r.orth_tol,
+        [vecs], snaps_on_rank, r.params, product=product, incremental_gramian=False, orth_tol=r.orth_tol, method=method
     )
     r.max_local_modes = max(r.max_local_modes, len(vecs))
     vecs.scal(svals)
@@ -2064,7 +1878,9 @@ def pods_on_processor_cores_in_binary_tree_hapod(r, vecs, mpi, root, product):
 
 
 # perform a POD with gathered modes on rank 0 on each processor/node
-def pod_on_node_in_binary_tree_hapod(r, is_first_chunk, is_last_chunk, mpi, root, product):
+def pod_on_node_in_binary_tree_hapod(
+    r, is_first_chunk, is_last_chunk, mpi, root, product, method="method_of_snapshots"
+):
     print("start node pod: ", mpi.rank_world)
     r.total_num_snapshots += r.num_snaps
     if is_first_chunk:
@@ -2076,11 +1892,10 @@ def pod_on_node_in_binary_tree_hapod(r, is_first_chunk, is_last_chunk, mpi, root
             product=product,
             orth_tol=r.orth_tol,
             incremental_gramian=False,
+            method=method,
         )
     else:
-        r.max_vectors_before_pod = max(
-            r.max_vectors_before_pod, len(r.modes) + len(r.gathered_modes)
-        )
+        r.max_vectors_before_pod = max(r.max_vectors_before_pod, len(r.modes) + len(r.gathered_modes))
         root_of_tree = is_last_chunk and mpi.size_rank_group[root] == 1
         r.modes, r.svals = local_pod(
             inputs=[[r.modes, r.svals], r.gathered_modes],
@@ -2090,19 +1905,14 @@ def pod_on_node_in_binary_tree_hapod(r, is_first_chunk, is_last_chunk, mpi, root
             incremental_gramian=r.incremental_gramian,
             product=product,
             root_of_tree=root_of_tree,
+            method=method,
         )
     r.max_local_modes = max(r.max_local_modes, len(r.modes))
 
 
-def final_hapod_in_binary_tree_hapod(r, mpi, root, product):
+def final_hapod_in_binary_tree_hapod(r, mpi, root, product, method="method_of_snapshots"):
     print("start final pod: ", mpi.rank_world)
-    (
-        r.modes,
-        r.svals,
-        r.total_num_snapshots,
-        max_num_input_vecs,
-        max_num_local_modes,
-    ) = binary_tree_hapod_over_ranks(
+    (r.modes, r.svals, r.total_num_snapshots, max_num_input_vecs, max_num_local_modes) = binary_tree_hapod_over_ranks(
         mpi.comm_rank_group[root],
         r.modes,
         r.total_num_snapshots,
@@ -2112,6 +1922,7 @@ def final_hapod_in_binary_tree_hapod(r, mpi, root, product):
         incremental_gramian=r.incremental_gramian,
         product=product,
         orth_tol=r.final_orth_tol,
+        method=method,
     )
     r.max_vectors_before_pod = max(r.max_vectors_before_pod, max_num_input_vecs)
     r.max_local_modes = max(r.max_local_modes, max_num_local_modes)
@@ -2129,6 +1940,7 @@ def binary_tree_hapod(
     final_orth_tol: float = 1e-10,
     logfile: Union[None, str] = None,
     products: "list[Any]" = [None] * 6,
+    pod_method: str = "method_of_snapshots",
 ):
     assert len(tolerances) == 6
 
@@ -2138,9 +1950,7 @@ def binary_tree_hapod(
         timings[f"POD{k}"] = 0.0
 
     # calculate rooted tree depth
-    node_binary_tree_depth = binary_tree_depth(
-        mpi.comm_rank_group[0]
-    )  # assumes same tree for all fields
+    node_binary_tree_depth = binary_tree_depth(mpi.comm_rank_group[0])  # assumes same tree for all fields
     node_binary_tree_depth = mpi.comm_proc.bcast(node_binary_tree_depth, root=0)
     tree_depth = chunk_generator.num_chunks + node_binary_tree_depth
 
@@ -2159,7 +1969,7 @@ def binary_tree_hapod(
             t1 = timer()
             root_rank = k % mpi.size_proc
             pods_on_processor_cores_in_binary_tree_hapod(
-                results[k], chunk[k], mpi, root=root_rank, product=products[k]
+                results[k], chunk[k], mpi, root=root_rank, product=products[k], method=pod_method
             )
             timings[f"POD{k}"] += timer() - t1
         for k in indices:
@@ -2175,6 +1985,7 @@ def binary_tree_hapod(
                     mpi=mpi,
                     root=root_rank,
                     product=products[k],
+                    method=pod_method,
                 )
             timings[f"POD{k}"] += timer() - t1
 
@@ -2184,16 +1995,14 @@ def binary_tree_hapod(
         r = results[k]
         if mpi.rank_proc == root_rank:
             t1 = timer()
-            final_hapod_in_binary_tree_hapod(r, mpi, root=root_rank, product=products[k])
+            final_hapod_in_binary_tree_hapod(r, mpi, root=root_rank, product=products[k], method=pod_method)
             timings[f"POD{k}"] += timer() - t1
 
         # calculate max number of local modes
         # The 'or [0]' is only here to silence pyright which otherwise complains below that we cannot apply max to None
         r.max_vectors_before_pod = mpi.comm_world.gather(r.max_vectors_before_pod, root=0) or [0]
         r.max_local_modes = mpi.comm_world.gather(r.max_local_modes, root=0) or [0]
-        r.num_modes = mpi.comm_world.gather(len(r.modes) if r.modes is not None else 0, root=0) or [
-            0
-        ]
+        r.num_modes = mpi.comm_world.gather(len(r.modes) if r.modes is not None else 0, root=0) or [0]
         r.total_num_snapshots = mpi.comm_world.gather(r.total_num_snapshots, root=0) or [0]
         gathered_timings = mpi.comm_world.gather(timings, root=0) or [0]
         if mpi.rank_world == 0:
@@ -2215,9 +2024,7 @@ def binary_tree_hapod(
                     f"The HAPOD resulted in {r.num_modes} final modes taken from a total of {r.total_num_snapshots} snapshots!\n"
                 )
                 ff.write(f"The maximal number of local modes was {r.max_local_modes}\n")
-                ff.write(
-                    f"The maximal number of input vectors to a local POD was: {r.max_vectors_before_pod}\n"
-                )
+                ff.write(f"The maximal number of input vectors to a local POD was: {r.max_vectors_before_pod}\n")
                 ff.write("PODs took {} s.\n".format(r.timings[f"POD{k}"]))
             ff.write(
                 f"The maximum amount of memory used on rank 0 was: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1000.0 ** 2} GB\n"

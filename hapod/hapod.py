@@ -33,6 +33,7 @@ def local_pod(
     orth_tol=1e-10,
     product=None,
     incremental_gramian=True,
+    method="method_of_snapshots",
 ):
     """
     Calculates a POD in the HAPOD tree. The input is a list where each element is either a vectorarray or
@@ -73,6 +74,7 @@ def local_pod(
         vector_length = max(vector_length, inputs[i][0].dim)
 
     if incremental_gramian:
+        assert method == "method_of_snapshots", "incremental_gramian is not implemented for method=qr_svd"
         # calculate gramian avoiding recalculations
         gramian = np.empty((offsets[-1],) * 2)
         all_modes = inputs[0][0].space.empty()
@@ -120,9 +122,7 @@ def local_pod(
         modes = inputs[0][0].empty()
         for i in range(len(inputs)):
             modes.append(inputs[i][0])
-        return pod(
-            modes, product=product, atol=0.0, rtol=0.0, l2_err=epsilon_alpha, orth_tol=orth_tol
-        )
+        return pod(modes, product=product, atol=0.0, rtol=0.0, l2_err=epsilon_alpha, orth_tol=orth_tol, method=method)
 
 
 def incremental_hapod_over_ranks(
@@ -133,6 +133,7 @@ def incremental_hapod_over_ranks(
     svals=None,
     last_hapod=False,
     incremental_gramian=True,
+    method="method_of_snapshots",
 ):
     """A incremental HAPOD with modes and possibly svals stored on ranks of the MPI communicator comm.
     May be used as part of a larger HAPOD tree, in that case you need to specify whether this
@@ -149,22 +150,19 @@ def incremental_hapod_over_ranks(
                 modes = None
             # receive modes and svals
             elif comm.rank == 0:
-                modes_on_source, svals_on_source, total_num_snapshots_on_source = comm.recv_modes(
-                    current_rank
-                )
+                modes_on_source, svals_on_source, total_num_snapshots_on_source = comm.recv_modes(current_rank)
                 max_vecs_before_pod = max(max_vecs_before_pod, len(modes) + len(modes_on_source))
                 total_num_snapshots += total_num_snapshots_on_source
                 modes, svals = local_pod(
                     [
                         [modes, svals],
-                        [modes_on_source, svals_on_source]
-                        if len(svals_on_source) > 0
-                        else modes_on_source,
+                        [modes_on_source, svals_on_source] if len(svals_on_source) > 0 else modes_on_source,
                     ],
                     total_num_snapshots,
                     parameters,
                     incremental_gramian=incremental_gramian,
                     root_of_tree=(current_rank == comm.size - 1 and last_hapod),
+                    method=method,
                 )
                 max_local_modes = max(max_local_modes, len(modes))
                 del modes_on_source
@@ -194,6 +192,7 @@ def binary_tree_hapod_over_ranks(
     incremental_gramian=True,
     product=None,
     orth_tol=1e-10,
+    method="method_of_snapshots",
 ):
     """A HAPOD with modes and possibly svals stored on ranks of the MPI communicator comm. A binary tree
     of MPI ranks is used as HAPOD tree.
@@ -216,21 +215,13 @@ def binary_tree_hapod_over_ranks(
                     comm.send_modes(receiving_rank, modes, svals, total_num_snapshots)
                     modes = None
                 elif comm.rank == receiving_rank:
-                    (
-                        modes_on_source,
-                        svals_on_source,
-                        total_num_snapshots_on_source,
-                    ) = comm.recv_modes(sending_rank)
-                    max_vecs_before_pod = max(
-                        max_vecs_before_pod, len(modes) + len(modes_on_source)
-                    )
+                    (modes_on_source, svals_on_source, total_num_snapshots_on_source) = comm.recv_modes(sending_rank)
+                    max_vecs_before_pod = max(max_vecs_before_pod, len(modes) + len(modes_on_source))
                     total_num_snapshots += total_num_snapshots_on_source
                     modes, svals = local_pod(
                         [
                             [modes, svals],
-                            [modes_on_source, svals_on_source]
-                            if len(svals_on_source) > 0
-                            else modes_on_source,
+                            [modes_on_source, svals_on_source] if len(svals_on_source) > 0 else modes_on_source,
                         ],
                         total_num_snapshots,
                         parameters,
@@ -238,6 +229,7 @@ def binary_tree_hapod_over_ranks(
                         incremental_gramian=incremental_gramian,
                         product=product,
                         root_of_tree=((len(ranks) == 2) and last_hapod),
+                        method=method,
                     )
                     max_local_modes = max(max_local_modes, len(modes))
             ranks = list(remaining_ranks)
