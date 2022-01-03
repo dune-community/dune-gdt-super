@@ -131,7 +131,8 @@ if __name__ == "__main__":
     if mpi.rank_world == 0:
         if not os.path.exists(logfile_dir):
             os.mkdir(logfile_dir)
-    logfile_prefix = "results_pickled_{}_{}_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_{}tppr_pfield{}_ofield{}_stokes{}_without".format(
+    logfile_prefix = "results_pickled_{}{}_{}_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_{}tppr_pfield{}_ofield{}_stokes{}_without".format(
+        "normalized_" if normalize_residuals else "",
         "mos" if pod_method == "method_of_snapshots" else "qr_svd",
         testcase,
         mpi.size_world,
@@ -143,11 +144,11 @@ if __name__ == "__main__":
         "snapsandstages" if include_newton_stages else "snaps",
         train_params_per_rank,
         (f"pod{pfield_atol:.0e}" if pod_pfield else "pod0")
-        + (f"deim{pfield_deim_atol:.0e}" if deim_pfield else "deim0"),
+        + (f"deim{pfield_deim_atol:.1e}" if deim_pfield else "deim0"),
         (f"pod{ofield_atol:.0e}" if pod_ofield else "pod0")
-        + (f"deim{ofield_deim_atol:.0e}" if deim_ofield else "deim0"),
+        + (f"deim{ofield_deim_atol:.1e}" if deim_ofield else "deim0"),
         (f"pod{stokes_atol:.0e}" if pod_stokes else "pod0")
-        + (f"deim{stokes_deim_atol:.0e}" if deim_stokes else "deim0"),
+        + (f"deim{stokes_deim_atol:.1e}" if deim_stokes else "deim0"),
     )
     for excluded_param in excluded_params:
         logfile_prefix += "_" + excluded_param
@@ -221,6 +222,9 @@ if __name__ == "__main__":
     for k in indices:
         r = results[k]
         r.modes, r.win = mpi.shared_memory_bcast_modes(r.modes, returnlistvectorarray=True, proc_rank=k % mpi.size_proc)
+        # if k == 3:
+        #     for i, vec in enumerate(r.modes._list):
+        #          solver.visualize_pfield(f"pfield_deim_mode_{i}.vtu", vec, True)
 
     pfield_basis = results[0].modes if pod_pfield else None
     ofield_basis = results[1].modes if pod_ofield else None

@@ -90,10 +90,17 @@ class CellModelSolver(ParametricObject):
         ret.append(self.stokes_solution_space.make_array(result[2 * nc]))
         return ret
 
-    # def reset(self):
-    #     self.impl.reset()
     def visualize(self, prefix, num, t, subsampling=True):
         self.impl.visualize(prefix, num, t, subsampling)
+
+    def visualize_pfield(self, filename, vec, subsampling=True):
+        self.impl.visualize_pfield(filename, vec.impl, subsampling)
+
+    def visualize_ofield(self, filename, vec, subsampling=True):
+        self.impl.visualize_ofield(filename, vec.impl, subsampling)
+
+    def visualize_stokes(self, filename, vec, subsampling=True):
+        self.impl.visualize_stokes(filename, vec.impl, subsampling)
 
     def finished(self):
         return self.impl.finished()
