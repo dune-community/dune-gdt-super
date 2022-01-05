@@ -124,6 +124,8 @@ if __name__ == "__main__":
     # use_L2_product = False
     train_params_per_rank = 1
     test_params_per_rank = 1
+    omega=0.5
+    # omega=0.95
     random.seed(123)  # create_parameters choose some parameters randomly in some cases
 
     ###### Choose filename #########
@@ -152,6 +154,7 @@ if __name__ == "__main__":
     )
     for excluded_param in excluded_params:
         logfile_prefix += "_" + excluded_param
+    logfile_prefix += f"_omega{omega}"
     logfile_name = os.path.join(logfile_dir, logfile_prefix + ".txt")
 
     ####### Collect some settings in lists for simpler handling #####
@@ -184,7 +187,7 @@ if __name__ == "__main__":
 
     ######  same filenames as in cellmodel_write_data.py     ##########
     pickle_dir = "pickle_files"
-    pickle_prefix = f"{testcase}_grid{grid_size_x}x{grid_size_y}_tend{t_end}_dt{dt}_"
+    pickle_prefix = f"{testcase}_grid{grid_size_x}x{grid_size_y}_tend{t_end}_dt{dt}"
     pickle_prefix = os.path.join(pickle_dir, pickle_prefix)
     solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])
     if use_L2_product:
@@ -214,7 +217,7 @@ if __name__ == "__main__":
         mpi=mpi,
         tolerances=hapod_tols,
         indices=indices,
-        omega=0.95,
+        omega=omega,
         logfile=logfile_name,
         products=products,
         pod_method=pod_method,
