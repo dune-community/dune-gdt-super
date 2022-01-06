@@ -4,6 +4,7 @@ from pymor.basic import gram_schmidt
 from pymor.vectorarrays.interface import VectorArray
 from pymor.vectorarrays.list import ListVectorArray
 from scipy.linalg import eigh
+from multiprocessing import Pool
 
 
 class HapodParameters:
@@ -24,6 +25,25 @@ class HapodParameters:
             epsilon_alpha = self.epsilon_ast * self.omega * np.sqrt(num_snaps_in_leafs)
         return epsilon_alpha
 
+def compute_function(modes, coeffs):
+    R = modes.space.zero_vector()
+    for v, c in zip(modes._list, coeffs):
+        R.axpy(c, v)
+    return R
+
+def lincomb_parallel(modes, coefficients):
+    assert 1 <= coefficients.ndim <= 2
+    if coefficients.ndim == 1:
+        coefficients = coefficients[np.newaxis, :]
+
+    assert coefficients.shape[1] == len(modes)
+
+    RL = []
+    with Pool(12) as pool:
+        for vec in pool.starmap(compute_function, [(modes, coeffs) for coeffs in coefficients]):
+            RL.append(vec)
+
+    return ListVectorArray(RL, modes.space)
 
 def local_pod(
     inputs,
@@ -107,7 +127,10 @@ def local_pod(
         svals = np.sqrt(EVALS[:first_below_err])
         EVECS = EVECS[:first_below_err]
 
-        final_modes = all_modes.lincomb(EVECS / svals[:, np.newaxis])
+        if len(EVECS) > 200:
+            final_modes = lincomb_parallel(all_modes, EVECS / svals[:, np.newaxis])
+        else:
+            final_modes = all_modes.lincomb(EVECS / svals[:, np.newaxis])
         all_modes._list = None
         del modes
         del EVECS
@@ -123,7 +146,6 @@ def local_pod(
         for i in range(len(inputs)):
             modes.append(inputs[i][0])
         return pod(modes, product=product, atol=0.0, rtol=0.0, l2_err=epsilon_alpha, orth_tol=orth_tol, method=method)
-
 
 def incremental_hapod_over_ranks(
     comm,

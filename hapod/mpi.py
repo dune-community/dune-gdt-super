@@ -2,7 +2,6 @@ import time
 import numpy as np
 from mpi4py import MPI
 
-from pymor.core.base import abstractmethod
 from pymor.vectorarrays.numpy import NumpyVectorSpace
 
 from hapod.xt import DuneXtLaListVectorSpace
@@ -12,17 +11,18 @@ from hapod.xt import DuneXtLaListVectorSpace
 # Adapted from https://gist.github.com/donkirkby/16a89d276e46abb0a106
 def idle_wait(comm, root=0):
     if comm.rank == root:
-        for rank in range(1, comm.size):
-            comm.send(0, dest=rank, tag=rank)
+        for other_rank in range(0, comm.size):
+            if other_rank != root:
+                # print(f"Send to rank {other_rank} from rank {comm.rank}", flush=True)
+                comm.send(0, dest=other_rank, tag=other_rank)
     else:
         # Set this to 0 for maximum responsiveness, but that will peg CPU to 100%
-        sleep_seconds = 0.5
+        sleep_seconds = 0.1
         if sleep_seconds > 0:
-            while not comm.Iprobe(source=MPI.ANY_SOURCE):
-                # print(f"{mpi.rank_world} waited another second")
+            while not comm.Iprobe(source=root):
+                # print(f"{comm.rank} waited another second for root {root}", flush=True)
                 time.sleep(sleep_seconds)
         comm.recv(source=root, tag=comm.rank)
-
 
 class MPIWrapper:
     """Stores MPI communicators for all ranks (world), for all ranks on a single compute node (proc)

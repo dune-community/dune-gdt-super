@@ -221,6 +221,7 @@ if __name__ == "__main__":
         logfile=logfile_name,
         products=products,
         pod_method=pod_method,
+        incremental_gramian=True,
     )
     for k in indices:
         r = results[k]

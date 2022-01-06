@@ -11,7 +11,7 @@ import weakref
 import gdt.cellmodel
 from hapod.hapod import binary_tree_depth
 from hapod.hapod import HapodParameters, binary_tree_hapod_over_ranks, local_pod
-from hapod.mpi import MPIWrapper
+from hapod.mpi import MPIWrapper, idle_wait
 from hapod.xt import DuneXtLaListVectorSpace, DuneXtLaVector
 import numpy as np
 from pymor.algorithms.ei import deim
@@ -1879,6 +1879,7 @@ def pods_on_processor_cores_in_binary_tree_hapod(r, vecs, mpi, root, product, me
     )
     r.max_local_modes = max(r.max_local_modes, len(vecs))
     vecs.scal(svals)
+    idle_wait(mpi.comm_proc, root=root)
     r.gathered_modes, _, r.num_snaps, _ = mpi.comm_proc.gather_on_root_rank(
         vecs, num_snapshots_on_rank=snaps_on_rank, num_modes_equal=False, root=root
     )
