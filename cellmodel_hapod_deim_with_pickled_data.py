@@ -24,9 +24,25 @@ from hapod.cellmodel.wrapper import (
 )
 from hapod.mpi import MPIWrapper
 from rich import pretty, traceback
+from pymor.algorithms.gram_schmidt import gram_schmidt
+from pymor.tools.random import get_random_state
 
 traceback.install()
 pretty.install()
+
+
+class RandomVectorCreator:
+    """
+    Each call to get() returns a random vector from the span of self.basis
+    """
+
+    def __init__(self, basis, random_state):
+        self.basis = basis
+        self.state = random_state
+
+    def get(self):
+        coeffs = random_state.uniform(0, 1, (1, len(self.basis)))
+        return self.basis.lincomb(coeffs)
 
 
 class PickleChunkGenerator:
@@ -71,7 +87,9 @@ class PickleChunkGenerator:
                         # this is a DEIM index
                         residuals = data["residuals"][k - 3]
                         if self.normalize_residuals:
-                            residuals = residuals * np.array([1/norm if norm > 0 else 1 for norm in residuals.norm(product=self.products[k])])
+                            residuals = residuals * np.array(
+                                [1 / norm if norm > 0 else 1 for norm in residuals.norm(product=self.products[k])]
+                            )
                         new_vecs[k].append(residuals)
             yield new_vecs
 
@@ -106,8 +124,11 @@ if __name__ == "__main__":
     stokes_deim_atol = 1e-10 if argc < 18 else float(sys.argv[17])
     pod_method = "method_of_snapshots" if argc < 19 else sys.argv[18]
     assert pod_method in ("qr_svd", "method_of_snapshots")
-    normalize_residuals = True
+    normalize_residuals = False
     incremental_gramian = False
+    # If pfield_deim_basis_enrichment > 0, we will add pfield_deim_basis_enrichment operator
+    # evaluations to the phase field collateral basis
+    pfield_deim_basis_enrichment = 10
     pol_order = 2
     chunk_size = 10
     visualize_step = 50
@@ -235,10 +256,33 @@ if __name__ == "__main__":
     )
     for k in indices:
         r = results[k]
-        r.modes, r.win = mpi.shared_memory_bcast_modes(r.modes, returnlistvectorarray=True, proc_rank=k % mpi.size_proc)
-        # if k == 3:
-        #     for i, vec in enumerate(r.modes._list):
-        #          solver.visualize_pfield(f"pfield_deim_mode_{i}.vtu", vec, True)
+        proc_rank = k % mpi.size_proc
+        is_root = mpi.rank_proc == proc_rank and mpi.rank_rank_group[proc_rank] == 0
+        if k == 3 and pfield_deim_basis_enrichment > 0:
+            # To enrich the phase field's collateral basis, we add pfield_deim_basis_enrichment operator evaluations
+            # The operator's input is not totally random but taken randomly from the span of the POD bases.
+            if is_root:
+                random_state = get_random_state()
+                pfield_random_vector_creator = RandomVectorCreator(results[0].modes, random_state)
+                ofield_random_vector_creator = RandomVectorCreator(results[1].modes, random_state)
+                stokes_random_vector_creator = RandomVectorCreator(results[2].modes, random_state)
+                for _ in range(pfield_deim_basis_enrichment):
+                    pfield_op = m.pfield_op.fix_components(
+                        (1, 2, 3),
+                        [
+                            pfield_random_vector_creator.get(),
+                            ofield_random_vector_creator.get(),
+                            stokes_random_vector_creator.get(),
+                        ],
+                    )
+                    r.modes.append(pfield_op.apply(pfield_random_vector_creator.get()))
+                r.modes = gram_schmidt(r.modes, product=products[k])
+        else:
+            r.modes, r.win = mpi.shared_memory_bcast_modes(r.modes, returnlistvectorarray=True, proc_rank=proc_rank)
+
+    # Uncomment the following two lines to visualize phase field modes
+    # for i, vec in enumerate(results[3].modes._list):
+    #     solver.visualize_pfield(f"pfield_deim_mode_{i}.vtu", vec, True)
 
     pfield_basis = results[0].modes if pod_pfield else None
     ofield_basis = results[1].modes if pod_ofield else None
