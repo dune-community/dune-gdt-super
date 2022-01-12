@@ -105,25 +105,33 @@ class CellModelSolver(ParametricObject):
     def finished(self):
         return self.impl.finished()
 
-    def apply_pfield_product_operator(self, U, mu=None, numpy=False):
+    def apply_pfield_L2_product_operator(self, U, mu=None, numpy=False):
         pfield_space = self.pfield_solution_space
         if not numpy:
-            U_out = [self.impl.apply_pfield_product_operator(vec.impl) for vec in U._list]
+            U_out = [self.impl.apply_pfield_L2_product_operator(vec.impl) for vec in U._list]
             return pfield_space.make_array(U_out)
         else:
             U_list = pfield_space.make_array([pfield_space.vector_from_numpy(vec).impl for vec in U.to_numpy()])
             U_out = [
-                DuneXtLaVector(self.impl.apply_pfield_product_operator(vec.impl)).to_numpy(True) for vec in U_list._list
+                DuneXtLaVector(self.impl.apply_pfield_L2_product_operator(vec.impl)).to_numpy(True) for vec in U_list._list
             ]
             return self.pfield_numpy_space.make_array(U_out)
 
-    def apply_ofield_product_operator(self, U, mu=None):
-        U_out = [self.impl.apply_ofield_product_operator(vec.impl) for vec in U._list]
+    def apply_ofield_L2_product_operator(self, U, mu=None):
+        U_out = [self.impl.apply_ofield_L2_product_operator(vec.impl) for vec in U._list]
         return self.ofield_solution_space.make_array(U_out)
 
-    def apply_stokes_product_operator(self, U, mu=None):
-        U_out = [self.impl.apply_stokes_product_operator(vec.impl) for vec in U._list]
+    def apply_stokes_L2_product_operator(self, U, mu=None):
+        U_out = [self.impl.apply_stokes_L2_product_operator(vec.impl) for vec in U._list]
         return self.stokes_solution_space.make_array(U_out)
+
+    def apply_pfield_H1_product_operator(self, U, mu=None):
+        U_out = [self.impl.apply_pfield_H1_product_operator(vec.impl) for vec in U._list]
+        return self.pfield_solution_space.make_array(U_out)
+
+    def apply_pfield_H1_product_operator(self, U, mu=None):
+        U_out = [self.impl.apply_pfield_H1_product_operator(vec.impl) for vec in U._list]
+        return self.pfield_solution_space.make_array(U_out)
 
     def pfield_vector(self, cell_index):
         return DuneXtLaVector(self.impl.pfield_vec(cell_index))
@@ -293,34 +301,55 @@ class CellModelSolver(ParametricObject):
         self.impl.update_ofield_parameters(float(mu["Pa"]), cell_index, restricted)
 
 
-class CellModelPfieldProductOperator(Operator):
+class CellModelPfieldL2ProductOperator(Operator):
     def __init__(self, solver):
         self.solver = solver
         self.source = self.range = self.solver.pfield_solution_space
         self.linear = True
 
     def apply(self, U, mu=None, numpy=False):
-        return self.solver.apply_pfield_product_operator(U, numpy=numpy)
+        return self.solver.apply_pfield_L2_product_operator(U, numpy=numpy)
 
 
-class CellModelOfieldProductOperator(Operator):
+class CellModelOfieldL2ProductOperator(Operator):
     def __init__(self, solver):
         self.solver = solver
         self.source = self.range = self.solver.ofield_solution_space
         self.linear = True
 
     def apply(self, U, mu=None):
-        return self.solver.apply_ofield_product_operator(U)
+        return self.solver.apply_ofield_L2_product_operator(U)
 
 
-class CellModelStokesProductOperator(Operator):
+class CellModelStokesL2ProductOperator(Operator):
     def __init__(self, solver):
         self.solver = solver
         self.source = self.range = self.solver.stokes_solution_space
         self.linear = True
 
     def apply(self, U, mu=None):
-        return self.solver.apply_stokes_product_operator(U)
+        return self.solver.apply_stokes_L2_product_operator(U)
+
+class CellModelPfieldH1ProductOperator(Operator):
+    def __init__(self, solver):
+        self.solver = solver
+        self.source = self.range = self.solver.pfield_solution_space
+        self.linear = True
+
+    def apply(self, U, mu=None):
+        return self.solver.apply_pfield_H1_product_operator(U)
+
+
+class CellModelOfieldH1ProductOperator(Operator):
+    def __init__(self, solver):
+        self.solver = solver
+        self.source = self.range = self.solver.ofield_solution_space
+        self.linear = True
+
+    def apply(self, U, mu=None):
+        return self.solver.apply_ofield_H1_product_operator(U)
+
+
 
 
 class MutableStateComponentOperator(Operator):

@@ -7,10 +7,12 @@ from timeit import default_timer as timer
 from typing import Dict
 
 from hapod.cellmodel.wrapper import (
-    CellModelOfieldProductOperator,
-    CellModelPfieldProductOperator,
+    CellModelOfieldL2ProductOperator,
+    CellModelPfieldL2ProductOperator,
+    CellModelOfieldH1ProductOperator,
+    CellModelPfieldH1ProductOperator,
     CellModelSolver,
-    CellModelStokesProductOperator,
+    CellModelStokesL2ProductOperator,
     DuneCellModel,
     create_parameters,
     solver_statistics,
@@ -108,8 +110,8 @@ if __name__ == "__main__":
     grid_size_y = 30 if argc < 6 else int(sys.argv[5])
     pol_order = 2
     chunk_size = 10
-    use_L2_product = True
-    # use_L2_product = False
+    # product_type = "L2"
+    product_type = "H1"
     train_params_per_rank = 1
     test_params_per_rank = 1
     random.seed(123)  # create_parameters chooses some parameters randomly in some cases
@@ -142,11 +144,17 @@ if __name__ == "__main__":
     )
     ########## Create products #####################
     solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])
-    if use_L2_product:
+    if product_type == "L2":
         products = [
-            CellModelPfieldProductOperator(solver),
-            CellModelOfieldProductOperator(solver),
-            CellModelStokesProductOperator(solver),
+            CellModelPfieldL2ProductOperator(solver),
+            CellModelOfieldL2ProductOperator(solver),
+            CellModelStokesL2ProductOperator(solver),
+        ] * 2
+    elif product_type == "H1":
+        products = [
+            CellModelPfieldH1ProductOperator(solver),
+            CellModelOfieldL2ProductOperator(solver),
+            CellModelStokesL2ProductOperator(solver),
         ] * 2
     else:
         products = [None] * 6

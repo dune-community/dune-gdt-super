@@ -3,16 +3,19 @@ import os
 import pickle
 import random
 import sys
+import time
 from timeit import default_timer as timer
 from typing import Dict, Any
 import numpy as np
 
 from hapod.cellmodel.wrapper import (
-    CellModelOfieldProductOperator,
-    CellModelPfieldProductOperator,
+    CellModelOfieldL2ProductOperator,
+    CellModelPfieldL2ProductOperator,
+    CellModelOfieldH1ProductOperator,
+    CellModelPfieldH1ProductOperator,
     CellModelReductor,
     CellModelSolver,
-    CellModelStokesProductOperator,
+    CellModelStokesL2ProductOperator,
     DuneCellModel,
     binary_tree_hapod,
     calculate_cellmodel_errors,
@@ -104,6 +107,7 @@ if __name__ == "__main__":
     pod_method = "method_of_snapshots" if argc < 19 else sys.argv[18]
     assert pod_method in ("qr_svd", "method_of_snapshots")
     normalize_residuals = True
+    incremental_gramian = False
     pol_order = 2
     chunk_size = 10
     visualize_step = 50
@@ -120,8 +124,8 @@ if __name__ == "__main__":
     if not pod_stokes:
         least_squares_stokes = False
     excluded_params = ("Be", "Pa")
-    use_L2_product = True
-    # use_L2_product = False
+    # product_type = "L2"
+    product_type = "H1"
     train_params_per_rank = 1
     test_params_per_rank = 1
     omega=0.5
@@ -138,7 +142,7 @@ if __name__ == "__main__":
         "mos" if pod_method == "method_of_snapshots" else "qr_svd",
         testcase,
         mpi.size_world,
-        "L2product" if use_L2_product else "noproduct",
+        product_type,
         grid_size_x,
         grid_size_y,
         t_end,
@@ -190,11 +194,17 @@ if __name__ == "__main__":
     pickle_prefix = f"{testcase}_grid{grid_size_x}x{grid_size_y}_tend{t_end}_dt{dt}"
     pickle_prefix = os.path.join(pickle_dir, pickle_prefix)
     solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])
-    if use_L2_product:
+    if product_type == "L2":
         products = [
-            CellModelPfieldProductOperator(solver),
-            CellModelOfieldProductOperator(solver),
-            CellModelStokesProductOperator(solver),
+            CellModelPfieldL2ProductOperator(solver),
+            CellModelOfieldL2ProductOperator(solver),
+            CellModelStokesL2ProductOperator(solver),
+        ] * 2
+    elif product_type == "H1":
+        products = [
+            CellModelPfieldH1ProductOperator(solver),
+            CellModelOfieldL2ProductOperator(solver),
+            CellModelStokesL2ProductOperator(solver),
         ] * 2
     else:
         products = [None] * 6
@@ -221,7 +231,7 @@ if __name__ == "__main__":
         logfile=logfile_name,
         products=products,
         pod_method=pod_method,
-        incremental_gramian=True,
+        incremental_gramian=incremental_gramian,
     )
     for k in indices:
         r = results[k]

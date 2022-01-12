@@ -10,6 +10,7 @@ from hapod.xt import DuneXtLaListVectorSpace
 # With idle_wait, the waiting threads do not cause such a high CPU usage.
 # Adapted from https://gist.github.com/donkirkby/16a89d276e46abb0a106
 def idle_wait(comm, root=0):
+    # print(f"Rank {comm.rank} in idle_wait for root {root}", flush=True)
     if comm.rank == root:
         for other_rank in range(0, comm.size):
             if other_rank != root:
@@ -101,10 +102,9 @@ class MPIWrapper:
         self.comm_world.Barrier()  # without this barrier, non-zero ranks might be too fast
         if returnlistvectorarray:
             modes = DuneXtLaListVectorSpace.from_memory(modes_numpy)
-            return modes, win
         else:
             modes = NumpyVectorSpace.from_numpy(modes_numpy)
-            return modes, win
+        return modes, win
 
 
 class BoltzmannMPICommunicator(MPI.Intracomm):
