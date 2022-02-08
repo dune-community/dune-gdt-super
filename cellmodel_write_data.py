@@ -117,8 +117,8 @@ if __name__ == "__main__":
     random.seed(123)  # create_parameters chooses some parameters randomly in some cases
 
     ####### choose parameters ####################
-    rf = 2  # Factor of largest to smallest training parameter
-    excluded_params = ("Be", "Pa")
+    rf = 5  # Factor of largest to smallest training parameter
+    excluded_params = ("Be", "Ca")
     mus, new_mus = create_parameters(
         train_params_per_rank,
         test_params_per_rank,

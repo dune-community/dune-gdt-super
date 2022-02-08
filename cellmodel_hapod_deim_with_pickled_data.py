@@ -128,7 +128,8 @@ if __name__ == "__main__":
     incremental_gramian = False
     # If pfield_deim_basis_enrichment > 0, we will add pfield_deim_basis_enrichment operator
     # evaluations to the phase field collateral basis
-    pfield_deim_basis_enrichment = 10
+    # pfield_deim_basis_enrichment = 10
+    pfield_deim_basis_enrichment = 0
     pol_order = 2
     chunk_size = 10
     visualize_step = 50
@@ -144,13 +145,13 @@ if __name__ == "__main__":
         least_squares_ofield = False
     if not pod_stokes:
         least_squares_stokes = False
-    excluded_params = ("Be", "Pa")
+    excluded_params = ("Be", "Ca")
     # product_type = "L2"
     product_type = "H1"
     train_params_per_rank = 1
     test_params_per_rank = 1
-    omega=0.5
-    # omega=0.95
+    # omega=0.5
+    omega = 0.95
     random.seed(123)  # create_parameters choose some parameters randomly in some cases
 
     ###### Choose filename #########
@@ -205,7 +206,7 @@ if __name__ == "__main__":
         indices.append(index + 3)
 
     ####### choose parameters ####################
-    rf = 2  # Factor of largest to smallest training parameter
+    rf = 5  # Factor of largest to smallest training parameter
     mus, new_mus = create_parameters(
         train_params_per_rank, test_params_per_rank, rf, mpi, excluded_params, logfile_name, Be0=1.0, Ca0=1.0, Pa0=1.0
     )
