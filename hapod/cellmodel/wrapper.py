@@ -1730,26 +1730,31 @@ def calculate_cellmodel_errors(
         with open(logfile_name, "a") as logfile:
             logfile.write("Time used for calculating error: " + str(elapsed) + "\n")
             nc = (len(modes) - 1) // 2
+            error_type = "l2"
+            if isinstance(products[0], CellModelPfieldH1ProductOperator):
+                error_type = "H1"
+            elif isinstance(products[0], CellModelPfieldL2ProductOperator):
+                error_type = "L2"
             for k in range(nc):
-                logfile.write("{}L2 projection error for {}-th pfield is: {}\n".format(prefix, k, errs[k]))
-                logfile.write("{}L2 projection error for {}-th ofield is: {}\n".format(prefix, k, errs[nc + k]))
-            logfile.write("{}L2 projection error for stokes is: {}\n".format(prefix, errs[2 * nc]))
-            logfile.write("{}L2 projection DEIM error for {}-th pfield is: {}\n".format(prefix, 0, deim_errs[0]))
-            logfile.write("{}L2 projection DEIM error for {}-th ofield is: {}\n".format(prefix, 0, deim_errs[1]))
-            logfile.write("{}L2 projection DEIM error for stokes is: {}\n".format(prefix, deim_errs[2]))
+                logfile.write("{}{} projection error for {}-th pfield is: {}\n".format(prefix, error_type, k, errs[k]))
+                logfile.write("{}{} projection error for {}-th ofield is: {}\n".format(prefix, error_type, k, errs[nc + k]))
+            logfile.write("{}{} projection error for stokes is: {}\n".format(prefix, error_type, errs[2 * nc]))
+            logfile.write("{}{} projection DEIM error for {}-th pfield is: {}\n".format(prefix, error_type, 0, deim_errs[0]))
+            logfile.write("{}{} projection DEIM error for {}-th ofield is: {}\n".format(prefix, error_type, 0, deim_errs[1]))
+            logfile.write("{}{} projection DEIM error for stokes is: {}\n".format(prefix, error_type, deim_errs[2]))
             for k in range(nc):
-                logfile.write("{}L2 reduction error for {}-th pfield is: {}\n".format(prefix, k, red_errs[k]))
-                logfile.write("{}L2 reduction error for {}-th ofield is: {}\n".format(prefix, k, red_errs[nc + k]))
-            logfile.write("{}L2 reduction error for {}-th stokes is: {}\n".format(prefix, 0, red_errs[2 * nc]))
+                logfile.write("{}{} reduction error for {}-th pfield is: {}\n".format(prefix, error_type, k, red_errs[k]))
+                logfile.write("{}{} reduction error for {}-th ofield is: {}\n".format(prefix, error_type, k, red_errs[nc + k]))
+            logfile.write("{}{} reduction error for {}-th stokes is: {}\n".format(prefix, error_type, 0, red_errs[2 * nc]))
             for k in range(nc):
                 logfile.write(
-                    "{}L2 relative reduction error for {}-th pfield is: {}\n".format(prefix, k, rel_red_errs[k])
+                    "{}{} relative reduction error for {}-th pfield is: {}\n".format(prefix, error_type, k, rel_red_errs[k])
                 )
                 logfile.write(
-                    "{}L2 relative reduction error for {}-th ofield is: {}\n".format(prefix, k, rel_red_errs[nc + k])
+                    "{}{} relative reduction error for {}-th ofield is: {}\n".format(prefix, error_type, k, rel_red_errs[nc + k])
                 )
             logfile.write(
-                "{}L2 relative reduction error for {}-th stokes is: {}\n".format(prefix, 0, rel_red_errs[2 * nc])
+                "{}{} relative reduction error for {}-th stokes is: {}\n".format(prefix, error_type, 0, rel_red_errs[2 * nc])
             )
             if mean_fom_time is not None and mean_rom_time is not None:
                 logfile.write(f"{mean_fom_time:.2f} vs. {mean_rom_time:.2f}, speedup {mean_fom_time/mean_rom_time:.2f}")
