@@ -53,6 +53,7 @@ base:
     GIT_SUBMODULE_STRATEGY: recursive
     TWINE_PASSWORD: ${CI_JOB_TOKEN}
     TWINE_USERNAME: gitlab-ci-token
+    GITLAB_PYPI: ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi
   stage: wheels
   needs: []
   extends: .docker-in-docker
@@ -87,28 +88,29 @@ wheels 3.9:
   cache:
     key: $CI_COMMIT_REF_SLUG_3.9
 
-publish dune-xt:
-  image: alpine:3.12
+.publish:
+  image: alpine:3.15
   dependencies: ["wheels 3.9", "wheels 3.8", "wheels 3.7"]
+  needs: ["wheels 3.9", "wheels 3.8", "wheels 3.7"]
   stage: publish
   before_script:
       - apk --update add py3-pip git file bash python3 py3-cffi py3-cryptography
       - pip3 install -U twine
+  variables:
+    TWINE_PASSWORD: ${CI_JOB_TOKEN}
+    TWINE_USERNAME: gitlab-ci-token
   script:
-    - TWINE_PASSWORD=${CI_JOB_TOKEN} TWINE_USERNAME=gitlab-ci-token python3 -m twine upload --repository-url ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi docker/wheelhouse/final/dune_xt*.whl
+    -  python3 -m twine upload --repository-url ${GITLAB_PYPI} ${MOD_WHEEL}
   artifacts:
     paths:
-      - docker/wheelhouse/final/dune_xt*.whl
+      - ${MOD_WHEEL}
+    
+publish dune-xt:
+  extends: .publish
+  variables:
+    MOD_WHEEL: docker/wheelhouse/final/dune_xt*.whl
 
 publish dune-gdt:
-  image: alpine:3.12
-  dependencies: ["wheels 3.9", "wheels 3.8", "wheels 3.7"]
-  stage: publish
-  before_script:
-      - apk --update add py3-pip git file bash python3 py3-cffi py3-cryptography
-      - pip3 install -U twine
-  script:
-    - TWINE_PASSWORD=${CI_JOB_TOKEN} TWINE_USERNAME=gitlab-ci-token python3 -m twine upload --repository-url ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi docker/wheelhouse/final/dune_gdt*.whl
-  artifacts:
-    paths:
-      - docker/wheelhouse/final/dune_gdt*.whl
+  extends: .publish
+  variables:
+    MOD_WHEEL: docker/wheelhouse/final/dune_xt*.whl
