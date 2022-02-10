@@ -57,6 +57,12 @@ base:
   stage: wheels
   needs: []
   extends: .docker-in-docker
+  # try to download from gitlab first, then pypi
+  before_script:
+    - !reference [.docker-in-docker, before_script]
+    - python3 -m pip config set global.index-url ${GITLAB_PYPI}
+    - python3 -m pip config set global.extra-index-url https://pypi.org/simple
+    - python3 -m pip config set global.trusted-host zivgitlab.uni-muenster.de
   script:
     - ./make_docker_wheels.bash
     - python3 -m twine check docker/wheelhouse/final/*.whl
