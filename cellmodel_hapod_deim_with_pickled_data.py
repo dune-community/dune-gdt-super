@@ -145,7 +145,7 @@ if __name__ == "__main__":
         least_squares_ofield = False
     if not pod_stokes:
         least_squares_stokes = False
-    excluded_params = ("Be", "Ca")
+    excluded_params = ("Pa", "Ca")
     # product_type = "L2"
     product_type = "H1"
     train_params_per_rank = 1
@@ -208,13 +208,16 @@ if __name__ == "__main__":
     ####### choose parameters ####################
     rf = 5  # Factor of largest to smallest training parameter
     mus, new_mus = create_parameters(
-        train_params_per_rank, test_params_per_rank, rf, mpi, excluded_params, logfile_name, Be0=1.0, Ca0=1.0, Pa0=1.0
+        train_params_per_rank, test_params_per_rank, rf, mpi, excluded_params, logfile_name, Be0=1.0, Ca0=1.0, Pa0=1.0,
     )
 
-    ######  same filenames as in cellmodel_write_data.py     ##########
+    ################### Start HAPOD #####################
+    # same filenames as in cellmodel_write_data.py
     pickle_dir = "pickle_files"
     pickle_prefix = f"{testcase}_grid{grid_size_x}x{grid_size_y}_tend{t_end}_dt{dt}"
     pickle_prefix = os.path.join(pickle_dir, pickle_prefix)
+
+    # create solver
     solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])
     if product_type == "L2":
         products = [
@@ -232,6 +235,7 @@ if __name__ == "__main__":
         products = [None] * 6
     m = DuneCellModel(solver, products={"pfield": products[0], "ofield": products[1], "stokes": products[2]})
 
+    # create chunk_generator
     chunk_generator = PickleChunkGenerator(
         cellmodel=m,
         pickle_prefix=pickle_prefix,

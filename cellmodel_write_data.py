@@ -66,7 +66,8 @@ def solve_and_pickle(mu: Dict[str, float], m: DuneCellModel, chunk_size: int, pi
                 {
                     "mu": mu,
                     "snaps": snaps,
-                    "stages": stages,
+                    # "stages": stages,
+                    "stages": None,
                     "residuals": residuals,
                     "elapsed": elapsed,
                 },
@@ -118,7 +119,7 @@ if __name__ == "__main__":
 
     ####### choose parameters ####################
     rf = 5  # Factor of largest to smallest training parameter
-    excluded_params = ("Be", "Ca")
+    excluded_params = ("Pa", "Ca")
     mus, new_mus = create_parameters(
         train_params_per_rank,
         test_params_per_rank,
@@ -167,8 +168,8 @@ if __name__ == "__main__":
         solve_and_pickle(mu, m, chunk_size, pickle_prefix)
         # m.solver.reset();
         print(f"mu: {mu} done")
-    for new_mu in new_mus:
-        solve_and_pickle(new_mu, m, chunk_size, pickle_prefix)
-        # m.solver.reset();
-        print(f"mu: {new_mu} done")
+    # for new_mu in new_mus:
+    #     solve_and_pickle(new_mu, m, chunk_size, pickle_prefix)
+    #     # m.solver.reset();
+    #     print(f"mu: {new_mu} done")
     mpi.comm_world.Barrier()
