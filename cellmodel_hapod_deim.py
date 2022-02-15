@@ -4,7 +4,7 @@ import pickle
 import random
 import sys
 from timeit import default_timer as timer
-from typing import Dict
+from typing import Dict, Any
 
 from hapod.cellmodel.wrapper import (
     CellModelOfieldL2ProductOperator,
@@ -50,6 +50,7 @@ class SolverChunkGenerator:
         indices: "list[int]",
         products: "list[Any]",
         normalize_residuals: bool,
+        excluded_params: "list[str]",
     ):
         self.pickle_prefix = pickle_prefix
         self.cellmodel = cellmodel
@@ -61,6 +62,7 @@ class SolverChunkGenerator:
         self.num_chunks, _ = solver_statistics(t_end=t_end, dt=dt, chunk_size=chunk_size)
         self.products = products
         self.normalize_residuals = normalize_residuals
+        self.excluded_params = excluded_params
 
     def __iter__(self):
         # walk over time chunks
@@ -85,7 +87,7 @@ class SolverChunkGenerator:
                 for time_index in range(self.chunk_size - 1 if chunk_index == 0 else self.chunk_size):
                     # t1 = timer()
                     current_values[p], data = self.cellmodel.next_time_step(
-                        current_values[p], t, mu=mu, return_stages=self.include_newton_stages, return_residuals=True
+                        current_values[p], t, mu=mu, return_stages=self.include_newton_stages, return_residuals=True, num_changed_mus=4, excluded_params=self.excluded_params
                     )
                     # timings["data"] += timer() - t1
                     t = data["t"]
@@ -108,6 +110,7 @@ class SolverChunkGenerator:
                                 residuals = residuals * np.array(
                                     [1 / norm if norm > 0 else 1 for norm in residuals.norm(product=self.products[k])]
                                 )
+                            residuals.append(data["changed_residuals"][k-3])
                             new_vecs[k].append(residuals)
 
                 if check_against_pickled:
@@ -198,7 +201,7 @@ if __name__ == "__main__":
     excluded_params = ("Pa", "Ca")
     # product_type = "L2"
     product_type = "H1"
-    train_params_per_rank = 64
+    train_params_per_rank = 1
     test_params_per_rank = 1
     # omega=0.5
     omega = 0.95
@@ -307,6 +310,7 @@ if __name__ == "__main__":
         indices=indices,
         products=products,
         normalize_residuals=normalize_residuals,
+        excluded_params=excluded_params,
     )
     # perform HAPOD
     results = binary_tree_hapod(

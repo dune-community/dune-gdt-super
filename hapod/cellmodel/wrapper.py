@@ -955,7 +955,7 @@ class CellModel(Model):
             retval[1]["residuals"] = (pfield_residuals, ofield_residuals, stokes_residuals)
         return retval
 
-    def next_time_step(self, U_last, t, mu=None, return_output=False, return_stages=False, return_residuals=False):
+    def next_time_step(self, U_last, t, mu=None, return_output=False, return_stages=False, return_residuals=False, num_changed_mus=0, excluded_params=None):
         assert not return_output
 
         pfield_vecs, ofield_vecs, stokes_vecs = U_last._blocks
@@ -985,6 +985,8 @@ class CellModel(Model):
             source_product=self.products["pfield"] if is_fom else None,
             range_product=self.products["pfield"] if is_fom else None,
             **self.newton_params_pfield,
+            num_changed_mus=num_changed_mus,
+            excluded_params=excluded_params
         )
         ofield_vecs, ofield_data = newton(
             self.ofield_op.fix_components((1, 2, 3), [pfield_vecs, ofield_vecs, stokes_vecs]),
@@ -997,6 +999,8 @@ class CellModel(Model):
             source_product=self.products["ofield"] if is_fom else None,
             range_product=self.products["ofield"] if is_fom else None,
             **self.newton_params_ofield,
+            num_changed_mus=num_changed_mus,
+            excluded_params=excluded_params
         )
         stokes_vecs, stokes_data = newton(
             self.stokes_op.fix_components((1, 2), [pfield_vecs, ofield_vecs]),
@@ -1009,6 +1013,8 @@ class CellModel(Model):
             source_product=self.products["stokes"] if is_fom else None,
             range_product=self.products["stokes"] if is_fom else None,
             **self.newton_params_stokes,
+            num_changed_mus=num_changed_mus,
+            excluded_params=excluded_params
         )
         t += actual_dt
         U = self.solution_space.make_array([pfield_vecs, ofield_vecs, stokes_vecs])
@@ -1018,6 +1024,8 @@ class CellModel(Model):
             retval[1]["stages"] = (pfield_data["stages"], ofield_data["stages"], stokes_data["stages"])
         if return_residuals:
             retval[1]["residuals"] = (pfield_data["residuals"], ofield_data["residuals"], stokes_data["residuals"])
+        if num_changed_mus > 0:
+            retval[1]["changed_residuals"] = (pfield_data["changed_residuals"], ofield_data["changed_residuals"], stokes_data["changed_residuals"])
         return retval
 
 
@@ -1433,34 +1441,6 @@ class CellModelReductor(ProjectionBasedReductor):
             u_i = u._blocks[i]
             ret.append(basis_s.lincomb(u_i.to_numpy()) if basis_s is not None else u_i)
         return self.fom.solution_space.make_array(ret)
-
-
-def create_and_scatter_cellmodel_parameters(
-    comm, Be_min=0.3 / 3, Be_max=0.3 * 3, Ca_min=0.1 / 3, Ca_max=0.1 * 3, Pa_min=1.0 / 3, Pa_max=1.0 * 3
-):
-    """Samples all 3 parameters uniformly with the same width and adds random parameter combinations until
-    comm.Get_size() parameters are created. After that, parameter combinations are scattered to ranks."""
-    num_samples_per_parameter = int(comm.Get_size() ** (1.0 / 3.0) + 0.1)
-    sample_width_Be = (Be_max - Be_min) / (num_samples_per_parameter - 1) if num_samples_per_parameter > 1 else 1e10
-    sample_width_Ca = (Ca_max - Ca_min) / (num_samples_per_parameter - 1) if num_samples_per_parameter > 1 else 1e10
-    sample_width_Pa = (Pa_max - Pa_min) / (num_samples_per_parameter - 1) if num_samples_per_parameter > 1 else 1e10
-    Be_range = np.arange(Be_min, Be_max + 1e-15, sample_width_Be)
-    Ca_range = np.arange(Ca_min, Ca_max + 1e-15, sample_width_Ca)
-    Pa_range = np.arange(Pa_min, Pa_max + 1e-15, sample_width_Pa)
-    parameters_list = []
-    for Be in Be_range:
-        for Ca in Ca_range:
-            for Pa in Pa_range:
-                parameters_list.append({"Be": Be, "Ca": Ca, "Pa": Pa})
-    while len(parameters_list) < comm.Get_size():
-        parameters_list.append(
-            {
-                "Be": random.uniform(Be_min, Be_max),
-                "Ca": random.uniform(Ca_min, Ca_max),
-                "Pa": random.uniform(Pa_min, Pa_max),
-            }
-        )
-    return comm.scatter(parameters_list, root=0)
 
 
 def calculate_cellmodel_trajectory_errors(
