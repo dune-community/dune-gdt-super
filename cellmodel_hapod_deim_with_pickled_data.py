@@ -122,7 +122,8 @@ if __name__ == "__main__":
     pfield_deim_atol = 1e-10 if argc < 16 else float(sys.argv[15])
     ofield_deim_atol = 1e-10 if argc < 17 else float(sys.argv[16])
     stokes_deim_atol = 1e-10 if argc < 18 else float(sys.argv[17])
-    pod_method = "method_of_snapshots" if argc < 19 else sys.argv[18]
+    parameter_sampling_type = "log_reciprocal" if argc < 19 else sys.argv[18]
+    pod_method = "method_of_snapshots" if argc < 20 else sys.argv[19]
     assert pod_method in ("qr_svd", "method_of_snapshots")
     normalize_residuals = False
     incremental_gramian = False
@@ -159,9 +160,10 @@ if __name__ == "__main__":
     if mpi.rank_world == 0:
         if not os.path.exists(logfile_dir):
             os.mkdir(logfile_dir)
-    logfile_prefix = "results_pickled_{}{}_{}_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_{}tppr_pfield{}_ofield{}_stokes{}_without".format(
+    logfile_prefix = "results_pickled_{}{}_{}_{}_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_{}tppr_pfield{}_ofield{}_stokes{}_without".format(
         "normalized_" if normalize_residuals else "",
         "mos" if pod_method == "method_of_snapshots" else "qr_svd",
+        parameter_sampling_type,
         testcase,
         mpi.size_world,
         product_type,
@@ -208,7 +210,16 @@ if __name__ == "__main__":
     ####### choose parameters ####################
     rf = 5  # Factor of largest to smallest training parameter
     mus, new_mus = create_parameters(
-        train_params_per_rank, test_params_per_rank, rf, mpi, excluded_params, logfile_name, Be0=1.0, Ca0=1.0, Pa0=1.0,
+        train_params_per_rank,
+        test_params_per_rank,
+        rf,
+        mpi,
+        excluded_params,
+        logfile_name,
+        Be0=1.0,
+        Ca0=1.0,
+        Pa0=1.0,
+        sampling_type=parameter_sampling_type,
     )
 
     ################### Start HAPOD #####################

@@ -109,6 +109,7 @@ if __name__ == "__main__":
     dt = 1e-3 if argc < 4 else float(sys.argv[3])
     grid_size_x = 30 if argc < 5 else int(sys.argv[4])
     grid_size_y = 30 if argc < 6 else int(sys.argv[5])
+    parameter_sampling_type = "log_reciprocal" if argc < 7 else sys.argv[6]
     pol_order = 2
     chunk_size = 10
     # product_type = "L2"
@@ -130,6 +131,7 @@ if __name__ == "__main__":
         Be0=1.0,
         Ca0=1.0,
         Pa0=1.0,
+        sampling_type=parameter_sampling_type
     )
 
     ########### Choose filename prefix #############

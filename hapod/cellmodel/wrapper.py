@@ -113,7 +113,8 @@ class CellModelSolver(ParametricObject):
         else:
             U_list = pfield_space.make_array([pfield_space.vector_from_numpy(vec).impl for vec in U.to_numpy()])
             U_out = [
-                DuneXtLaVector(self.impl.apply_pfield_L2_product_operator(vec.impl)).to_numpy(True) for vec in U_list._list
+                DuneXtLaVector(self.impl.apply_pfield_L2_product_operator(vec.impl)).to_numpy(True)
+                for vec in U_list._list
             ]
             return self.pfield_numpy_space.make_array(U_out)
 
@@ -330,6 +331,7 @@ class CellModelStokesL2ProductOperator(Operator):
     def apply(self, U, mu=None):
         return self.solver.apply_stokes_L2_product_operator(U)
 
+
 class CellModelPfieldH1ProductOperator(Operator):
     def __init__(self, solver):
         self.solver = solver
@@ -348,8 +350,6 @@ class CellModelOfieldH1ProductOperator(Operator):
 
     def apply(self, U, mu=None):
         return self.solver.apply_ofield_H1_product_operator(U)
-
-
 
 
 class MutableStateComponentOperator(Operator):
@@ -1512,7 +1512,11 @@ def calculate_cellmodel_trajectory_errors(
                 red_errs[i] += np.sum(res_norms2)
                 # relative model reduction errors
                 vals_norms2 = vals.norm2(product=products[i])
-                rel_errs_list = [res_norm2 / val_norm2 for res_norm2, val_norm2 in zip(res_norms2, vals_norms2) if not np.isclose(val_norm2, 0)]
+                rel_errs_list = [
+                    res_norm2 / val_norm2
+                    for res_norm2, val_norm2 in zip(res_norms2, vals_norms2)
+                    if not np.isclose(val_norm2, 0)
+                ]
                 rel_red_errs[i] += np.sum(rel_errs_list)
             # DEIM basis errors
             if timestep_residuals is not None:
@@ -1553,7 +1557,11 @@ def calculate_cellmodel_trajectory_errors(
                 red_errs[i] += np.sum(res_norms2)
                 # relative model reduction errors
                 vals_norms2 = vals.norm2(product=products[i])
-                rel_errs_list = [res_norm2 / val_norm2 for res_norm2, val_norm2 in zip(res_norms2, vals_norms2) if not np.isclose(val_norm2, 0)]
+                rel_errs_list = [
+                    res_norm2 / val_norm2
+                    for res_norm2, val_norm2 in zip(res_norms2, vals_norms2)
+                    if not np.isclose(val_norm2, 0)
+                ]
                 rel_red_errs[i] += np.sum(rel_errs_list)
             # DEIM basis errors
             for i in range(3):
@@ -1737,24 +1745,42 @@ def calculate_cellmodel_errors(
                 error_type = "L2"
             for k in range(nc):
                 logfile.write("{}{} projection error for {}-th pfield is: {}\n".format(prefix, error_type, k, errs[k]))
-                logfile.write("{}{} projection error for {}-th ofield is: {}\n".format(prefix, error_type, k, errs[nc + k]))
+                logfile.write(
+                    "{}{} projection error for {}-th ofield is: {}\n".format(prefix, error_type, k, errs[nc + k])
+                )
             logfile.write("{}{} projection error for stokes is: {}\n".format(prefix, error_type, errs[2 * nc]))
-            logfile.write("{}{} projection DEIM error for {}-th pfield is: {}\n".format(prefix, error_type, 0, deim_errs[0]))
-            logfile.write("{}{} projection DEIM error for {}-th ofield is: {}\n".format(prefix, error_type, 0, deim_errs[1]))
+            logfile.write(
+                "{}{} projection DEIM error for {}-th pfield is: {}\n".format(prefix, error_type, 0, deim_errs[0])
+            )
+            logfile.write(
+                "{}{} projection DEIM error for {}-th ofield is: {}\n".format(prefix, error_type, 0, deim_errs[1])
+            )
             logfile.write("{}{} projection DEIM error for stokes is: {}\n".format(prefix, error_type, deim_errs[2]))
             for k in range(nc):
-                logfile.write("{}{} reduction error for {}-th pfield is: {}\n".format(prefix, error_type, k, red_errs[k]))
-                logfile.write("{}{} reduction error for {}-th ofield is: {}\n".format(prefix, error_type, k, red_errs[nc + k]))
-            logfile.write("{}{} reduction error for {}-th stokes is: {}\n".format(prefix, error_type, 0, red_errs[2 * nc]))
-            for k in range(nc):
                 logfile.write(
-                    "{}{} relative reduction error for {}-th pfield is: {}\n".format(prefix, error_type, k, rel_red_errs[k])
+                    "{}{} reduction error for {}-th pfield is: {}\n".format(prefix, error_type, k, red_errs[k])
                 )
                 logfile.write(
-                    "{}{} relative reduction error for {}-th ofield is: {}\n".format(prefix, error_type, k, rel_red_errs[nc + k])
+                    "{}{} reduction error for {}-th ofield is: {}\n".format(prefix, error_type, k, red_errs[nc + k])
                 )
             logfile.write(
-                "{}{} relative reduction error for {}-th stokes is: {}\n".format(prefix, error_type, 0, rel_red_errs[2 * nc])
+                "{}{} reduction error for {}-th stokes is: {}\n".format(prefix, error_type, 0, red_errs[2 * nc])
+            )
+            for k in range(nc):
+                logfile.write(
+                    "{}{} relative reduction error for {}-th pfield is: {}\n".format(
+                        prefix, error_type, k, rel_red_errs[k]
+                    )
+                )
+                logfile.write(
+                    "{}{} relative reduction error for {}-th ofield is: {}\n".format(
+                        prefix, error_type, k, rel_red_errs[nc + k]
+                    )
+                )
+            logfile.write(
+                "{}{} relative reduction error for {}-th stokes is: {}\n".format(
+                    prefix, error_type, 0, rel_red_errs[2 * nc]
+                )
             )
             if mean_fom_time is not None and mean_rom_time is not None:
                 logfile.write(f"{mean_fom_time:.2f} vs. {mean_rom_time:.2f}, speedup {mean_fom_time/mean_rom_time:.2f}")
@@ -1778,7 +1804,16 @@ def get_num_chunks_and_num_timesteps(t_end, dt, chunk_size):
 
 
 def create_parameters(
-    train_params_per_rank, test_params_per_rank, rf, mpi, excluded_params, filename=None, Be0=1.0, Ca0=1.0, Pa0=1.0
+    train_params_per_rank,
+    test_params_per_rank,
+    rf,
+    mpi,
+    excluded_params,
+    filename=None,
+    Be0=1.0,
+    Ca0=1.0,
+    Pa0=1.0,
+    sampling_type="uniform",
 ):
     # check excluded_params
     for param in excluded_params:
@@ -1794,43 +1829,95 @@ def create_parameters(
     rf = np.sqrt(rf)
     lower_bound_Be = Be0 / rf
     upper_bound_Be = Be0 * rf
-    step_Be = (
-        (upper_bound_Be - lower_bound_Be) / (values_per_sampled_parameter - 1)
-        if values_per_sampled_parameter > 1
-        else 0
-    )
     lower_bound_Ca = Ca0 / rf
     upper_bound_Ca = Ca0 * rf
-    step_Ca = (
-        (upper_bound_Ca - lower_bound_Ca) / (values_per_sampled_parameter - 1)
-        if values_per_sampled_parameter > 1
-        else 0
-    )
     lower_bound_Pa = Pa0 / rf
     upper_bound_Pa = Pa0 * rf
-    step_Pa = (
-        (upper_bound_Pa - lower_bound_Pa) / (values_per_sampled_parameter - 1)
-        if values_per_sampled_parameter > 1
-        else 0
-    )
-    # Actually create training parameters.
-    # Parameters in excluded_params are set to the default value
+    if sampling_type == "uniform":
+        Be_values = (
+            np.linspace(lower_bound_Be, upper_bound_Be, values_per_sampled_parameter).tolist()
+            if "Be" not in excluded_params
+            else [Be0]
+        )
+        Ca_values = (
+            np.linspace(lower_bound_Ca, upper_bound_Ca, values_per_sampled_parameter).tolist()
+            if "Ca" not in excluded_params
+            else [Pa0]
+        )
+        Pa_values = (
+            np.linspace(lower_bound_Pa, upper_bound_Pa, values_per_sampled_parameter).tolist()
+            if "Pa" not in excluded_params
+            else [Pa0]
+        )
+    elif sampling_type == "log":
+        Be_values = (
+            np.logspace(
+                math.log(lower_bound_Be, 10), math.log(upper_bound_Be, 10), values_per_sampled_parameter
+            ).tolist()
+            if "Be" not in excluded_params
+            else [Be0]
+        )
+        Ca_values = (
+            np.logspace(
+                math.log(lower_bound_Ca, 10), math.log(upper_bound_Ca, 10), values_per_sampled_parameter
+            ).tolist()
+            if "Ca" not in excluded_params
+            else [Ca0]
+        )
+        Pa_values = (
+            np.logspace(
+                math.log(lower_bound_Pa, 10), math.log(upper_bound_Pa, 10), values_per_sampled_parameter
+            ).tolist()
+            if "Pa" not in excluded_params
+            else [Pa0]
+        )
+    elif sampling_type == "uniform_reciprocal":
+        Be_values = (
+            np.reciprocal(np.linspace(1 / upper_bound_Be, 1 / lower_bound_Be, values_per_sampled_parameter)).tolist()
+            if "Be" not in excluded_params
+            else [Be0]
+        )
+        Ca_values = (
+            np.reciprocal(np.linspace(1 / upper_bound_Ca, 1 / lower_bound_Ca, values_per_sampled_parameter)).tolist()
+            if "Ca" not in excluded_params
+            else [Ca0]
+        )
+        Pa_values = (
+            np.reciprocal(np.linspace(1 / upper_bound_Pa, 1 / lower_bound_Pa, values_per_sampled_parameter)).tolist()
+            if "Pa" not in excluded_params
+            else [Pa0]
+        )
+    elif sampling_type == "log_reciprocal":
+        Be_values = (
+            np.reciprocal(
+                np.logspace(
+                    math.log(1 / upper_bound_Be, 10), math.log(1 / lower_bound_Be, 10), values_per_sampled_parameter
+                )
+            ).tolist()
+            if "Be" not in excluded_params
+            else [Be0]
+        )
+        Ca_values = (
+            np.reciprocal(
+                np.logspace(
+                    math.log(1 / upper_bound_Ca, 10), math.log(1 / lower_bound_Ca, 10), values_per_sampled_parameter
+                )
+            ).tolist()
+            if "Ca" not in excluded_params
+            else [Ca0]
+        )
+        Pa_values = (
+            np.reciprocal(
+                np.logspace(
+                    math.log(1 / upper_bound_Pa, 10), math.log(1 / lower_bound_Pa, 10), values_per_sampled_parameter
+                )
+            ).tolist()
+            if "Pa" not in excluded_params
+            else [Pa0]
+        )
+    else:
+        raise NotImplementedError("Unknown sampling_type")
     mus = []
-    Be_values = (
-        [lower_bound_Be + i * step_Be for i in range(values_per_sampled_parameter)]
-        if "Be" not in excluded_params and step_Be > 0
-        else [Be0]
-    )
-    Ca_values = (
-        [lower_bound_Ca + i * step_Ca for i in range(values_per_sampled_parameter)]
-        if "Ca" not in excluded_params and step_Ca > 0
-        else [Ca0]
-    )
-    Pa_values = (
-        [lower_bound_Pa + i * step_Pa for i in range(values_per_sampled_parameter)]
-        if "Pa" not in excluded_params and step_Pa > 0
-        else [Pa0]
-    )
     for Be in Be_values:
         for Ca in Ca_values:
             for Pa in Pa_values:

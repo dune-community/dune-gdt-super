@@ -72,9 +72,7 @@ class SolverChunkGenerator:
             self.current_chunk_index = chunk_index
             new_vecs = [self.cellmodel.solution_space.subspaces[i % 3].empty() for i in range(6)]
             if check_against_pickled:
-                new_vecs2 = [
-                    self.cellmodel.solution_space.subspaces[i % 3].empty() for i in range(6)
-                ]
+                new_vecs2 = [self.cellmodel.solution_space.subspaces[i % 3].empty() for i in range(6)]
             # walk over parameters
             for p, mu in enumerate(self.mus):
                 t = old_t
@@ -84,16 +82,10 @@ class SolverChunkGenerator:
                         if k < 3:  # POD indices
                             new_vecs[k].append(current_values[p]._blocks[k])
                 # ... and do one timestep less to ensure that chunk has size chunk_size
-                for time_index in range(
-                    self.chunk_size - 1 if chunk_index == 0 else self.chunk_size
-                ):
+                for time_index in range(self.chunk_size - 1 if chunk_index == 0 else self.chunk_size):
                     # t1 = timer()
                     current_values[p], data = self.cellmodel.next_time_step(
-                        current_values[p],
-                        t,
-                        mu=mu,
-                        return_stages=self.include_newton_stages,
-                        return_residuals=True,
+                        current_values[p], t, mu=mu, return_stages=self.include_newton_stages, return_residuals=True
                     )
                     # timings["data"] += timer() - t1
                     t = data["t"]
@@ -183,7 +175,8 @@ if __name__ == "__main__":
     pfield_deim_atol = 1e-10 if argc < 16 else float(sys.argv[15])
     ofield_deim_atol = 1e-10 if argc < 17 else float(sys.argv[16])
     stokes_deim_atol = 1e-10 if argc < 18 else float(sys.argv[17])
-    pod_method = "method_of_snapshots" if argc < 19 else sys.argv[18]
+    parameter_sampling_type = "log_reciprocal" if argc < 19 else sys.argv[18]
+    pod_method = "method_of_snapshots" if argc < 20 else sys.argv[19]
     assert pod_method in ("qr_svd", "method_of_snapshots")
     normalize_residuals = False
     incremental_gramian = False
@@ -216,9 +209,10 @@ if __name__ == "__main__":
     if mpi.rank_world == 0:
         if not os.path.exists(logfile_dir):
             os.mkdir(logfile_dir)
-    logfile_prefix = "results_{}{}_{}_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_{}tppr_pfield{}_ofield{}_stokes{}_without".format(
+    logfile_prefix = "results_{}{}_{}_{}_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_{}tppr_pfield{}_ofield{}_stokes{}_without".format(
         "normalized_" if normalize_residuals else "",
         "mos" if pod_method == "method_of_snapshots" else "qr_svd",
+        parameter_sampling_type,
         testcase,
         mpi.size_world,
         product_type,
@@ -265,7 +259,16 @@ if __name__ == "__main__":
     ####### choose parameters ####################
     rf = 5  # Factor of largest to smallest training parameter
     mus, new_mus = create_parameters(
-        train_params_per_rank, test_params_per_rank, rf, mpi, excluded_params, logfile_name, Be0=1.0, Ca0=1.0, Pa0=1.0,
+        train_params_per_rank,
+        test_params_per_rank,
+        rf,
+        mpi,
+        excluded_params,
+        logfile_name,
+        Be0=1.0,
+        Ca0=1.0,
+        Pa0=1.0,
+        sampling_type=parameter_sampling_type,
     )
 
     ################### Start HAPOD #####################
@@ -317,9 +320,7 @@ if __name__ == "__main__":
     )
     for k in indices:
         r = results[k]
-        r.modes, r.win = mpi.shared_memory_bcast_modes(
-            r.modes, returnlistvectorarray=True, proc_rank=k % mpi.size_proc
-        )
+        r.modes, r.win = mpi.shared_memory_bcast_modes(r.modes, returnlistvectorarray=True, proc_rank=k % mpi.size_proc)
 
     pfield_basis = results[0].modes if pod_pfield else None
     ofield_basis = results[1].modes if pod_ofield else None
@@ -423,7 +424,6 @@ if __name__ == "__main__":
     #     prefix=f"{reduced_prefix}_Be{Be}_Ca{Ca}_Pa{Pa}",
     #     subsampling=subsampling,
     #     every_nth=visualize_step)
-
 
     # calculate_cellmodel_errors(
     #     modes=[pfield_basis, ofield_basis, stokes_basis],
