@@ -50,6 +50,7 @@ class SolverChunkGenerator:
         indices: "list[int]",
         products: "list[Any]",
         normalize_residuals: bool,
+        num_changed_mus: int,
         excluded_params: "list[str]",
     ):
         self.pickle_prefix = pickle_prefix
@@ -62,6 +63,7 @@ class SolverChunkGenerator:
         self.num_chunks, _ = solver_statistics(t_end=t_end, dt=dt, chunk_size=chunk_size)
         self.products = products
         self.normalize_residuals = normalize_residuals
+        self.num_changed_mus = num_changed_mus
         self.excluded_params = excluded_params
 
     def __iter__(self):
@@ -87,7 +89,7 @@ class SolverChunkGenerator:
                 for time_index in range(self.chunk_size - 1 if chunk_index == 0 else self.chunk_size):
                     # t1 = timer()
                     current_values[p], data = self.cellmodel.next_time_step(
-                        current_values[p], t, mu=mu, return_stages=self.include_newton_stages, return_residuals=True, num_changed_mus=4, excluded_params=self.excluded_params
+                        current_values[p], t, mu=mu, return_stages=self.include_newton_stages, return_residuals=True, num_changed_mus=self.num_changed_mus, excluded_params=self.excluded_params
                     )
                     # timings["data"] += timer() - t1
                     t = data["t"]
@@ -206,16 +208,18 @@ if __name__ == "__main__":
     # omega=0.5
     omega = 0.95
     random.seed(123)  # create_parameters choose some parameters randomly in some cases
+    num_changed_mus = 4
 
     ###### Choose filename #########
     logfile_dir = "logs"
     if mpi.rank_world == 0:
         if not os.path.exists(logfile_dir):
             os.mkdir(logfile_dir)
-    logfile_prefix = "results_{}{}_{}_{}_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_{}tppr_pfield{}_ofield{}_stokes{}_without".format(
+    logfile_prefix = "results_{}{}_{}_{}addmus_{}_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_{}tppr_pfield{}_ofield{}_stokes{}_without".format(
         "normalized_" if normalize_residuals else "",
         "mos" if pod_method == "method_of_snapshots" else "qr_svd",
         parameter_sampling_type,
+        num_changed_mus,
         testcase,
         mpi.size_world,
         product_type,
@@ -310,6 +314,7 @@ if __name__ == "__main__":
         indices=indices,
         products=products,
         normalize_residuals=normalize_residuals,
+        num_changed_mus=num_changed_mus,
         excluded_params=excluded_params,
     )
     # perform HAPOD
