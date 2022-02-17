@@ -53,19 +53,23 @@ base:
     GIT_SUBMODULE_STRATEGY: recursive
     TWINE_PASSWORD: ${CI_JOB_TOKEN}
     TWINE_USERNAME: gitlab-ci-token
-    GITLAB_PYPI: ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi
+    GITLAB_PYPI: ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi/simple
+    LOCAL_USER: dxt
+    PIP_CONFIG_FILE: /tmp/pip.conf
   stage: wheels
   needs: []
   extends: .docker-in-docker
   # try to download from gitlab first, then pypi
   before_script:
     - !reference [.docker-in-docker, before_script]
-    - python3 -m pip config set global.index-url ${GITLAB_PYPI}
-    - python3 -m pip config set global.extra-index-url https://pypi.org/simple
-    - python3 -m pip config set global.trusted-host zivgitlab.uni-muenster.de
+    - sed "s;PYPI_INDEX_URL;${GITLAB_PYPI};g" .ci/pip.conf > ${PIP_CONFIG_FILE}
   script:
-    - ./make_docker_wheels.bash
-    - python3 -m twine check docker/wheelhouse/final/*.whl
+    - ./make_docker_wheels.bash xt
+    - python3 -m twine check docker/wheelhouse/final/*xt*.whl
+    - python3 -m twine upload --repository-url ${GITLAB_PYPI} docker/wheelhouse/final/*xt*.whl
+    - ./make_docker_wheels.bash gdt
+    - python3 -m twine check docker/wheelhouse/final/*gdt*.whl
+    - python3 -m twine upload --repository-url ${GITLAB_PYPI} docker/wheelhouse/final/*gdt*.whl
   artifacts:
     paths:
       - docker/wheelhouse/final/*.whl
@@ -119,4 +123,4 @@ publish dune-xt:
 publish dune-gdt:
   extends: .publish
   variables:
-    MOD_WHEEL: docker/wheelhouse/final/dune_xt*.whl
+    MOD_WHEEL: docker/wheelhouse/final/dune_gdt*.whl
