@@ -21,6 +21,8 @@ variables:
         - pip3 install -U docker jinja2 docopt twine
         - echo $DOCKER_PW | docker login --username="$DOCKER_USER" --password-stdin
         - git submodule update --init .ci/shared
+        - 'export SHARED_PATH="${CI_PROJECT_DIR}/shared"'
+        - mkdir -p ${SHARED_PATH}
     services:
         - docker:dind
     environment:
@@ -55,13 +57,13 @@ base:
     TWINE_USERNAME: gitlab-ci-token
     GITLAB_PYPI: ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi/simple
     LOCAL_USER: dxt
-    PIP_CONFIG_FILE: /tmp/pip.conf
   stage: wheels
   needs: []
   extends: .docker-in-docker
   # try to download from gitlab first, then pypi
   before_script:
     - !reference [.docker-in-docker, before_script]
+    - export PIP_CONFIG_FILE=${SHARED_PATH}/pip.conf
     - sed "s;PYPI_INDEX_URL;${GITLAB_PYPI};g" .ci/pip.conf > ${PIP_CONFIG_FILE}
   script:
     - ./make_docker_wheels.bash xt
