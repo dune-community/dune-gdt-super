@@ -112,7 +112,8 @@ class SolverChunkGenerator:
                                 residuals = residuals * np.array(
                                     [1 / norm if norm > 0 else 1 for norm in residuals.norm(product=self.products[k])]
                                 )
-                            residuals.append(data["changed_residuals"][k-3])
+                            if self.num_changed_mus > 0:
+                                residuals.append(data["changed_residuals"][k-3])
                             new_vecs[k].append(residuals)
 
                 if check_against_pickled:
@@ -181,7 +182,8 @@ if __name__ == "__main__":
     ofield_deim_atol = 1e-10 if argc < 17 else float(sys.argv[16])
     stokes_deim_atol = 1e-10 if argc < 18 else float(sys.argv[17])
     parameter_sampling_type = "log_reciprocal" if argc < 19 else sys.argv[18]
-    pod_method = "method_of_snapshots" if argc < 20 else sys.argv[19]
+    num_changed_mus = 0 if argc < 20 else int(sys.argv[19])
+    pod_method = "method_of_snapshots" if argc < 21 else sys.argv[20]
     assert pod_method in ("qr_svd", "method_of_snapshots")
     normalize_residuals = False
     incremental_gramian = False
@@ -208,7 +210,6 @@ if __name__ == "__main__":
     # omega=0.5
     omega = 0.95
     random.seed(123)  # create_parameters choose some parameters randomly in some cases
-    num_changed_mus = 4
 
     ###### Choose filename #########
     logfile_dir = "logs"
