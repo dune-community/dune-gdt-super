@@ -1584,6 +1584,7 @@ def calculate_mean_cellmodel_projection_errors(
     num_snapshots = 0
     mean_fom_time = 0.0
     norms = 0
+    mu_to_red_errs = dict()
     for mu, u_rom in zip(mus, reduced_us):
         pickle_prefix_mu = f"{pickle_prefix}_Be{mu['Be']}_Ca{mu['Ca']}_Pa{mu['Pa']}_chunk"
         (
@@ -1612,6 +1613,8 @@ def calculate_mean_cellmodel_projection_errors(
             num_chunks=num_chunks,
             pickle_prefix=pickle_prefix_mu,
         )
+        mu_as_str = f"Be: {mu['Be']:.3f}, Ca: {mu['Ca']:.3f}, Pa: {mu['Pa']:.3f}"
+        mu_to_red_errs[mu_as_str] = red_errs
         for i in range(3):
             proj_errs_sum[i] += proj_errs[i]
             proj_deim_errs_sum[i] += proj_deim_errs[i]
@@ -1643,6 +1646,11 @@ def calculate_mean_cellmodel_projection_errors(
         num_residuals = [0] * 3
         for i in range(3):
             num_residuals[i] = sum(nums[i] for nums in num_residuals_list)
+    mu_to_red_errs_gathered = mpi_wrapper.comm_world.gather(mu_to_red_errs, root=0)
+    all_mu_to_red_errs = dict()
+    if mpi_wrapper.rank_world == 0:
+        for d in mu_to_red_errs_gathered:
+            all_mu_to_red_errs.update(d)
     for index, err in enumerate(proj_errs_sum):
         err = mpi_wrapper.comm_world.gather(err, root=0)
         if mpi_wrapper.rank_world == 0:
@@ -1659,7 +1667,7 @@ def calculate_mean_cellmodel_projection_errors(
         err = mpi_wrapper.comm_world.gather(proj_deim_errs_sum[i], root=0)
         if mpi_wrapper.rank_world == 0:
             proj_deim_errs[i] = np.sqrt(np.sum(err) / num_residuals[i]) if num_residuals[i] != 0 else 0
-    return proj_errs, proj_deim_errs, red_errs, rel_red_errs, mean_fom_time, mean_rom_time, norms
+    return proj_errs, proj_deim_errs, red_errs, rel_red_errs, mean_fom_time, mean_rom_time, norms, all_mu_to_red_errs
 
 
 def calculate_cellmodel_errors(
@@ -1694,6 +1702,7 @@ def calculate_cellmodel_errors(
         mean_fom_time,
         mean_rom_time,
         norms,
+        mus_to_red_errs
     ) = calculate_mean_cellmodel_projection_errors(
         modes=modes,
         deim_modes=deim_modes,
@@ -1764,6 +1773,11 @@ def calculate_cellmodel_errors(
             )
             if mean_fom_time is not None and mean_rom_time is not None:
                 logfile.write(f"{mean_fom_time:.2f} vs. {mean_rom_time:.2f}, speedup {mean_fom_time/mean_rom_time:.2f}")
+            for mu, red_err in mus_to_red_errs.items():
+                logfile.write(f"{mu}: ")
+                for err in red_err:
+                    logfile.write(f"{err:.2e} ")
+                logfile.write("\n")
             # logfile.write("{}L2 reduction error for {}-th ofield is: {}\n".format(prefix, k, red_errs[nc + k]))
             # logfile.write("{}L2 reduction error for stokes is: {}\n".format(prefix, red_errs[2 * nc]))
         # for i, filename in enumerate(("norms_pfield_40.txt", "norms_ofield_40.txt", "norms_stokes_40.txt", "norms_pfield_deim_40.txt", "norms_ofield_deim_40.txt", "norms_stokes_deim_40.txt")):
