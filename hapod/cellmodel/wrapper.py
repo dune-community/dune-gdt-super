@@ -7,6 +7,7 @@ from statistics import mean
 from timeit import default_timer as timer
 from typing import Any, Union
 import weakref
+# import matplotlib.pyplot as plt
 
 import gdt.cellmodel
 from hapod.hapod import binary_tree_depth
@@ -955,7 +956,17 @@ class CellModel(Model):
             retval[1]["residuals"] = (pfield_residuals, ofield_residuals, stokes_residuals)
         return retval
 
-    def next_time_step(self, U_last, t, mu=None, return_output=False, return_stages=False, return_residuals=False, num_changed_mus=0, excluded_params=None):
+    def next_time_step(
+        self,
+        U_last,
+        t,
+        mu=None,
+        return_output=False,
+        return_stages=False,
+        return_residuals=False,
+        num_changed_mus=0,
+        excluded_params=None,
+    ):
         assert not return_output
 
         pfield_vecs, ofield_vecs, stokes_vecs = U_last._blocks
@@ -986,7 +997,7 @@ class CellModel(Model):
             range_product=self.products["pfield"] if is_fom else None,
             **self.newton_params_pfield,
             num_changed_mus=num_changed_mus,
-            excluded_params=excluded_params
+            excluded_params=excluded_params,
         )
         ofield_vecs, ofield_data = newton(
             self.ofield_op.fix_components((1, 2, 3), [pfield_vecs, ofield_vecs, stokes_vecs]),
@@ -1000,7 +1011,7 @@ class CellModel(Model):
             range_product=self.products["ofield"] if is_fom else None,
             **self.newton_params_ofield,
             num_changed_mus=num_changed_mus,
-            excluded_params=excluded_params
+            excluded_params=excluded_params,
         )
         stokes_vecs, stokes_data = newton(
             self.stokes_op.fix_components((1, 2), [pfield_vecs, ofield_vecs]),
@@ -1014,7 +1025,7 @@ class CellModel(Model):
             range_product=self.products["stokes"] if is_fom else None,
             **self.newton_params_stokes,
             num_changed_mus=num_changed_mus,
-            excluded_params=excluded_params
+            excluded_params=excluded_params,
         )
         t += actual_dt
         U = self.solution_space.make_array([pfield_vecs, ofield_vecs, stokes_vecs])
@@ -1025,7 +1036,11 @@ class CellModel(Model):
         if return_residuals:
             retval[1]["residuals"] = (pfield_data["residuals"], ofield_data["residuals"], stokes_data["residuals"])
         if num_changed_mus > 0:
-            retval[1]["changed_residuals"] = (pfield_data["changed_residuals"], ofield_data["changed_residuals"], stokes_data["changed_residuals"])
+            retval[1]["changed_residuals"] = (
+                pfield_data["changed_residuals"],
+                ofield_data["changed_residuals"],
+                stokes_data["changed_residuals"],
+            )
         return retval
 
 
@@ -1702,7 +1717,7 @@ def calculate_cellmodel_errors(
         mean_fom_time,
         mean_rom_time,
         norms,
-        mus_to_red_errs
+        mus_to_red_errs,
     ) = calculate_mean_cellmodel_projection_errors(
         modes=modes,
         deim_modes=deim_modes,
@@ -1828,6 +1843,7 @@ def create_parameters(
     lower_bound_Pa = Pa0 / rf
     upper_bound_Pa = Pa0 * rf
     if sampling_type == "uniform":
+        # uniform distribution of the parameter
         Be_values = (
             np.linspace(lower_bound_Be, upper_bound_Be, values_per_sampled_parameter).tolist()
             if "Be" not in excluded_params
@@ -1843,7 +1859,26 @@ def create_parameters(
             if "Pa" not in excluded_params
             else [Pa0]
         )
+    elif sampling_type == "uniform_reciprocal":
+        # uniform distribution of 1/parameter
+        Be_values = (
+            np.reciprocal(np.linspace(1 / upper_bound_Be, 1 / lower_bound_Be, values_per_sampled_parameter)).tolist()
+            if "Be" not in excluded_params
+            else [Be0]
+        )
+        Ca_values = (
+            np.reciprocal(np.linspace(1 / upper_bound_Ca, 1 / lower_bound_Ca, values_per_sampled_parameter)).tolist()
+            if "Ca" not in excluded_params
+            else [Ca0]
+        )
+        Pa_values = (
+            np.reciprocal(np.linspace(1 / upper_bound_Pa, 1 / lower_bound_Pa, values_per_sampled_parameter)).tolist()
+            if "Pa" not in excluded_params
+            else [Pa0]
+        )
     elif sampling_type == "log":
+        # log distribution of parameter
+        # same as log distribution of 1/parameter as long as we are using 1 / rf, 1 * rf as bounds
         Be_values = (
             np.logspace(
                 math.log(lower_bound_Be, 10), math.log(upper_bound_Be, 10), values_per_sampled_parameter
@@ -1865,50 +1900,66 @@ def create_parameters(
             if "Pa" not in excluded_params
             else [Pa0]
         )
-    elif sampling_type == "uniform_reciprocal":
+    elif sampling_type == "log_inverted":
+        # Choose parameters such that the final distribution of 1/param looks like a log distribution,
+        # but with density increasing towards the upper bound, not the lower bound
+        Be_log_values = np.logspace(
+            math.log(lower_bound_Be, 10), math.log(upper_bound_Be, 10), values_per_sampled_parameter
+        )
         Be_values = (
-            np.reciprocal(np.linspace(1 / upper_bound_Be, 1 / lower_bound_Be, values_per_sampled_parameter)).tolist()
-            if "Be" not in excluded_params
-            else [Be0]
+            1 / (1 / upper_bound_Be + 1 / lower_bound_Be - 1 / Be_log_values) if "Be" not in excluded_params else [Be0]
+        )
+        Ca_log_values = np.logspace(
+            math.log(lower_bound_Ca, 10), math.log(upper_bound_Ca, 10), values_per_sampled_parameter
         )
         Ca_values = (
-            np.reciprocal(np.linspace(1 / upper_bound_Ca, 1 / lower_bound_Ca, values_per_sampled_parameter)).tolist()
-            if "Ca" not in excluded_params
-            else [Ca0]
+            1 / (1 / upper_bound_Ca + 1 / lower_bound_Ca - 1 / Ca_log_values) if "Ca" not in excluded_params else [Ca0]
+        )
+        Pa_log_values = np.logspace(
+            math.log(lower_bound_Pa, 10), math.log(upper_bound_Pa, 10), values_per_sampled_parameter
         )
         Pa_values = (
-            np.reciprocal(np.linspace(1 / upper_bound_Pa, 1 / lower_bound_Pa, values_per_sampled_parameter)).tolist()
-            if "Pa" not in excluded_params
-            else [Pa0]
+            1 / (1 / upper_bound_Pa + 1 / lower_bound_Pa - 1 / Pa_log_values) if "Pa" not in excluded_params else [Pa0]
         )
-    elif sampling_type == "log_reciprocal":
-        Be_values = (
-            np.reciprocal(
-                np.logspace(
-                    math.log(1 / upper_bound_Be, 10), math.log(1 / lower_bound_Be, 10), values_per_sampled_parameter
-                )
-            ).tolist()
-            if "Be" not in excluded_params
-            else [Be0]
+    elif sampling_type == "log_and_log_inverted":
+        # Choose half of the parameters according to log and half according to log_inverted sampling type.
+        # This gives a distribution that has a higher density towards the boundaries of the parameter interval.
+        vals_per_param = values_per_sampled_parameter // 2
+        remaining_vals_per_param = values_per_sampled_parameter - vals_per_param
+        Be_values1 = np.logspace(
+            math.log(lower_bound_Be, 10), math.log(upper_bound_Be, 10), vals_per_param + 1
+        ).tolist()
+        Be_log_values = np.logspace(
+            math.log(lower_bound_Be, 10), math.log(upper_bound_Be, 10), remaining_vals_per_param + 1
         )
-        Ca_values = (
-            np.reciprocal(
-                np.logspace(
-                    math.log(1 / upper_bound_Ca, 10), math.log(1 / lower_bound_Ca, 10), values_per_sampled_parameter
-                )
-            ).tolist()
-            if "Ca" not in excluded_params
-            else [Ca0]
+        Be_values2 = (1 / (1 / upper_bound_Be + 1 / lower_bound_Be - 1 / Be_log_values)).tolist()
+        if mpi.rank_world == 0:
+            print(Be_values1, flush=True)
+            print(Be_values2, flush=True)
+        Be_values2 = Be_values2[1:-1]
+        Be_values = Be_values1 + Be_values2 if "Be" not in excluded_params else [Be0]
+        Ca_values1 = np.logspace(
+            math.log(lower_bound_Ca, 10), math.log(upper_bound_Ca, 10), vals_per_param + 1
+        ).tolist()
+        Ca_log_values = np.logspace(
+            math.log(lower_bound_Ca, 10), math.log(upper_bound_Ca, 10), remaining_vals_per_param + 1
         )
-        Pa_values = (
-            np.reciprocal(
-                np.logspace(
-                    math.log(1 / upper_bound_Pa, 10), math.log(1 / lower_bound_Pa, 10), values_per_sampled_parameter
-                )
-            ).tolist()
-            if "Pa" not in excluded_params
-            else [Pa0]
+        Ca_values2 = (1 / (1 / upper_bound_Ca + 1 / lower_bound_Ca - 1 / Ca_log_values)).tolist()
+        Ca_values2 = Ca_values2[1:-1]
+        Ca_values = Ca_values1 + Ca_values2 if "Ca" not in excluded_params else [Ca0]
+        Pa_values1 = np.logspace(
+            math.log(lower_bound_Pa, 10), math.log(upper_bound_Pa, 10), vals_per_param + 1
+        ).tolist()
+        Pa_log_values = np.logspace(
+            math.log(lower_bound_Pa, 10), math.log(upper_bound_Pa, 10), remaining_vals_per_param + 1
         )
+        Pa_values2 = (1 / (1 / upper_bound_Pa + 1 / lower_bound_Pa - 1 / Pa_log_values)).tolist()
+        Pa_values = Pa_values1 + Pa_values2 if "Pa" not in excluded_params else [Pa0]
+        Pa_values2 = Pa_values2[1:-1]
+        if mpi.rank_world == 0:
+            print(Be_values, flush=True)
+            print(Ca_values, flush=True)
+            print(Pa_values, flush=True)
     else:
         raise NotImplementedError("Unknown sampling_type")
     mus = []
@@ -1942,6 +1993,23 @@ def create_parameters(
                     f"{filename}\nTrained with {len(mus)} Parameters: {mus}\n"
                     f"Tested with {len(new_mus)} new Parameters: {new_mus}\n"
                 )
+
+    ####### Visualize parameters ##########
+    # if mpi.rank_world == 0:
+    #     y = np.zeros(num_train_params)
+    #     plt.plot([mu["Be"] for mu in mus], y + 0.55, "o", label="Be")
+    #     plt.plot([1 / mu["Be"] for mu in mus], y + 0.45, "o", label="1/Be")
+    #     plt.plot([mu["Ca"] for mu in mus], y + 0.05, "o", label="Ca")
+    #     plt.plot([1 / mu["Ca"] for mu in mus], y - 0.05, "o", label="1/Ca")
+    #     plt.plot([mu["Pa"] for mu in mus], y - 0.45, "o", label="Pa")
+    #     plt.plot([1 / mu["Pa"] for mu in mus], y - 0.55, "o", label="1/Pa")
+    #     plt.legend()
+    #     plt.show()
+    #     y = np.zeros(num_test_params)
+    #     plt.plot([1 / mu["Be"] for mu in new_mus], y + 0.5, "o")
+    #     plt.plot([1 / mu["Ca"] for mu in new_mus], y + 0.0, "o")
+    #     plt.plot([1 / mu["Pa"] for mu in new_mus], y - 0.5, "o")
+    #     plt.show()
     ####### Scatter parameters to MPI ranks #######
     # Transform mus and new_mus from plain list to list of lists where the i-th inner list contains all parameters for rank i
     mus = np.reshape(np.array(mus), (mpi.size_world, train_params_per_rank)).tolist()
