@@ -1,9 +1,13 @@
-DIR="$(cd "$(dirname ${BASH_SOURCE[0]})" ;  pwd -P )"
-export BASEDIR=${DIR}/..
-export INSTALL_PREFIX=${DIR}/local
-export PATH=${INSTALL_PREFIX}/bin:$PATH
-export LD_LIBRARY_PATH=${INSTALL_PREFIX}/lib64:${INSTALL_PREFIX}/lib:$LD_LIBRARY_PATH
-export PKG_CONFIG_PATH=${INSTALL_PREFIX}/lib64/pkgconfig:${INSTALL_PREFIX}/lib/pkgconfig:${INSTALL_PREFIX}/share/pkgconfig:$PKG_CONFIG_PATH
+BASEDIR="$(cd "$(dirname ${BASH_SOURCE[0]})/../.." ;  pwd -P )"
+export DXT_ENVIRONMENT=${DXT_ENVIRONMENT:-debian-full}
+export OPTS=${OPTS:-clang-relwithdebinfo.ninja}
+export VENV=${VENV:-environments/${DXT_ENVIRONMENT}/venv/${OPTS}}
+export PATH=${BASEDIR}/bin:$PATH
 export F77=gfortran
-export CMAKE_FLAGS="-DCMAKE_PREFIX_PATH=$INSTALL_PREFIX"
+export CMAKE_FLAGS="-DDS_HEADERCHECK_DISABLE=1 -DCMAKE_DISABLE_FIND_PACKAGE_MPI=FALSE -DMINIMAL_DEBUG_LEVEL=grave -DDUNE_PYTHON_VIRTUALENV_SETUP=1 -DDUNE_PYTHON_VIRTUALENV_PATH=${BASEDIR}/${VENV}"
+if [ -e "${BASEDIR}/${VENV}/bin/activate" ]; then
+    source "${BASEDIR}/${VENV}/bin/activate"
+else
+    echo "WARNING: missing virtualenv ${BASEDIR}/${VENV}, did you call build_interactive_bindings_venv.sh?"
+fi
 export OMP_NUM_THREADS=1
