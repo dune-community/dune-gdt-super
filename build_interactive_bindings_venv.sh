@@ -55,5 +55,5 @@ done
 cd "${BASEDIR}"
 echo
 echo "All done! From now on run"
-echo "  OPTS=$OPTS; source envs/${DXT_ENVIRONMENT}/PATH.sh"
+echo "  OPTS=$OPTS source envs/${DXT_ENVIRONMENT}/PATH.sh"
 echo "to activate the virtualenv!"
