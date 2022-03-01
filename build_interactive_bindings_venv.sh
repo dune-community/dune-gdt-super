@@ -39,11 +39,17 @@ else
 fi
 
 cd "${BASEDIR}"
-nice ionice ./dune-common/bin/dunecontrol --opts=config.opts/$OPTS --builddir=${BASEDIR}/build-$OPTS configure
-nice ionice ./dune-common/bin/dunecontrol --opts=config.opts/$OPTS --builddir=${BASEDIR}/build-$OPTS bexec "$MAKE all"
+# configure
+WERROR=0 ./dune-common/bin/dunecontrol --opts=config.opts/$OPTS --builddir=${BASEDIR}/build-$OPTS configure
 for mod in dune-xt dune-gdt; do
-  nice ionice ./dune-common/bin/dunecontrol --opts=config.opts/$OPTS --builddir=${BASEDIR}/build-$OPTS --only=$mod bexec "$MAKE bindings_no_ext"
-  nice ionice ./dune-common/bin/dunecontrol --opts=config.opts/$OPTS --builddir=${BASEDIR}/build-$OPTS --only=$mod bexec "$MAKE install_python"
+  WERROR=1 ./dune-common/bin/dunecontrol --opts=config.opts/$OPTS --only=$mod --builddir=${BASEDIR}/build-$OPTS configure
+done
+# make all
+./dune-common/bin/dunecontrol --builddir=${BASEDIR}/build-$OPTS bexec "$MAKE all"
+# make bindings
+for mod in dune-xt dune-gdt; do
+  ./dune-common/bin/dunecontrol --builddir=${BASEDIR}/build-$OPTS --only=$mod bexec "$MAKE bindings_no_ext"
+  ./dune-common/bin/dunecontrol --builddir=${BASEDIR}/build-$OPTS --only=$mod bexec "$MAKE install_python"
 done
 
 cd "${BASEDIR}"
