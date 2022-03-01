@@ -1933,9 +1933,9 @@ def create_parameters(
             math.log(lower_bound_Be, 10), math.log(upper_bound_Be, 10), remaining_vals_per_param + 1
         )
         Be_values2 = (1 / (1 / upper_bound_Be + 1 / lower_bound_Be - 1 / Be_log_values)).tolist()
-        if mpi.rank_world == 0:
-            print(Be_values1, flush=True)
-            print(Be_values2, flush=True)
+        # if mpi.rank_world == 0:
+            # print(Be_values1, flush=True)
+            # print(Be_values2, flush=True)
         Be_values2 = Be_values2[1:-1]
         Be_values = Be_values1 + Be_values2 if "Be" not in excluded_params else [Be0]
         Ca_values1 = np.logspace(
@@ -1954,8 +1954,8 @@ def create_parameters(
             math.log(lower_bound_Pa, 10), math.log(upper_bound_Pa, 10), remaining_vals_per_param + 1
         )
         Pa_values2 = (1 / (1 / upper_bound_Pa + 1 / lower_bound_Pa - 1 / Pa_log_values)).tolist()
-        Pa_values = Pa_values1 + Pa_values2 if "Pa" not in excluded_params else [Pa0]
         Pa_values2 = Pa_values2[1:-1]
+        Pa_values = Pa_values1 + Pa_values2 if "Pa" not in excluded_params else [Pa0]
         if mpi.rank_world == 0:
             print(Be_values, flush=True)
             print(Ca_values, flush=True)
