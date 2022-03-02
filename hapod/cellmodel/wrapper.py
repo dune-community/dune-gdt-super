@@ -1427,6 +1427,7 @@ class CellModelReductor(ProjectionBasedReductor):
             "ofield_op": ofield_op,
             "stokes_op": stokes_op,
             "initial_pfield": project(fom.initial_pfield, pfield_basis, None, product=fom.products["pfield"]),
+            "pfield_op_lin": project(fom.pfield_op_lin, pfield_basis, pfield_basis),
             "initial_ofield": project(fom.initial_ofield, ofield_basis, None, product=fom.products["ofield"]),
             "initial_stokes": project(fom.initial_stokes, stokes_basis, None, product=fom.products["stokes"]),
         }
