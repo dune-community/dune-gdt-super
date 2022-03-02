@@ -242,6 +242,11 @@ class CellModelSolver(ParametricObject):
         U_out = [self.impl.apply_pfield_operator(vec.impl, cell_index, restricted) for vec in U._list]
         return self.pfield_solution_space.make_array(U_out)
 
+    def apply_pfield_lin_operator(self, U):
+        assert U.dim == self.pfield_solution_space.dim
+        U_out = [self.impl.apply_pfield_lin_operator(vec.impl) for vec in U._list]
+        return self.pfield_solution_space.make_array(U_out)
+
     def apply_ofield_operator(self, U, cell_index, restricted=False):
         if restricted:
             U = self.numpy_vecarray_to_xt_listvecarray(U)
@@ -301,6 +306,16 @@ class CellModelSolver(ParametricObject):
 
     def update_ofield_parameters(self, mu, cell_index=0, restricted=False):
         self.impl.update_ofield_parameters(float(mu["Pa"]), cell_index, restricted)
+
+
+class CellModelPfieldLinOperator(Operator):
+    def __init__(self, solver):
+        self.solver = solver
+        self.source = self.range = self.solver.pfield_solution_space
+        self.linear = True
+
+    def apply(self, U, mu=None):
+        return self.solver.apply_pfield_lin_operator(U)
 
 
 class CellModelPfieldL2ProductOperator(Operator):
@@ -828,6 +843,7 @@ class CellModel(Model):
         t_end,
         dt,
         pfield_op,
+        pfield_lin_op,
         ofield_op,
         stokes_op,
         initial_pfield,
@@ -900,7 +916,7 @@ class CellModel(Model):
             # do a timestep
             print("Current time: {}".format(t), flush=True)
             pfield_vecarray, pfield_data = newton(
-                self.pfield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]),
+                self.pfield_lin_op.pfield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]),
                 self.pfield_op.range.zeros(),  # pfield_op has same range as pfield_op with fixed components
                 initial_guess=pfield_vecarray,
                 mu=mu,
@@ -986,7 +1002,7 @@ class CellModel(Model):
         # do a timestep
         print("Current time: {}".format(t), flush=True)
         pfield_vecs, pfield_data = newton(
-            self.pfield_op.fix_components((1, 2, 3), [pfield_vecs, ofield_vecs, stokes_vecs]),
+            self.pfield_lin_op + self.pfield_op.fix_components((1, 2, 3), [pfield_vecs, ofield_vecs, stokes_vecs]),
             self.pfield_op.range.zeros(),  # pfield_op has same range as the pfield_op with fixed components
             initial_guess=pfield_vecs,
             mu=mu,
@@ -1047,6 +1063,7 @@ class CellModel(Model):
 class DuneCellModel(CellModel):
     def __init__(self, solver, products, name=None):
         pfield_op = CellModelPfieldOperator(solver, 0)
+        pfield_lin_op = CellModelPfieldLinOperator(solver)
         ofield_op = CellModelOfieldOperator(solver, 0)
         stokes_op = CellModelStokesOperator(solver)
         initial_pfield = VectorOperator(solver.pfield_solution_space.make_array([solver.pfield_vector(0)]))
@@ -1058,6 +1075,7 @@ class DuneCellModel(CellModel):
             t_end=self.t_end,
             dt=self.dt,
             pfield_op=pfield_op,
+            pfield_lin_op=pfield_lin_op,
             ofield_op=ofield_op,
             stokes_op=stokes_op,
             initial_pfield=initial_pfield,
@@ -1424,6 +1442,7 @@ class CellModelReductor(ProjectionBasedReductor):
             )
         projected_operators = {
             "pfield_op": pfield_op,
+            "pfield_lin_op": project(fom.pfield_lin_op, pfield_basis, pfield_basis),
             "ofield_op": ofield_op,
             "stokes_op": stokes_op,
             "initial_pfield": project(fom.initial_pfield, pfield_basis, None, product=fom.products["pfield"]),
