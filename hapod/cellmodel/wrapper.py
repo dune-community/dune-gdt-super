@@ -239,13 +239,16 @@ class CellModelSolver(ParametricObject):
             U = self.numpy_vecarray_to_xt_listvecarray(U)
         else:
             assert U.dim == self.pfield_solution_space.dim
-        U_out = [self.impl.apply_pfield_operator(vec.impl, cell_index, restricted) for vec in U._list]
+        U_out = [self.impl.apply_pfield_residual_operator(vec.impl, cell_index, restricted) for vec in U._list]
+        # U_out = [self.impl.apply_pfield_residual_operator_without_mass_matrices(vec.impl, cell_index, restricted) for vec in U._list]
         return self.pfield_solution_space.make_array(U_out)
+
 
     def apply_pfield_lin_operator(self, U):
         assert U.dim == self.pfield_solution_space.dim
-        U_out = [self.impl.apply_pfield_lin_operator(vec.impl) for vec in U._list]
-        return self.pfield_solution_space.make_array(U_out)
+        # U_out = [self.impl.apply_pfield_diagonal_mass_matrices(vec.impl) for vec in U._list]
+        # return self.pfield_solution_space.make_array(U_out)
+        return self.pfield_solution_space.zeros(len(U._list))
 
     def apply_ofield_operator(self, U, cell_index, restricted=False):
         if restricted:
@@ -286,6 +289,7 @@ class CellModelSolver(ParametricObject):
         if restricted:
             U = self.numpy_vecarray_to_xt_listvecarray(U)
         U_out = [self.impl.apply_pfield_jacobian(vec.impl, cell_index, restricted) for vec in U._list]
+        U_out = [self.impl.apply_pfield_jacobian_without_diagonal_mass_matrices(vec.impl, cell_index, restricted) for vec in U._list]
         ret = self.pfield_solution_space.make_array(U_out)
         return ret
 
@@ -313,6 +317,7 @@ class CellModelPfieldLinOperator(Operator):
         self.solver = solver
         self.source = self.range = self.solver.pfield_solution_space
         self.linear = True
+        self._parameters = {}  # the mass matrices are parameter-independent
 
     def apply(self, U, mu=None):
         return self.solver.apply_pfield_lin_operator(U)
@@ -916,7 +921,7 @@ class CellModel(Model):
             # do a timestep
             print("Current time: {}".format(t), flush=True)
             pfield_vecarray, pfield_data = newton(
-                self.pfield_lin_op.pfield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]),
+                self.pfield_lin_op + self.pfield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]),
                 self.pfield_op.range.zeros(),  # pfield_op has same range as pfield_op with fixed components
                 initial_guess=pfield_vecarray,
                 mu=mu,
