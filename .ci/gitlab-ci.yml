@@ -60,7 +60,7 @@ base:
     GIT_SUBMODULE_STRATEGY: recursive
     TWINE_PASSWORD: ${CI_JOB_TOKEN}
     TWINE_USERNAME: gitlab-ci-token
-    GITLAB_PYPI: ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi/simple
+    GITLAB_PYPI: ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi/
     LOCAL_USER: dxt
   stage: wheels
   needs: []
@@ -69,7 +69,7 @@ base:
   before_script:
     - !reference [.docker-in-docker, before_script]
     - export PIP_CONFIG_FILE=${SHARED_PATH}/pip.conf
-    - sed "s;PYPI_INDEX_URL;${GITLAB_PYPI};g" .ci/pip.conf > ${PIP_CONFIG_FILE}
+    - sed "s;PYPI_INDEX_URL;${GITLAB_PYPI}/simple;g" .ci/pip.conf > ${PIP_CONFIG_FILE}
   script:
     - ./make_docker_wheels.bash xt
     - python3 -m twine check docker/wheelhouse/final/*xt*.whl
