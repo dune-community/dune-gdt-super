@@ -11,7 +11,9 @@ variables:
     retry:
         max: 2
         when:
-            - always
+            - runner_system_failure
+            - api_failure
+            - unknown_failure
     image: docker:stable
     variables:
         DOCKER_HOST: tcp://docker:2375/
@@ -27,6 +29,9 @@ variables:
         - docker:dind
     environment:
         name: unsafe
+    tags:
+      - dind
+      - amm-only
     # stage: modules
     script: .ci/shared/docker/update_test_dockers.py ${MODULE_NAME}
 
