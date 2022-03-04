@@ -48,7 +48,7 @@ sanity:
   stage: sanity
   image: harbor.uni-muenster.de/proxy-docker/library/alpine:3.15
   before_script:
-    - apk add git python3
+    - apk add git py3-pip
     - pip3 install jinja2
   script:
     - ./.ci/template.gitlab-ci.py && git diff --exit-code .ci/gitlab-ci.yml
