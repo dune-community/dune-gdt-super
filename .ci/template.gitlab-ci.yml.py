@@ -20,7 +20,7 @@ stages:
 
 variables:
   GIT_SUBMODULE_STRATEGY: none
-  ML_TAG: 025abb8afea0f833fce9c4209e9f86e50655d531
+  ML_TAG: 964e0675bf86ec15c06de2e10003b02d9688ec07
   WHEEL_DIR: ${CI_PROJECT_DIR}/wheelhouse
   DUNE_BUILD_DIR: ${CI_PROJECT_DIR}/build
   DUNE_SRC_DIR: ${CI_PROJECT_DIR}
@@ -92,14 +92,6 @@ base:
   stage: wheels
   image: zivgitlab.wwu.io/ag-ohlberger/dune-community/docker/manylinux-2014_py${GDT_PYTHON_VERSION}:${ML_TAG}
   needs: []
-  script:
-    - ./make_wheels.bash all
-    - ./make_wheels.bash xt
-    - python3 -m twine check ${WHEEL_DIR}/final/*xt*.whl
-    - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*xt*.whl
-    - ./make_wheels.bash gdt
-    - python3 -m twine check ${WHEEL_DIR}/final/*gdt*.whl
-    - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*gdt*.whl
   artifacts:
     paths:
       - ${WHEEL_DIR}/final/*.whl
@@ -113,17 +105,29 @@ base:
     - python -c 'from dune.${md} import *'
 
 {% for py in pythons %}
-wheels {{py}}:
+
+{% for md in wheel_steps %}
+{{md}} {{py}}:
   extends: .wheels_base
   variables:
     GDT_PYTHON_VERSION: "{{py}}"
   cache:
     key: $CI_COMMIT_REF_SLUG_{{py}}
+{% if not loop.first %}
+  needs: [{{loop.previtem}} {{py}}]
+{% endif %}
+  script:
+  - ./make_wheels.bash {{md}}  
+{% if md != "all" %}
+  - python3 -m twine check ${WHEEL_DIR}/final/*{{md}}*.whl
+  - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*{{md}}*.whl
+{% endif %}
+{% endfor %}
 
 test wheels {{py}}:
   extends: .test_base
-  needs: ["wheels {{py}}"]
-  dependencies: ["wheels {{py}}"]
+  needs: ["gdt {{py}}"]
+  dependencies: ["gdt {{py}}"]
 
 {% endfor %}
 
@@ -131,11 +135,11 @@ test wheels {{py}}:
   image: alpine:3.15
   dependencies:
 {% for py in pythons %}  
-  -  "wheels {{py}}"
+  -  "gdt {{py}}"
 {% endfor %}
   needs: 
 {% for py in pythons %}  
-  -  "wheels {{py}}"
+  -  "gdt {{py}}"
   -  "test wheels {{py}}"
 {% endfor %}
   stage: publish
@@ -174,7 +178,7 @@ publish dune-gdt:
 
 tpl = jinja2.Template(tpl)
 pythons = ["3.7", "3.8", "3.9"]
-
+wheel_steps = ["all", "xt", "gdt"]
 # env_path = Path(os.path.dirname(__file__)) / '..' / '..' / '.env'
 # env = dotenv_values(env_path)
 # ci_image_tag = env['CI_IMAGE_TAG']

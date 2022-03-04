@@ -11,7 +11,7 @@ stages:
 
 variables:
   GIT_SUBMODULE_STRATEGY: none
-  ML_TAG: 025abb8afea0f833fce9c4209e9f86e50655d531
+  ML_TAG: 964e0675bf86ec15c06de2e10003b02d9688ec07
   WHEEL_DIR: ${CI_PROJECT_DIR}/wheelhouse
   DUNE_BUILD_DIR: ${CI_PROJECT_DIR}/build
   DUNE_SRC_DIR: ${CI_PROJECT_DIR}
@@ -83,14 +83,6 @@ base:
   stage: wheels
   image: zivgitlab.wwu.io/ag-ohlberger/dune-community/docker/manylinux-2014_py${GDT_PYTHON_VERSION}:${ML_TAG}
   needs: []
-  script:
-    - ./make_wheels.bash all
-    - ./make_wheels.bash xt
-    - python3 -m twine check ${WHEEL_DIR}/final/*xt*.whl
-    - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*xt*.whl
-    - ./make_wheels.bash gdt
-    - python3 -m twine check ${WHEEL_DIR}/final/*gdt*.whl
-    - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*gdt*.whl
   artifacts:
     paths:
       - ${WHEEL_DIR}/final/*.whl
@@ -104,43 +96,160 @@ base:
     - python -c 'from dune.${md} import *'
 
 
-wheels 3.7:
+
+
+all 3.7:
   extends: .wheels_base
   variables:
     GDT_PYTHON_VERSION: "3.7"
   cache:
     key: $CI_COMMIT_REF_SLUG_3.7
 
+  script:
+  - ./make_wheels.bash all  
+
+
+xt 3.7:
+  extends: .wheels_base
+  variables:
+    GDT_PYTHON_VERSION: "3.7"
+  cache:
+    key: $CI_COMMIT_REF_SLUG_3.7
+
+  needs: [all 3.7]
+
+  script:
+  - ./make_wheels.bash xt  
+
+  - python3 -m twine check ${WHEEL_DIR}/final/*xt*.whl
+  - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*xt*.whl
+
+
+gdt 3.7:
+  extends: .wheels_base
+  variables:
+    GDT_PYTHON_VERSION: "3.7"
+  cache:
+    key: $CI_COMMIT_REF_SLUG_3.7
+
+  needs: [xt 3.7]
+
+  script:
+  - ./make_wheels.bash gdt  
+
+  - python3 -m twine check ${WHEEL_DIR}/final/*gdt*.whl
+  - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*gdt*.whl
+
+
+
 test wheels 3.7:
   extends: .test_base
-  needs: ["wheels 3.7"]
-  dependencies: ["wheels 3.7"]
+  needs: ["gdt 3.7"]
+  dependencies: ["gdt 3.7"]
 
 
-wheels 3.8:
+
+
+all 3.8:
   extends: .wheels_base
   variables:
     GDT_PYTHON_VERSION: "3.8"
   cache:
     key: $CI_COMMIT_REF_SLUG_3.8
 
+  script:
+  - ./make_wheels.bash all  
+
+
+xt 3.8:
+  extends: .wheels_base
+  variables:
+    GDT_PYTHON_VERSION: "3.8"
+  cache:
+    key: $CI_COMMIT_REF_SLUG_3.8
+
+  needs: [all 3.8]
+
+  script:
+  - ./make_wheels.bash xt  
+
+  - python3 -m twine check ${WHEEL_DIR}/final/*xt*.whl
+  - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*xt*.whl
+
+
+gdt 3.8:
+  extends: .wheels_base
+  variables:
+    GDT_PYTHON_VERSION: "3.8"
+  cache:
+    key: $CI_COMMIT_REF_SLUG_3.8
+
+  needs: [xt 3.8]
+
+  script:
+  - ./make_wheels.bash gdt  
+
+  - python3 -m twine check ${WHEEL_DIR}/final/*gdt*.whl
+  - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*gdt*.whl
+
+
+
 test wheels 3.8:
   extends: .test_base
-  needs: ["wheels 3.8"]
-  dependencies: ["wheels 3.8"]
+  needs: ["gdt 3.8"]
+  dependencies: ["gdt 3.8"]
 
 
-wheels 3.9:
+
+
+all 3.9:
   extends: .wheels_base
   variables:
     GDT_PYTHON_VERSION: "3.9"
   cache:
     key: $CI_COMMIT_REF_SLUG_3.9
 
+  script:
+  - ./make_wheels.bash all  
+
+
+xt 3.9:
+  extends: .wheels_base
+  variables:
+    GDT_PYTHON_VERSION: "3.9"
+  cache:
+    key: $CI_COMMIT_REF_SLUG_3.9
+
+  needs: [all 3.9]
+
+  script:
+  - ./make_wheels.bash xt  
+
+  - python3 -m twine check ${WHEEL_DIR}/final/*xt*.whl
+  - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*xt*.whl
+
+
+gdt 3.9:
+  extends: .wheels_base
+  variables:
+    GDT_PYTHON_VERSION: "3.9"
+  cache:
+    key: $CI_COMMIT_REF_SLUG_3.9
+
+  needs: [xt 3.9]
+
+  script:
+  - ./make_wheels.bash gdt  
+
+  - python3 -m twine check ${WHEEL_DIR}/final/*gdt*.whl
+  - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*gdt*.whl
+
+
+
 test wheels 3.9:
   extends: .test_base
-  needs: ["wheels 3.9"]
-  dependencies: ["wheels 3.9"]
+  needs: ["gdt 3.9"]
+  dependencies: ["gdt 3.9"]
 
 
 
@@ -148,21 +257,21 @@ test wheels 3.9:
   image: alpine:3.15
   dependencies:
   
-  -  "wheels 3.7"
+  -  "gdt 3.7"
   
-  -  "wheels 3.8"
+  -  "gdt 3.8"
   
-  -  "wheels 3.9"
+  -  "gdt 3.9"
 
   needs: 
   
-  -  "wheels 3.7"
+  -  "gdt 3.7"
   -  "test wheels 3.7"
   
-  -  "wheels 3.8"
+  -  "gdt 3.8"
   -  "test wheels 3.8"
   
-  -  "wheels 3.9"
+  -  "gdt 3.9"
   -  "test wheels 3.9"
 
   stage: publish
