@@ -116,7 +116,10 @@ xt 3.7:
   cache:
     key: $CI_COMMIT_REF_SLUG_3.7
 
-  needs: [all 3.7]
+  needs: 
+  - all 3.7
+
+  dependencies: [all 3.7]
 
   script:
   - ./make_wheels.bash xt  
@@ -132,7 +135,12 @@ gdt 3.7:
   cache:
     key: $CI_COMMIT_REF_SLUG_3.7
 
-  needs: [xt 3.7]
+  needs: 
+  - all 3.7
+
+  - xt 3.7
+
+  dependencies: [all 3.7]
 
   script:
   - ./make_wheels.bash gdt  
@@ -168,7 +176,10 @@ xt 3.8:
   cache:
     key: $CI_COMMIT_REF_SLUG_3.8
 
-  needs: [all 3.8]
+  needs: 
+  - all 3.8
+
+  dependencies: [all 3.8]
 
   script:
   - ./make_wheels.bash xt  
@@ -184,7 +195,12 @@ gdt 3.8:
   cache:
     key: $CI_COMMIT_REF_SLUG_3.8
 
-  needs: [xt 3.8]
+  needs: 
+  - all 3.8
+
+  - xt 3.8
+
+  dependencies: [all 3.8]
 
   script:
   - ./make_wheels.bash gdt  
@@ -220,7 +236,10 @@ xt 3.9:
   cache:
     key: $CI_COMMIT_REF_SLUG_3.9
 
-  needs: [all 3.9]
+  needs: 
+  - all 3.9
+
+  dependencies: [all 3.9]
 
   script:
   - ./make_wheels.bash xt  
@@ -236,7 +255,12 @@ gdt 3.9:
   cache:
     key: $CI_COMMIT_REF_SLUG_3.9
 
-  needs: [xt 3.9]
+  needs: 
+  - all 3.9
+
+  - xt 3.9
+
+  dependencies: [all 3.9]
 
   script:
   - ./make_wheels.bash gdt  

@@ -114,7 +114,12 @@ base:
   cache:
     key: $CI_COMMIT_REF_SLUG_{{py}}
 {% if not loop.first %}
-  needs: [{{loop.previtem}} {{py}}]
+  needs: 
+  - all {{py}}
+{% if md == "gdt" %}
+  - xt {{py}}
+{% endif %}
+  dependencies: [all {{py}}]
 {% endif %}
   script:
   - ./make_wheels.bash {{md}}  
