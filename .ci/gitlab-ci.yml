@@ -2,10 +2,15 @@ stages:
   - base
   # - modules
   - wheels
+  - test
   - publish
 
 variables:
   GIT_SUBMODULE_STRATEGY: none
+  ML_TAG: bfea00695a81595e3155d7d5702d35b6d9eb0bac
+  WHEEL_DIR: ${CI_PROJECT_DIR}/wheelhouse
+  DUNE_BUILD_DIR: ${CI_PROJECT_DIR}/build
+  DUNE_SRC_DIR: ${CI_PROJECT_DIR}
 
 .docker-in-docker:
     retry:
@@ -58,31 +63,24 @@ base:
 .wheels_base:
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
+    LOCAL_UID: 0
     TWINE_PASSWORD: ${CI_JOB_TOKEN}
     TWINE_USERNAME: gitlab-ci-token
     GITLAB_PYPI: ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi/
-    LOCAL_USER: dxt
   stage: wheels
+  image: zivgitlab.wwu.io/ag-ohlberger/dune-community/docker/manylinux-2014_py${GDT_PYTHON_VERSION}:${ML_TAG}
   needs: []
-  extends: .docker-in-docker
-  # try to download from gitlab first, then pypi
-  before_script:
-    - !reference [.docker-in-docker, before_script]
-    - export PIP_CONFIG_FILE=${SHARED_PATH}/pip.conf
-    - sed "s;PYPI_INDEX_URL;${GITLAB_PYPI}/simple;g" .ci/pip.conf > ${PIP_CONFIG_FILE}
   script:
-    - ./make_docker_wheels.bash xt
+    - ./make_wheels.bash xt
     - python3 -m twine check docker/wheelhouse/final/*xt*.whl
     - python3 -m twine upload --repository-url ${GITLAB_PYPI} docker/wheelhouse/final/*xt*.whl
-    - ./make_docker_wheels.bash gdt
+    - ./make_wheels.bash gdt
     - python3 -m twine check docker/wheelhouse/final/*gdt*.whl
     - python3 -m twine upload --repository-url ${GITLAB_PYPI} docker/wheelhouse/final/*gdt*.whl
   artifacts:
     paths:
-      - docker/wheelhouse/final/*.whl
-  cache:
-    paths:
-      - docker/cache
+      - ${WHEEL_DIR}/final/*.whl
+      - ${DUNE_BUILD_DIR}
 
 wheels 3.7:
   extends: .wheels_base
@@ -105,10 +103,32 @@ wheels 3.9:
   cache:
     key: $CI_COMMIT_REF_SLUG_3.9
 
+.test_base:
+  image: pymor/testing_py${GDT_PYTHON_VERSION}:latest
+  stage: test
+  script:
+    - pip install ${WHEEL_DIR}/final/dune*whl
+    - python -c 'from dune.${md} import *'
+
+test wheels 3.7:
+  extends: .test_base
+  needs: ["wheels 3.7"]
+  dependencies: ["wheels 3.7"]
+
+test wheels 3.8:
+  extends: .test_base
+  needs: ["wheels 3.8"]
+  dependencies: ["wheels 3.8"]
+
+test wheels 3.9:
+  extends: .test_base
+  needs: ["wheels 3.9"]
+  dependencies: ["wheels 3.9"]
+
 .publish:
   image: alpine:3.15
   dependencies: ["wheels 3.9", "wheels 3.8", "wheels 3.7"]
-  needs: ["wheels 3.9", "wheels 3.8", "wheels 3.7"]
+  needs: ["test wheels 3.9", "test wheels 3.8", "test wheels 3.7", "wheels 3.9", "wheels 3.8", "wheels 3.7"]
   stage: publish
   before_script:
       - apk --update add py3-pip git file bash python3 py3-cffi py3-cryptography
