@@ -51,7 +51,7 @@ sanity:
     - apk add git py3-pip
     - pip3 install jinja2
   script:
-    - ./.ci/template.gitlab-ci.py && git diff --exit-code .ci/gitlab-ci.yml
+    - ./.ci/template.gitlab-ci.yml.py && git diff --exit-code .ci/gitlab-ci.yml
 
 base:
     extends: .docker-in-docker
