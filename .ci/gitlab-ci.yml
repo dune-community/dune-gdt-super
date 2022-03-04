@@ -2,6 +2,7 @@
 #   Edit and Re-run .ci/template.gitlab-ci.yml.py instead       #
 
 stages:
+  - sanity
   - base
   # - modules
   - wheels
@@ -42,6 +43,15 @@ variables:
       - amm-only
     # stage: modules
     script: .ci/shared/docker/update_test_dockers.py ${MODULE_NAME}
+
+sanity:
+  stage: sanity
+  image: harbor.uni-muenster.de/proxy-docker/library/alpine:3.15
+  before_script:
+    - apk add git python3
+    - pip3 install jinja2
+  script:
+    - ./.ci/template.gitlab-ci.py && git diff --exit-code .ci/gitlab-ci.yml
 
 base:
     extends: .docker-in-docker
