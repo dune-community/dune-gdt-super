@@ -11,7 +11,7 @@ stages:
 
 variables:
   GIT_SUBMODULE_STRATEGY: none
-  ML_TAG: bfea00695a81595e3155d7d5702d35b6d9eb0bac
+  ML_TAG: 198ec0ffe6ee666b708e5a713acf5a68b88361b3
   WHEEL_DIR: ${CI_PROJECT_DIR}/wheelhouse
   DUNE_BUILD_DIR: ${CI_PROJECT_DIR}/build
   DUNE_SRC_DIR: ${CI_PROJECT_DIR}
@@ -84,6 +84,7 @@ base:
   image: zivgitlab.wwu.io/ag-ohlberger/dune-community/docker/manylinux-2014_py${GDT_PYTHON_VERSION}:${ML_TAG}
   needs: []
   script:
+    - ./make_wheels.bash all
     - ./make_wheels.bash xt
     - python3 -m twine check docker/wheelhouse/final/*xt*.whl
     - python3 -m twine upload --repository-url ${GITLAB_PYPI} docker/wheelhouse/final/*xt*.whl
@@ -95,12 +96,26 @@ base:
       - ${WHEEL_DIR}/final/*.whl
       - ${DUNE_BUILD_DIR}
 
+.test_base:
+  image: pymor/testing_py${GDT_PYTHON_VERSION}:latest
+  stage: test
+  script:
+    - pip install ${WHEEL_DIR}/final/dune*whl
+    - python -c 'from dune.${md} import *'
+
+
 wheels 3.7:
   extends: .wheels_base
   variables:
     GDT_PYTHON_VERSION: "3.7"
   cache:
     key: $CI_COMMIT_REF_SLUG_3.7
+
+test wheels 3.7:
+  extends: .test_base
+  needs: ["wheels 3.7"]
+  dependencies: ["wheels 3.7"]
+
 
 wheels 3.8:
   extends: .wheels_base
@@ -109,6 +124,12 @@ wheels 3.8:
   cache:
     key: $CI_COMMIT_REF_SLUG_3.8
 
+test wheels 3.8:
+  extends: .test_base
+  needs: ["wheels 3.8"]
+  dependencies: ["wheels 3.8"]
+
+
 wheels 3.9:
   extends: .wheels_base
   variables:
@@ -116,32 +137,34 @@ wheels 3.9:
   cache:
     key: $CI_COMMIT_REF_SLUG_3.9
 
-.test_base:
-  image: pymor/testing_py${GDT_PYTHON_VERSION}:latest
-  stage: test
-  script:
-    - pip install ${WHEEL_DIR}/final/dune*whl
-    - python -c 'from dune.${md} import *'
-
-test wheels 3.7:
-  extends: .test_base
-  needs: ["wheels 3.7"]
-  dependencies: ["wheels 3.7"]
-
-test wheels 3.8:
-  extends: .test_base
-  needs: ["wheels 3.8"]
-  dependencies: ["wheels 3.8"]
-
 test wheels 3.9:
   extends: .test_base
   needs: ["wheels 3.9"]
   dependencies: ["wheels 3.9"]
 
+
+
 .publish:
   image: alpine:3.15
-  dependencies: ["wheels 3.9", "wheels 3.8", "wheels 3.7"]
-  needs: ["test wheels 3.9", "test wheels 3.8", "test wheels 3.7", "wheels 3.9", "wheels 3.8", "wheels 3.7"]
+  dependencies:
+  
+  -  "wheels 3.7"
+  
+  -  "wheels 3.8"
+  
+  -  "wheels 3.9"
+
+  needs: 
+  
+  -  "wheels 3.7"
+  -  "test wheels 3.7"
+  
+  -  "wheels 3.8"
+  -  "test wheels 3.8"
+  
+  -  "wheels 3.9"
+  -  "test wheels 3.9"
+
   stage: publish
   before_script:
       - apk --update add py3-pip git file bash python3 py3-cffi py3-cryptography
