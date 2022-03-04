@@ -94,7 +94,6 @@ base:
   needs: []
   artifacts:
     paths:
-      - ${WHEEL_DIR}/final/*.whl
       - ${DUNE_BUILD_DIR}
 
 .test_base:
@@ -126,6 +125,12 @@ base:
 {% if md != "all" %}
   - python3 -m twine check ${WHEEL_DIR}/final/*{{md}}*.whl
   - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*{{md}}*.whl
+{% endif %}
+{% if md == "all" %}
+{# only the 'make all' output needs to be available in xt+gdt steps #}
+  artifacts:
+    paths:
+      - ${DUNE_BUILD_DIR}
 {% endif %}
 {% endfor %}
 

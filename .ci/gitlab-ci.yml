@@ -85,7 +85,6 @@ base:
   needs: []
   artifacts:
     paths:
-      - ${WHEEL_DIR}/final/*.whl
       - ${DUNE_BUILD_DIR}
 
 .test_base:
@@ -109,6 +108,12 @@ all 3.7:
   - ./make_wheels.bash all  
 
 
+
+  artifacts:
+    paths:
+      - ${DUNE_BUILD_DIR}
+
+
 xt 3.7:
   extends: .wheels_base
   variables:
@@ -126,6 +131,7 @@ xt 3.7:
 
   - python3 -m twine check ${WHEEL_DIR}/final/*xt*.whl
   - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*xt*.whl
+
 
 
 gdt 3.7:
@@ -150,6 +156,7 @@ gdt 3.7:
 
 
 
+
 test wheels 3.7:
   extends: .test_base
   needs: ["gdt 3.7"]
@@ -169,6 +176,12 @@ all 3.8:
   - ./make_wheels.bash all  
 
 
+
+  artifacts:
+    paths:
+      - ${DUNE_BUILD_DIR}
+
+
 xt 3.8:
   extends: .wheels_base
   variables:
@@ -186,6 +199,7 @@ xt 3.8:
 
   - python3 -m twine check ${WHEEL_DIR}/final/*xt*.whl
   - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*xt*.whl
+
 
 
 gdt 3.8:
@@ -210,6 +224,7 @@ gdt 3.8:
 
 
 
+
 test wheels 3.8:
   extends: .test_base
   needs: ["gdt 3.8"]
@@ -227,6 +242,12 @@ all 3.9:
 
   script:
   - ./make_wheels.bash all  
+
+
+
+  artifacts:
+    paths:
+      - ${DUNE_BUILD_DIR}
 
 
 xt 3.9:
@@ -248,6 +269,7 @@ xt 3.9:
   - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*xt*.whl
 
 
+
 gdt 3.9:
   extends: .wheels_base
   variables:
@@ -267,6 +289,7 @@ gdt 3.9:
 
   - python3 -m twine check ${WHEEL_DIR}/final/*gdt*.whl
   - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*gdt*.whl
+
 
 
 
