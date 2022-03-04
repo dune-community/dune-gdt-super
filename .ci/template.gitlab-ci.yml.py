@@ -95,6 +95,9 @@ base:
   artifacts:
     paths:
       - ${DUNE_BUILD_DIR}
+      - ninja_log_*.tar.gz
+  after_script:
+    - tar cfz ninja_log_${STEP}_${GDT_PYTHON_VERSION}.tar.gz ${DUNE_BUILD_DIR}/dune-*/.ninja_log
 
 .test_base:
   image: pymor/testing_py${GDT_PYTHON_VERSION}:latest
@@ -110,6 +113,7 @@ base:
   extends: .wheels_base
   variables:
     GDT_PYTHON_VERSION: "{{py}}"
+    STEP: {{md}}
   cache:
     key: $CI_COMMIT_REF_SLUG_{{py}}
 {% if not loop.first %}

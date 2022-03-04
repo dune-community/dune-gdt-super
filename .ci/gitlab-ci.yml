@@ -86,6 +86,9 @@ base:
   artifacts:
     paths:
       - ${DUNE_BUILD_DIR}
+      - ninja_log_*.tar.gz
+  after_script:
+    - tar cfz ninja_log_${STEP}_${GDT_PYTHON_VERSION}.tar.gz ${DUNE_BUILD_DIR}/dune-*/.ninja_log
 
 .test_base:
   image: pymor/testing_py${GDT_PYTHON_VERSION}:latest
@@ -101,6 +104,7 @@ all 3.7:
   extends: .wheels_base
   variables:
     GDT_PYTHON_VERSION: "3.7"
+    STEP: all
   cache:
     key: $CI_COMMIT_REF_SLUG_3.7
 
@@ -118,6 +122,7 @@ xt 3.7:
   extends: .wheels_base
   variables:
     GDT_PYTHON_VERSION: "3.7"
+    STEP: xt
   cache:
     key: $CI_COMMIT_REF_SLUG_3.7
 
@@ -138,6 +143,7 @@ gdt 3.7:
   extends: .wheels_base
   variables:
     GDT_PYTHON_VERSION: "3.7"
+    STEP: gdt
   cache:
     key: $CI_COMMIT_REF_SLUG_3.7
 
@@ -169,6 +175,7 @@ all 3.8:
   extends: .wheels_base
   variables:
     GDT_PYTHON_VERSION: "3.8"
+    STEP: all
   cache:
     key: $CI_COMMIT_REF_SLUG_3.8
 
@@ -186,6 +193,7 @@ xt 3.8:
   extends: .wheels_base
   variables:
     GDT_PYTHON_VERSION: "3.8"
+    STEP: xt
   cache:
     key: $CI_COMMIT_REF_SLUG_3.8
 
@@ -206,6 +214,7 @@ gdt 3.8:
   extends: .wheels_base
   variables:
     GDT_PYTHON_VERSION: "3.8"
+    STEP: gdt
   cache:
     key: $CI_COMMIT_REF_SLUG_3.8
 
@@ -237,6 +246,7 @@ all 3.9:
   extends: .wheels_base
   variables:
     GDT_PYTHON_VERSION: "3.9"
+    STEP: all
   cache:
     key: $CI_COMMIT_REF_SLUG_3.9
 
@@ -254,6 +264,7 @@ xt 3.9:
   extends: .wheels_base
   variables:
     GDT_PYTHON_VERSION: "3.9"
+    STEP: xt
   cache:
     key: $CI_COMMIT_REF_SLUG_3.9
 
@@ -274,6 +285,7 @@ gdt 3.9:
   extends: .wheels_base
   variables:
     GDT_PYTHON_VERSION: "3.9"
+    STEP: gdt
   cache:
     key: $CI_COMMIT_REF_SLUG_3.9
 
