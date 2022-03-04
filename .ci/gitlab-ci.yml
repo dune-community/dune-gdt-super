@@ -11,7 +11,7 @@ stages:
 
 variables:
   GIT_SUBMODULE_STRATEGY: none
-  ML_TAG: 198ec0ffe6ee666b708e5a713acf5a68b88361b3
+  ML_TAG: 025abb8afea0f833fce9c4209e9f86e50655d531
   WHEEL_DIR: ${CI_PROJECT_DIR}/wheelhouse
   DUNE_BUILD_DIR: ${CI_PROJECT_DIR}/build
   DUNE_SRC_DIR: ${CI_PROJECT_DIR}
@@ -86,11 +86,11 @@ base:
   script:
     - ./make_wheels.bash all
     - ./make_wheels.bash xt
-    - python3 -m twine check docker/wheelhouse/final/*xt*.whl
-    - python3 -m twine upload --repository-url ${GITLAB_PYPI} docker/wheelhouse/final/*xt*.whl
+    - python3 -m twine check ${WHEEL_DIR}/final/*xt*.whl
+    - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*xt*.whl
     - ./make_wheels.bash gdt
-    - python3 -m twine check docker/wheelhouse/final/*gdt*.whl
-    - python3 -m twine upload --repository-url ${GITLAB_PYPI} docker/wheelhouse/final/*gdt*.whl
+    - python3 -m twine check ${WHEEL_DIR}/final/*gdt*.whl
+    - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*gdt*.whl
   artifacts:
     paths:
       - ${WHEEL_DIR}/final/*.whl
@@ -175,10 +175,10 @@ test wheels 3.9:
   script: 
     - cd ${MOD_DIR}
     # upload only if a tag points to checked out commit
-    - (git describe --exact-match --tags HEAD && python3 -m twine upload docker/wheelhouse/final/${MOD_WHEEL_PREFIX}*whl) || echo "not uploading untagged wheels"
+    - (git describe --exact-match --tags HEAD && python3 -m twine upload ${WHEEL_DIR}/final/${MOD_WHEEL_PREFIX}*whl) || echo "not uploading untagged wheels"
   artifacts:
     paths:
-      - docker/wheelhouse/final/${MOD_WHEEL_PREFIX}*whl
+      - ${WHEEL_DIR}/final/${MOD_WHEEL_PREFIX}*whl
     
 publish dune-xt:
   extends: .publish
