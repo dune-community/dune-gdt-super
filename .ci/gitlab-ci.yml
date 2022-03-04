@@ -105,7 +105,7 @@ all 3.7:
     key: $CI_COMMIT_REF_SLUG_3.7
 
   script:
-  - ./make_wheels.bash all  
+  - ./make_wheels.bash all
 
 
 
@@ -121,13 +121,13 @@ xt 3.7:
   cache:
     key: $CI_COMMIT_REF_SLUG_3.7
 
-  needs: 
+  needs:
   - all 3.7
 
   dependencies: [all 3.7]
 
   script:
-  - ./make_wheels.bash xt  
+  - ./make_wheels.bash xt
 
   - python3 -m twine check ${WHEEL_DIR}/final/*xt*.whl
   - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*xt*.whl
@@ -141,7 +141,7 @@ gdt 3.7:
   cache:
     key: $CI_COMMIT_REF_SLUG_3.7
 
-  needs: 
+  needs:
   - all 3.7
 
   - xt 3.7
@@ -149,7 +149,7 @@ gdt 3.7:
   dependencies: [all 3.7]
 
   script:
-  - ./make_wheels.bash gdt  
+  - ./make_wheels.bash gdt
 
   - python3 -m twine check ${WHEEL_DIR}/final/*gdt*.whl
   - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*gdt*.whl
@@ -173,7 +173,7 @@ all 3.8:
     key: $CI_COMMIT_REF_SLUG_3.8
 
   script:
-  - ./make_wheels.bash all  
+  - ./make_wheels.bash all
 
 
 
@@ -189,13 +189,13 @@ xt 3.8:
   cache:
     key: $CI_COMMIT_REF_SLUG_3.8
 
-  needs: 
+  needs:
   - all 3.8
 
   dependencies: [all 3.8]
 
   script:
-  - ./make_wheels.bash xt  
+  - ./make_wheels.bash xt
 
   - python3 -m twine check ${WHEEL_DIR}/final/*xt*.whl
   - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*xt*.whl
@@ -209,7 +209,7 @@ gdt 3.8:
   cache:
     key: $CI_COMMIT_REF_SLUG_3.8
 
-  needs: 
+  needs:
   - all 3.8
 
   - xt 3.8
@@ -217,7 +217,7 @@ gdt 3.8:
   dependencies: [all 3.8]
 
   script:
-  - ./make_wheels.bash gdt  
+  - ./make_wheels.bash gdt
 
   - python3 -m twine check ${WHEEL_DIR}/final/*gdt*.whl
   - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*gdt*.whl
@@ -241,7 +241,7 @@ all 3.9:
     key: $CI_COMMIT_REF_SLUG_3.9
 
   script:
-  - ./make_wheels.bash all  
+  - ./make_wheels.bash all
 
 
 
@@ -257,13 +257,13 @@ xt 3.9:
   cache:
     key: $CI_COMMIT_REF_SLUG_3.9
 
-  needs: 
+  needs:
   - all 3.9
 
   dependencies: [all 3.9]
 
   script:
-  - ./make_wheels.bash xt  
+  - ./make_wheels.bash xt
 
   - python3 -m twine check ${WHEEL_DIR}/final/*xt*.whl
   - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*xt*.whl
@@ -277,7 +277,7 @@ gdt 3.9:
   cache:
     key: $CI_COMMIT_REF_SLUG_3.9
 
-  needs: 
+  needs:
   - all 3.9
 
   - xt 3.9
@@ -285,7 +285,7 @@ gdt 3.9:
   dependencies: [all 3.9]
 
   script:
-  - ./make_wheels.bash gdt  
+  - ./make_wheels.bash gdt
 
   - python3 -m twine check ${WHEEL_DIR}/final/*gdt*.whl
   - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*gdt*.whl
@@ -303,21 +303,21 @@ test wheels 3.9:
 .publish:
   image: alpine:3.15
   dependencies:
-  
+
   -  "gdt 3.7"
-  
+
   -  "gdt 3.8"
-  
+
   -  "gdt 3.9"
 
-  needs: 
-  
+  needs:
+
   -  "gdt 3.7"
   -  "test wheels 3.7"
-  
+
   -  "gdt 3.8"
   -  "test wheels 3.8"
-  
+
   -  "gdt 3.9"
   -  "test wheels 3.9"
 
@@ -328,14 +328,14 @@ test wheels 3.9:
   variables:
     TWINE_PASSWORD: ${TWINE_PASSWORD}
     TWINE_USERNAME: ${TWINE_USERNAME}
-  script: 
+  script:
     - cd ${MOD_DIR}
     # upload only if a tag points to checked out commit
     - (git describe --exact-match --tags HEAD && python3 -m twine upload ${WHEEL_DIR}/final/${MOD_WHEEL_PREFIX}*whl) || echo "not uploading untagged wheels"
   artifacts:
     paths:
       - ${WHEEL_DIR}/final/${MOD_WHEEL_PREFIX}*whl
-    
+
 publish dune-xt:
   extends: .publish
   variables:

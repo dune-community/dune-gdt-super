@@ -113,7 +113,7 @@ base:
   cache:
     key: $CI_COMMIT_REF_SLUG_{{py}}
 {% if not loop.first %}
-  needs: 
+  needs:
   - all {{py}}
 {% if md == "gdt" %}
   - xt {{py}}
@@ -121,7 +121,7 @@ base:
   dependencies: [all {{py}}]
 {% endif %}
   script:
-  - ./make_wheels.bash {{md}}  
+  - ./make_wheels.bash {{md}}
 {% if md != "all" %}
   - python3 -m twine check ${WHEEL_DIR}/final/*{{md}}*.whl
   - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*{{md}}*.whl
@@ -144,11 +144,11 @@ test wheels {{py}}:
 .publish:
   image: alpine:3.15
   dependencies:
-{% for py in pythons %}  
+{% for py in pythons %}
   -  "gdt {{py}}"
 {% endfor %}
-  needs: 
-{% for py in pythons %}  
+  needs:
+{% for py in pythons %}
   -  "gdt {{py}}"
   -  "test wheels {{py}}"
 {% endfor %}
@@ -159,14 +159,14 @@ test wheels {{py}}:
   variables:
     TWINE_PASSWORD: ${TWINE_PASSWORD}
     TWINE_USERNAME: ${TWINE_USERNAME}
-  script: 
+  script:
     - cd ${MOD_DIR}
     # upload only if a tag points to checked out commit
     - (git describe --exact-match --tags HEAD && python3 -m twine upload ${WHEEL_DIR}/final/${MOD_WHEEL_PREFIX}*whl) || echo "not uploading untagged wheels"
   artifacts:
     paths:
       - ${WHEEL_DIR}/final/${MOD_WHEEL_PREFIX}*whl
-    
+
 publish dune-xt:
   extends: .publish
   variables:

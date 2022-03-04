@@ -13,7 +13,7 @@ sed "s;PYPI_INDEX_URL;${GITLAB_PYPI}/simple;g" ${THISDIR}/.ci/pip.conf > ${PIP_C
 python3 -m pip install twine
 
 set -eu
-  
+
 build-wheels.sh ${md}
 
 echo '************************************'
