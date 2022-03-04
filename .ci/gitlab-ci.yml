@@ -114,20 +114,24 @@ wheels 3.9:
       - apk --update add py3-pip git file bash python3 py3-cffi py3-cryptography
       - pip3 install -U twine
   variables:
-    TWINE_PASSWORD: ${CI_JOB_TOKEN}
-    TWINE_USERNAME: gitlab-ci-token
-  script:
-    -  python3 -m twine upload --repository-url ${GITLAB_PYPI} ${MOD_WHEEL}
+    TWINE_PASSWORD: ${TWINE_PASSWORD}
+    TWINE_USERNAME: ${TWINE_USERNAME}
+  script: 
+    - cd ${MOD_DIR}
+    # upload only if a tag points to checked out commit
+    - (git describe --exact-match --tags HEAD && python3 -m twine upload docker/wheelhouse/final/${MOD_WHEEL_PREFIX}*whl) || echo "not uploading untagged wheels"
   artifacts:
     paths:
-      - ${MOD_WHEEL}
+      - docker/wheelhouse/final/${MOD_WHEEL_PREFIX}*whl
     
 publish dune-xt:
   extends: .publish
   variables:
-    MOD_WHEEL: docker/wheelhouse/final/dune_xt*.whl
+    MOD_WHEEL_PREFIX: dune_xt
+    MOD_DIR: dune-xt
 
 publish dune-gdt:
   extends: .publish
   variables:
-    MOD_WHEEL: docker/wheelhouse/final/dune_gdt*.whl
+    MOD_WHEEL_PREFIX: dune_gdt
+    MOD_DIR: dune-gdt
