@@ -50,8 +50,6 @@ class SolverChunkGenerator:
         indices: "list[int]",
         products: "list[Any]",
         normalize_residuals: bool,
-        num_changed_mus: int,
-        excluded_params: "list[str]",
     ):
         self.pickle_prefix = pickle_prefix
         self.cellmodel = cellmodel
@@ -63,8 +61,6 @@ class SolverChunkGenerator:
         self.num_chunks, _ = solver_statistics(t_end=t_end, dt=dt, chunk_size=chunk_size)
         self.products = products
         self.normalize_residuals = normalize_residuals
-        self.num_changed_mus = num_changed_mus
-        self.excluded_params = excluded_params
 
     def __iter__(self):
         # walk over time chunks
@@ -89,7 +85,7 @@ class SolverChunkGenerator:
                 for time_index in range(self.chunk_size - 1 if chunk_index == 0 else self.chunk_size):
                     # t1 = timer()
                     current_values[p], data = self.cellmodel.next_time_step(
-                        current_values[p], t, mu=mu, return_stages=self.include_newton_stages, return_residuals=True, num_changed_mus=self.num_changed_mus, excluded_params=self.excluded_params
+                        current_values[p], t, mu=mu, return_stages=self.include_newton_stages, return_residuals=True,
                     )
                     # timings["data"] += timer() - t1
                     t = data["t"]
@@ -112,8 +108,6 @@ class SolverChunkGenerator:
                                 residuals = residuals * np.array(
                                     [1 / norm if norm > 0 else 1 for norm in residuals.norm(product=self.products[k])]
                                 )
-                            if self.num_changed_mus > 0:
-                                residuals.append(data["changed_residuals"][k-3])
                             new_vecs[k].append(residuals)
 
                 if check_against_pickled:
@@ -182,7 +176,6 @@ if __name__ == "__main__":
     ofield_deim_atol = 1e-10 if argc < 17 else float(sys.argv[16])
     stokes_deim_atol = 1e-10 if argc < 18 else float(sys.argv[17])
     parameter_sampling_type = "log_reciprocal" if argc < 19 else sys.argv[18]
-    num_changed_mus = 0 if argc < 20 else int(sys.argv[19])
     pod_method = "method_of_snapshots" if argc < 21 else sys.argv[20]
     assert pod_method in ("qr_svd", "method_of_snapshots")
     normalize_residuals = False
@@ -202,9 +195,10 @@ if __name__ == "__main__":
         least_squares_ofield = False
     if not pod_stokes:
         least_squares_stokes = False
-    excluded_params = ("Pa", "Ca")
+    excluded_params = ("Pa",)
     # product_type = "L2"
-    product_type = "H1"
+    # product_type = "H1"
+    product_type = "l2"
     train_params_per_rank = 1
     test_params_per_rank = 1
     # omega=0.5
@@ -216,11 +210,10 @@ if __name__ == "__main__":
     if mpi.rank_world == 0:
         if not os.path.exists(logfile_dir):
             os.mkdir(logfile_dir)
-    logfile_prefix = "results_{}{}_{}_{}addmus_{}_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_{}tppr_pfield{}_ofield{}_stokes{}_without".format(
+    logfile_prefix = "results_{}{}_{}_{}_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_{}tppr_pfield{}_ofield{}_stokes{}_without".format(
         "normalized_" if normalize_residuals else "",
         "mos" if pod_method == "method_of_snapshots" else "qr_svd",
         parameter_sampling_type,
-        num_changed_mus,
         testcase,
         mpi.size_world,
         product_type,
@@ -315,8 +308,6 @@ if __name__ == "__main__":
         indices=indices,
         products=products,
         normalize_residuals=normalize_residuals,
-        num_changed_mus=num_changed_mus,
-        excluded_params=excluded_params,
     )
     # perform HAPOD
     results = binary_tree_hapod(

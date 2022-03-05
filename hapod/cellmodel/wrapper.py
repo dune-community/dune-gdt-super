@@ -16,7 +16,7 @@ from hapod.mpi import MPIWrapper, idle_wait
 from hapod.xt import DuneXtLaListVectorSpace, DuneXtLaVector
 import numpy as np
 from pymor.algorithms.ei import deim
-from pymor.algorithms.newton import newton
+from pymor.algorithms.newton import newton, newton_two_ops
 from pymor.algorithms.projection import project
 from pymor.core.base import abstractmethod
 from pymor.models.interface import Model
@@ -243,10 +243,9 @@ class CellModelSolver(ParametricObject):
         # U_out = [self.impl.apply_pfield_residual_operator_without_mass_matrices(vec.impl, cell_index, restricted) for vec in U._list]
         return self.pfield_solution_space.make_array(U_out)
 
-
-    def apply_pfield_lin_operator(self, U):
+    def apply_pfield_lin_operator(self, U, restricted=False):
         assert U.dim == self.pfield_solution_space.dim
-        # U_out = [self.impl.apply_pfield_diagonal_mass_matrices(vec.impl) for vec in U._list]
+        # U_out = [self.impl.apply_pfield_diagonal_mass_matrices(vec.impl, 0, restricted) for vec in U._list]
         # return self.pfield_solution_space.make_array(U_out)
         return self.pfield_solution_space.zeros(len(U._list))
 
@@ -289,7 +288,7 @@ class CellModelSolver(ParametricObject):
         if restricted:
             U = self.numpy_vecarray_to_xt_listvecarray(U)
         U_out = [self.impl.apply_pfield_jacobian(vec.impl, cell_index, restricted) for vec in U._list]
-        U_out = [self.impl.apply_pfield_jacobian_without_diagonal_mass_matrices(vec.impl, cell_index, restricted) for vec in U._list]
+        # U_out = [self.impl.apply_pfield_jacobian_without_diagonal_mass_matrices(vec.impl, cell_index, restricted) for vec in U._list]
         ret = self.pfield_solution_space.make_array(U_out)
         return ret
 
@@ -317,7 +316,7 @@ class CellModelPfieldLinOperator(Operator):
         self.solver = solver
         self.source = self.range = self.solver.pfield_solution_space
         self.linear = True
-        self._parameters = {}  # the mass matrices are parameter-independent
+        self._parameters = Parameters()  # the mass matrices are parameter-independent
 
     def apply(self, U, mu=None):
         return self.solver.apply_pfield_lin_operator(U)
@@ -515,7 +514,7 @@ class MutableStateFixedComponentJacobianOperator(Operator):
         self.source = operator.fixed_component_source
         self.range = operator.range
         self.linear = True
-        self._parameters = {}  # mu is already fixed, so no parameters
+        self._parameters = Parameters()  # mu is already fixed, so no parameters
 
     def apply(self, U, mu=None):
         assert U in self.source
@@ -560,7 +559,7 @@ class CellModelRestrictedPfieldOperator(MutableStateComponentJacobianOperator):
         self._fixed_component_source_dofs = self.source_dofs[0]
         self.source = BlockVectorSpace([NumpyVectorSpace(len(dofs)) for dofs in self.source_dofs])
         self.range = NumpyVectorSpace(len(range_dofs))
-        self.parameters_own = {"Be": 1, "Ca": 1, "Pa": 1}
+        self.parameters_own = CELLMODEL_PARAMETER_TYPE
 
     def _change_state(self, pfield_dofs=None, ofield_dofs=None, stokes_dofs=None, mu=None):
         if mu is not None:
@@ -610,7 +609,7 @@ class CellModelPfieldOperator(MutableStateComponentJacobianOperator):
             ]
         )
         self.range = self.solver.pfield_solution_space
-        self.parameters_own = {"Be": 1, "Ca": 1, "Pa": 1}
+        self.parameters_own = CELLMODEL_PARAMETER_TYPE
 
     def _change_state(self, pfield_dofs=None, ofield_dofs=None, stokes_dofs=None, mu=None):
         if mu is not None:
@@ -643,6 +642,7 @@ class CellModelPfieldOperator(MutableStateComponentJacobianOperator):
         return self.solver.apply_pfield_jacobian(U, self.cell_index)
 
     def _fixed_component_jacobian_apply_inverse(self, V, least_squares=False):
+        raise NotImplementedError
         assert not least_squares, "Least squares not implemented!"
         return self.solver.apply_inverse_pfield_jacobian(V, self.cell_index)
 
@@ -714,7 +714,7 @@ class CellModelOfieldOperator(MutableStateComponentJacobianOperator):
             ]
         )
         self.range = self.solver.ofield_solution_space
-        self.parameters_own = {"Pa": 1}
+        self.parameters_own = Parameters({"Pa": 1})
 
     def _change_state(self, pfield_dofs=None, ofield_dofs=None, stokes_dofs=None, mu=None):
         if mu is not None:
@@ -920,8 +920,11 @@ class CellModel(Model):
             actual_dt = min(self.dt, self.t_end - t)
             # do a timestep
             print("Current time: {}".format(t), flush=True)
-            pfield_vecarray, pfield_data = newton(
-                self.pfield_lin_op + self.pfield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]),
+            # pfield_vecarray, pfield_data = newton(
+            pfield_vecarray, pfield_data = newton_two_ops(
+                # self.pfield_lin_op + self.pfield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]),
+                self.pfield_lin_op,
+                self.pfield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]),
                 self.pfield_op.range.zeros(),  # pfield_op has same range as pfield_op with fixed components
                 initial_guess=pfield_vecarray,
                 mu=mu,
@@ -934,6 +937,7 @@ class CellModel(Model):
             )
             ofield_vecarray, ofield_data = newton(
                 self.ofield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]),
+
                 self.ofield_op.range.zeros(),
                 initial_guess=ofield_vecarray,
                 mu=mu,
@@ -985,8 +989,6 @@ class CellModel(Model):
         return_output=False,
         return_stages=False,
         return_residuals=False,
-        num_changed_mus=0,
-        excluded_params=None,
     ):
         assert not return_output
 
@@ -1006,8 +1008,11 @@ class CellModel(Model):
         is_fom = isinstance(self.pfield_op, CellModelPfieldOperator)
         # do a timestep
         print("Current time: {}".format(t), flush=True)
-        pfield_vecs, pfield_data = newton(
-            self.pfield_lin_op + self.pfield_op.fix_components((1, 2, 3), [pfield_vecs, ofield_vecs, stokes_vecs]),
+        # pfield_vecs, pfield_data = newton(
+        pfield_vecs, pfield_data = newton_two_ops(
+            # self.pfield_lin_op + self.pfield_op.fix_components((1, 2, 3), [pfield_vecs, ofield_vecs, stokes_vecs]),
+            self.pfield_lin_op,
+            self.pfield_op.fix_components((1, 2, 3), [pfield_vecs, ofield_vecs, stokes_vecs]),
             self.pfield_op.range.zeros(),  # pfield_op has same range as the pfield_op with fixed components
             initial_guess=pfield_vecs,
             mu=mu,
@@ -1017,8 +1022,6 @@ class CellModel(Model):
             source_product=self.products["pfield"] if is_fom else None,
             range_product=self.products["pfield"] if is_fom else None,
             **self.newton_params_pfield,
-            num_changed_mus=num_changed_mus,
-            excluded_params=excluded_params,
         )
         ofield_vecs, ofield_data = newton(
             self.ofield_op.fix_components((1, 2, 3), [pfield_vecs, ofield_vecs, stokes_vecs]),
@@ -1031,8 +1034,6 @@ class CellModel(Model):
             source_product=self.products["ofield"] if is_fom else None,
             range_product=self.products["ofield"] if is_fom else None,
             **self.newton_params_ofield,
-            num_changed_mus=num_changed_mus,
-            excluded_params=excluded_params,
         )
         stokes_vecs, stokes_data = newton(
             self.stokes_op.fix_components((1, 2), [pfield_vecs, ofield_vecs]),
@@ -1045,8 +1046,6 @@ class CellModel(Model):
             source_product=self.products["stokes"] if is_fom else None,
             range_product=self.products["stokes"] if is_fom else None,
             **self.newton_params_stokes,
-            num_changed_mus=num_changed_mus,
-            excluded_params=excluded_params,
         )
         t += actual_dt
         U = self.solution_space.make_array([pfield_vecs, ofield_vecs, stokes_vecs])
@@ -1056,12 +1055,6 @@ class CellModel(Model):
             retval[1]["stages"] = (pfield_data["stages"], ofield_data["stages"], stokes_data["stages"])
         if return_residuals:
             retval[1]["residuals"] = (pfield_data["residuals"], ofield_data["residuals"], stokes_data["residuals"])
-        if num_changed_mus > 0:
-            retval[1]["changed_residuals"] = (
-                pfield_data["changed_residuals"],
-                ofield_data["changed_residuals"],
-                stokes_data["changed_residuals"],
-            )
         return retval
 
 
@@ -1303,34 +1296,50 @@ class CellModelReductor(ProjectionBasedReductor):
         fom = self.fom
         pfield_basis, ofield_basis, stokes_basis = (self.bases["pfield"], self.bases["ofield"], self.bases["stokes"])
         pfield_op, ofield_op, stokes_op = fom.pfield_op, fom.ofield_op, fom.stokes_op
+        pfield_lin_op = fom.pfield_lin_op
         if self.pfield_deim_basis:
             pfield_dofs, pfield_deim_basis, _ = deim(self.pfield_deim_basis, pod=False, product=self.products["pfield"])
             pfield_op = EmpiricalInterpolatedOperatorWithFixComponent(pfield_op, pfield_dofs, pfield_deim_basis, False)
-            # If the full-order residual formulation is R(U) = 0, then
-            # the Galerkin DEIM reduced model is (using the Euclidean inner product)
-            #   V^T Z (E^T Z)^{-1} E^T R(Vu) = 0,
-            # where V and Z have the POD and DEIM basis as their columns, respectively,
-            # and E = (e_{k_1}, ..., e_{k_l}) contains the unit vectors corresponding to the DEIM indices.
-            # The pfield_deim_basis.inner(pfield_basis) part computes V^T Z.
+            projected_collateral_basis = (
+                # If the full-order residual formulation is R(U) = 0, then
+                # the Galerkin DEIM reduced model is
+                #   V^T W Z (E^T Z)^{-1} E^T R(Vu) = 0,
+                # where V in R^{Nxn} and Z in R^{Nxl} have the POD and DEIM basis as their columns, respectively,
+                # E = (e_{k_1}, ..., e_{k_l}) in R^{Nxl} contains the unit vectors corresponding to the DEIM indices
+                # and W is the positive definite matrix which defines the inner product.
+                # If we split up the operator and only approximate the nonlinear part via DEIM, R(U) + R_lin U = 0, then
+                # the Galerkin DEIM reduced model is
+                #  V^T W R_lin V u + V^T W Z (E^T Z)^{-1} E^T R(Vu) = 0,
+                # The pfield_deim_basis.inner(pfield_basis) part below computes (V^T W Z)^T.
+                # E^T Z is stored in pfield_op.interpolation_matrix.
+                NumpyVectorSpace.make_array(pfield_deim_basis.inner(pfield_basis, product=self.products["pfield"]))
+                if not self.least_squares_pfield
+                else
             # If we use least squares projection, we do not project via V^T, but we solve
-            # argmin_u ||Z (E^T Z)^{-1} E^T R(Vu)||_W
+            # argmin_u ||R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)||_W
             # where W is the positive definite matrix which defines the inner product.
             # Since
-            #   argmin_u ||Z (E^T Z)^{-1} E^T R(Vu)||_W
-            # = argmin_u ||Z (E^T Z)^{-1} E^T R(Vu)||_W^2
-            # = argmin_u (Z (E^T Z)^{-1} E^T R(Vu))^T W (Z (E^T Z)^{-1} E^T R(Vu))
-            # = argmin_u R(Vu)^T E (E^T Z)^{-T} Z^T W Z (E^T Z)^{-1} E^T R(Vu)
-            # = argmin_u R(Vu)^T E (E^T Z)^{-T} (E^T Z)^{-1} E^T R(Vu)
-            # = argmin_u ||(E^T Z)^{-1} E^T R(Vu)||^2
-            # = argmin_u ||(E^T Z)^{-1} E^T R(Vu)||
-            # if the DEIM basis is W-orthonormal, i.e., Z^T W Z = I, we can compute
-            # the minimum in the space of DEIM coefficients (i.e., project the collateral_basis
+            #   argmin_u ||R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)||_W
+            # = argmin_u ||R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)||_W^2
+            # = argmin_u [R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)]^T W [R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)]
+            # = argmin_u R(Vu)^T E (E^T Z)^{-T} Z^T W Z (E^T Z)^{-1} E^T R(Vu) + u^T V^T R_lin^T W R_lin V u + u^T V^T R_lin^T W Z (E^T Z)^{-1} E^T R(Vu) + R(Vu)^T E (E^T Z)^{-T} Z^T W R_lin V u
+            # = argmin_u R(Vu)^T E (E^T Z)^{-T} (E^T Z)^{-1} E^T R(Vu) + u^T V^T R_lin W R_lin V u + 2 u^T V^T R_lin^T W Z (E^T Z)^{-1} E^T R(Vu)
+            # = argmin_u ||(E^T Z)^{-1} E^T R(Vu)||^2 + u^T X u + 2 u^T Y (E^T Z)^{-1} E^T R(Vu)
+            # with X = V^T R_lin^T W R_lin V in R^{nxn} and Y = V^T R_lin^T W Z in R^{nxl} where we assumed that the DEIM basis is
+            # W-orthonormal, i.e., Z^T W Z = I.
+            # The argument can be evaluated efficiently since X and Y can be precomputed and to compute (E^T Z)^{-1} E^T R(Vu)
+            # we only need the components of the nonlinear operator corresponding to the DEIM indices.
+            # we can compute the minimum in the space of DEIM coefficients (i.e., project the collateral_basis
             # to its own spanned space which gives the unit matrix).
-            projected_collateral_basis = (
-                NumpyVectorSpace.make_array(np.eye(len(pfield_deim_basis)))  # assumes that pfield_deim_basis is ONB!!!
-                if self.least_squares_pfield
-                else NumpyVectorSpace.make_array(pfield_deim_basis.inner(pfield_basis, product=products["pfield"]))
+                # NumpyVectorSpace.make_array(np.eye(len(pfield_deim_basis)))  # assumes that pfield_deim_basis is ONB!!!
+                NumpyVectorSpace.make_array(pfield_deim_basis.to_numpy())
+
             )
+            print(projected_collateral_basis.to_numpy().shape)
+            # R_lin_V = pfield_lin_op.apply(pfield_basis)
+            # X should be computed in the projection of pfield_lin_op below
+            # X = R_lin_V.inner(R_lin_V, product=self.products["pfield"])
+            # Y = R_lin_V.inner(pfield_deim_basis, product=self.products["pfield"])
             # Extract dofs for the reduced operator
             source_basis_dofs = []
             bases = [pfield_basis, pfield_basis, ofield_basis, stokes_basis]
@@ -1447,11 +1456,10 @@ class CellModelReductor(ProjectionBasedReductor):
             )
         projected_operators = {
             "pfield_op": pfield_op,
-            "pfield_lin_op": project(fom.pfield_lin_op, pfield_basis, pfield_basis),
+            "pfield_lin_op": ProjectedSystemOperator(fom.pfield_lin_op, None, pfield_basis),
             "ofield_op": ofield_op,
             "stokes_op": stokes_op,
             "initial_pfield": project(fom.initial_pfield, pfield_basis, None, product=fom.products["pfield"]),
-            "pfield_op_lin": project(fom.pfield_op_lin, pfield_basis, pfield_basis),
             "initial_ofield": project(fom.initial_ofield, ofield_basis, None, product=fom.products["ofield"]),
             "initial_stokes": project(fom.initial_stokes, stokes_basis, None, product=fom.products["stokes"]),
         }
