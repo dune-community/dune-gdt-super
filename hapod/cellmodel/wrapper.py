@@ -23,6 +23,7 @@ from pymor.models.interface import Model
 from pymor.operators.constructions import ProjectedOperator, VectorOperator
 from pymor.operators.ei import EmpiricalInterpolatedOperator, ProjectedEmpiricalInterpolatedOperator
 from pymor.operators.interface import Operator
+from pymor.operators.numpy import NumpyMatrixOperator
 from pymor.parameters.base import Parameters, ParametricObject
 from pymor.reductors.basic import ProjectionBasedReductor
 from pymor.vectorarrays.block import BlockVectorSpace
@@ -1454,9 +1455,13 @@ class CellModelReductor(ProjectionBasedReductor):
                 stokes_basis if not self.least_squares_stokes else None,
                 [stokes_basis, pfield_basis, ofield_basis],
             )
+        # This is a VectorArrayOperator: pfield_basis_size -> N, where N is the FE-space dimension
+        projected_pfield_lin_op = project(fom.pfield_lin_op, None, pfield_basis, product=fom.products["pfield"])
+        # Since the projected pfield_op is a NumpyMatrixOperator, we have to convert the projected pfield_lin_op to be compatible.
+        pfield_lin_op = NumpyMatrixOperator(projected_pfield_lin_op.array.to_numpy().T)
         projected_operators = {
             "pfield_op": pfield_op,
-            "pfield_lin_op": ProjectedSystemOperator(fom.pfield_lin_op, None, pfield_basis),
+            "pfield_lin_op": pfield_lin_op,
             "ofield_op": ofield_op,
             "stokes_op": stokes_op,
             "initial_pfield": project(fom.initial_pfield, pfield_basis, None, product=fom.products["pfield"]),
