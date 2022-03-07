@@ -13,11 +13,12 @@ sed "s;PYPI_INDEX_URL;${GITLAB_PYPI}/simple;g" ${THISDIR}/.ci/pip.conf > ${PIP_C
 python3 -m pip install -q twine
 
 set +eu
-# check if the to-be-build version is already installable and exit early
+# check if the to-be-build version was already uploaded and exit early
 # this check requires completed `dunecontrol all` 
 if [[ "${md}" != "all" ]] ; then
     export MD_VERSION=$(cat ${DUNE_BUILD_DIR}/dune-xt/python/version.sh)
-    python3 -m pip install dune-${md}==${MD_VERSION}
+    # put this where it's propagated to the test stage as a pipeline artefact
+    python3 -m pip download -d ${WHEEL_DIR}/final/ dune-${md}==${MD_VERSION}
     if [[ $? -ne 0 ]]; then
         echo "Already built dune-${md}==${MD_VERSION}, skipping" 
         exit 0
