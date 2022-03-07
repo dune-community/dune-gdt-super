@@ -87,6 +87,7 @@ base:
     expire_in: 1 day
     paths:
       - ninja_log_*.tar.gz
+      - ${WHEEL_DIR}/final/dune*whl
   after_script:
     - tar cfz ninja_log_${STEP}_${GDT_PYTHON_VERSION}.tar.gz ${DUNE_BUILD_DIR}/dune-*/.ninja_log
 
