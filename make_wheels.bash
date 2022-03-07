@@ -19,7 +19,7 @@ if [[ "${md}" != "all" ]] ; then
     export MD_VERSION=$(cat ${DUNE_BUILD_DIR}/dune-xt/python/version.sh)
     # put this where it's propagated to the test stage as a pipeline artefact
     python3 -m pip download -d ${WHEEL_DIR}/final/ dune-${md}==${MD_VERSION}
-    if [[ $? -ne 0 ]]; then
+    if [[ $? -eq 0 ]]; then
         echo "Already built dune-${md}==${MD_VERSION}, skipping" 
         exit 0
     fi
