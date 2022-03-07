@@ -124,12 +124,8 @@ base:
 {% endif %}
   dependencies: [all {{py}}]
 {% endif %}
-  script:
-  - ./make_wheels.bash {{md}}
-{% if md != "all" %}
-  - python3 -m twine check ${WHEEL_DIR}/final/*{{md}}*.whl
-  - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*{{md}}*.whl
-{% endif %}
+  {# this can only be one script exactly, to make skipping from within itself possible #}
+  script: ./make_wheels.bash {{md}}
 {% if md == "all" %}
 {# only the 'make all' output needs to be available in xt+gdt steps #}
   artifacts:

@@ -108,9 +108,8 @@ all 3.7:
   cache:
     key: $CI_COMMIT_REF_SLUG_3.7
 
-  script:
-  - ./make_wheels.bash all
-
+  
+  script: ./make_wheels.bash all
 
 
   artifacts:
@@ -131,12 +130,8 @@ xt 3.7:
 
   dependencies: [all 3.7]
 
-  script:
-  - ./make_wheels.bash xt
-
-  - python3 -m twine check ${WHEEL_DIR}/final/*xt*.whl
-  - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*xt*.whl
-
+  
+  script: ./make_wheels.bash xt
 
 
 gdt 3.7:
@@ -154,12 +149,8 @@ gdt 3.7:
 
   dependencies: [all 3.7]
 
-  script:
-  - ./make_wheels.bash gdt
-
-  - python3 -m twine check ${WHEEL_DIR}/final/*gdt*.whl
-  - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*gdt*.whl
-
+  
+  script: ./make_wheels.bash gdt
 
 
 
@@ -181,9 +172,8 @@ all 3.8:
   cache:
     key: $CI_COMMIT_REF_SLUG_3.8
 
-  script:
-  - ./make_wheels.bash all
-
+  
+  script: ./make_wheels.bash all
 
 
   artifacts:
@@ -204,12 +194,8 @@ xt 3.8:
 
   dependencies: [all 3.8]
 
-  script:
-  - ./make_wheels.bash xt
-
-  - python3 -m twine check ${WHEEL_DIR}/final/*xt*.whl
-  - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*xt*.whl
-
+  
+  script: ./make_wheels.bash xt
 
 
 gdt 3.8:
@@ -227,12 +213,8 @@ gdt 3.8:
 
   dependencies: [all 3.8]
 
-  script:
-  - ./make_wheels.bash gdt
-
-  - python3 -m twine check ${WHEEL_DIR}/final/*gdt*.whl
-  - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*gdt*.whl
-
+  
+  script: ./make_wheels.bash gdt
 
 
 
@@ -254,9 +236,8 @@ all 3.9:
   cache:
     key: $CI_COMMIT_REF_SLUG_3.9
 
-  script:
-  - ./make_wheels.bash all
-
+  
+  script: ./make_wheels.bash all
 
 
   artifacts:
@@ -277,12 +258,8 @@ xt 3.9:
 
   dependencies: [all 3.9]
 
-  script:
-  - ./make_wheels.bash xt
-
-  - python3 -m twine check ${WHEEL_DIR}/final/*xt*.whl
-  - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*xt*.whl
-
+  
+  script: ./make_wheels.bash xt
 
 
 gdt 3.9:
@@ -300,12 +277,8 @@ gdt 3.9:
 
   dependencies: [all 3.9]
 
-  script:
-  - ./make_wheels.bash gdt
-
-  - python3 -m twine check ${WHEEL_DIR}/final/*gdt*.whl
-  - python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*gdt*.whl
-
+  
+  script: ./make_wheels.bash gdt
 
 
 
