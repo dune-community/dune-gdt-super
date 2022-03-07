@@ -93,8 +93,8 @@ base:
   image: zivgitlab.wwu.io/ag-ohlberger/dune-community/docker/manylinux-2014_py${GDT_PYTHON_VERSION}:${ML_TAG}
   needs: []
   artifacts:
+    expire_in: 1 day
     paths:
-      - ${DUNE_BUILD_DIR}
       - ninja_log_*.tar.gz
   after_script:
     - tar cfz ninja_log_${STEP}_${GDT_PYTHON_VERSION}.tar.gz ${DUNE_BUILD_DIR}/dune-*/.ninja_log

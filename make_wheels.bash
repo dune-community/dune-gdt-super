@@ -14,6 +14,12 @@ python3 -m pip install twine
 
 set -eu
 
+# check if the to-be-build version is already installable and exit early
+# this check requires completed `dunecontrol all` 
+if [[ "${md}" != "all" ]] ; then
+    export MD_VERSION=$(cat ${DUNE_BUILD_DIR}/dune-xt/python/version.sh)
+    python3 -m pip install dune-${md}==${MD_VERSION} && (echo "Already built dune-${md}==${MD_VERSION}, skipping" ; exit 0)
+fi
 build-wheels.sh ${md}
 
 echo '************************************'
