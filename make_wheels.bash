@@ -29,8 +29,8 @@ set -eu
 build-wheels.sh ${md}
 
 if [[ "${md}" != "all" ]] ; then
-  python3 -m twine check ${WHEEL_DIR}/final/*{{md}}*.whl
-  python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*{{md}}*.whl
+  python3 -m twine check ${WHEEL_DIR}/final/*${md}*.whl
+  python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*${md}*.whl
 fi
 
 echo '************************************'
