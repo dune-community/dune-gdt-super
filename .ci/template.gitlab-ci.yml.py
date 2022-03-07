@@ -140,6 +140,8 @@ base:
 
 test wheels {{py}}:
   extends: .test_base
+  variables:
+    GDT_PYTHON_VERSION: "{{py}}"
   needs: ["gdt {{py}}"]
   dependencies: ["gdt {{py}}"]
 

@@ -165,6 +165,8 @@ gdt 3.7:
 
 test wheels 3.7:
   extends: .test_base
+  variables:
+    GDT_PYTHON_VERSION: "3.7"
   needs: ["gdt 3.7"]
   dependencies: ["gdt 3.7"]
 
@@ -236,6 +238,8 @@ gdt 3.8:
 
 test wheels 3.8:
   extends: .test_base
+  variables:
+    GDT_PYTHON_VERSION: "3.8"
   needs: ["gdt 3.8"]
   dependencies: ["gdt 3.8"]
 
@@ -307,6 +311,8 @@ gdt 3.9:
 
 test wheels 3.9:
   extends: .test_base
+  variables:
+    GDT_PYTHON_VERSION: "3.9"
   needs: ["gdt 3.9"]
   dependencies: ["gdt 3.9"]
 
