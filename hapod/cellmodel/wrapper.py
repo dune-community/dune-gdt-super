@@ -17,6 +17,7 @@ from hapod.mpi import MPIWrapper, idle_wait
 from hapod.xt import DuneXtLaListVectorSpace, DuneXtLaVector
 import numpy as np
 from pymor.algorithms.ei import deim
+from pymor.algorithms.gram_schmidt import gram_schmidt
 from pymor.algorithms.newton import newton, newton_two_ops
 from pymor.algorithms.projection import project
 from pymor.core.base import abstractmethod
@@ -1301,40 +1302,48 @@ class CellModelReductor(ProjectionBasedReductor):
         if self.pfield_deim_basis:
             pfield_dofs, pfield_deim_basis, _ = deim(self.pfield_deim_basis, pod=False, product=self.products["pfield"])
             pfield_op = EmpiricalInterpolatedOperatorWithFixComponent(pfield_op, pfield_dofs, pfield_deim_basis, False)
-            projected_collateral_basis = (
-                # If the full-order residual formulation is R(U) = 0, then
-                # the Galerkin DEIM reduced model is
-                #   V^T W Z (E^T Z)^{-1} E^T R(Vu) = 0,
-                # where V in R^{Nxn} and Z in R^{Nxl} have the POD and DEIM basis as their columns, respectively,
-                # E = (e_{k_1}, ..., e_{k_l}) in R^{Nxl} contains the unit vectors corresponding to the DEIM indices
-                # and W is the positive definite matrix which defines the inner product.
-                # If we split up the operator and only approximate the nonlinear part via DEIM, R(U) + R_lin U = 0, then
-                # the Galerkin DEIM reduced model is
-                #  V^T W R_lin V u + V^T W Z (E^T Z)^{-1} E^T R(Vu) = 0,
-                # The pfield_deim_basis.inner(pfield_basis) part below computes (V^T W Z)^T.
-                # E^T Z is stored in pfield_op.interpolation_matrix.
-                NumpyVectorSpace.make_array(pfield_deim_basis.inner(pfield_basis, product=self.products["pfield"]))
-                if not self.least_squares_pfield
-                else
-                # If we use least squares projection, we do not project via V^T, but we solve
-                # argmin_u ||R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)||_W
-                # where W is the positive definite matrix which defines the inner product.
-                # Since
-                #   argmin_u ||R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)||_W
-                # = argmin_u ||R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)||_W^2
-                # = argmin_u [R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)]^T W [R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)]
-                # = argmin_u R(Vu)^T E (E^T Z)^{-T} Z^T W Z (E^T Z)^{-1} E^T R(Vu) + u^T V^T R_lin^T W R_lin V u + u^T V^T R_lin^T W Z (E^T Z)^{-1} E^T R(Vu) + R(Vu)^T E (E^T Z)^{-T} Z^T W R_lin V u
-                # = argmin_u R(Vu)^T E (E^T Z)^{-T} (E^T Z)^{-1} E^T R(Vu) + u^T V^T R_lin W R_lin V u + 2 u^T V^T R_lin^T W Z (E^T Z)^{-1} E^T R(Vu)
-                # = argmin_u ||(E^T Z)^{-1} E^T R(Vu)||^2 + u^T X u + 2 u^T Y (E^T Z)^{-1} E^T R(Vu)
-                # with X = V^T R_lin^T W R_lin V in R^{nxn} and Y = V^T R_lin^T W Z in R^{nxl} where we assumed that the DEIM basis is
-                # W-orthonormal, i.e., Z^T W Z = I.
-                # The argument can be evaluated efficiently since X and Y can be precomputed and to compute (E^T Z)^{-1} E^T R(Vu)
-                # we only need the components of the nonlinear operator corresponding to the DEIM indices.
-                # we can compute the minimum in the space of DEIM coefficients (i.e., project the collateral_basis
-                # to its own spanned space which gives the unit matrix).
-                # NumpyVectorSpace.make_array(np.eye(len(pfield_deim_basis)))  # assumes that pfield_deim_basis is ONB!!!
-                NumpyVectorSpace.make_array(pfield_deim_basis.to_numpy())
+            assert self.least_squares
+            pfield_deim_basis.append(pfield_lin_op.apply(pfield_basis))
+            gram_schmidt(pfield_deim_basis, offset=len(pfield_dofs), product=self.products["pfield"], copy=False)
+            projected_collateral_basis = np.hstack(
+                [np.eye(len(pfield_dofs)),
+                 np.zeros((len(pfield_dofs), len(pfield_deim_basis) - len(pfield_dofs)))]
             )
+            projected_collateral_basis = NumpyVectorSpace.make_array(projected_collateral_basis)
+            # projected_collateral_basis = (
+            #     # If the full-order residual formulation is R(U) = 0, then
+            #     # the Galerkin DEIM reduced model is
+            #     #   V^T W Z (E^T Z)^{-1} E^T R(Vu) = 0,
+            #     # where V in R^{Nxn} and Z in R^{Nxl} have the POD and DEIM basis as their columns, respectively,
+            #     # E = (e_{k_1}, ..., e_{k_l}) in R^{Nxl} contains the unit vectors corresponding to the DEIM indices
+            #     # and W is the positive definite matrix which defines the inner product.
+            #     # If we split up the operator and only approximate the nonlinear part via DEIM, R(U) + R_lin U = 0, then
+            #     # the Galerkin DEIM reduced model is
+            #     #  V^T W R_lin V u + V^T W Z (E^T Z)^{-1} E^T R(Vu) = 0,
+            #     # The pfield_deim_basis.inner(pfield_basis) part below computes (V^T W Z)^T.
+            #     # E^T Z is stored in pfield_op.interpolation_matrix.
+            #     NumpyVectorSpace.make_array(pfield_deim_basis.inner(pfield_basis, product=self.products["pfield"]))
+            #     if not self.least_squares_pfield
+            #     else
+            #     # If we use least squares projection, we do not project via V^T, but we solve
+            #     # argmin_u ||R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)||_W
+            #     # where W is the positive definite matrix which defines the inner product.
+            #     # Since
+            #     #   argmin_u ||R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)||_W
+            #     # = argmin_u ||R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)||_W^2
+            #     # = argmin_u [R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)]^T W [R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)]
+            #     # = argmin_u R(Vu)^T E (E^T Z)^{-T} Z^T W Z (E^T Z)^{-1} E^T R(Vu) + u^T V^T R_lin^T W R_lin V u + u^T V^T R_lin^T W Z (E^T Z)^{-1} E^T R(Vu) + R(Vu)^T E (E^T Z)^{-T} Z^T W R_lin V u
+            #     # = argmin_u R(Vu)^T E (E^T Z)^{-T} (E^T Z)^{-1} E^T R(Vu) + u^T V^T R_lin W R_lin V u + 2 u^T V^T R_lin^T W Z (E^T Z)^{-1} E^T R(Vu)
+            #     # = argmin_u ||(E^T Z)^{-1} E^T R(Vu)||^2 + u^T X u + 2 u^T Y (E^T Z)^{-1} E^T R(Vu)
+            #     # with X = V^T R_lin^T W R_lin V in R^{nxn} and Y = V^T R_lin^T W Z in R^{nxl} where we assumed that the DEIM basis is
+            #     # W-orthonormal, i.e., Z^T W Z = I.
+            #     # The argument can be evaluated efficiently since X and Y can be precomputed and to compute (E^T Z)^{-1} E^T R(Vu)
+            #     # we only need the components of the nonlinear operator corresponding to the DEIM indices.
+            #     # we can compute the minimum in the space of DEIM coefficients (i.e., project the collateral_basis
+            #     # to its own spanned space which gives the unit matrix).
+            #     # NumpyVectorSpace.make_array(np.eye(len(pfield_deim_basis)))  # assumes that pfield_deim_basis is ONB!!!
+            #     NumpyVectorSpace.make_array(pfield_deim_basis.to_numpy())
+            # )
             # R_lin_V = pfield_lin_op.apply(pfield_basis)
             # X should be computed in the projection of pfield_lin_op below
             # X = R_lin_V.inner(R_lin_V, product=self.products["pfield"])
@@ -1453,13 +1462,9 @@ class CellModelReductor(ProjectionBasedReductor):
                 stokes_basis if not self.least_squares_stokes else None,
                 [stokes_basis, pfield_basis, ofield_basis],
             )
-        # This is a VectorArrayOperator: pfield_basis_size -> N, where N is the FE-space dimension
-        projected_pfield_lin_op = project(fom.pfield_lin_op, None, pfield_basis, product=fom.products["pfield"])
-        # Since the projected pfield_op is a NumpyMatrixOperator, we have to convert the projected pfield_lin_op to be compatible.
-        pfield_lin_op = NumpyMatrixOperator(projected_pfield_lin_op.array.to_numpy().T)
         projected_operators = {
             "pfield_op": pfield_op,
-            "pfield_lin_op": pfield_lin_op,
+            "pfield_lin_op": project(fom.pfield_lin_op, pfield_deim_basis, pfield_basis, product=fom.products["pfield"]),
             "ofield_op": ofield_op,
             "stokes_op": stokes_op,
             "initial_pfield": project(fom.initial_pfield, pfield_basis, None, product=fom.products["pfield"]),
