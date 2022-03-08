@@ -92,6 +92,11 @@ base:
   stage: wheels
   image: zivgitlab.wwu.io/ag-ohlberger/dune-community/docker/manylinux-2014_py${GDT_PYTHON_VERSION}:${ML_TAG}
   needs: []
+  cache:
+    paths:
+      - ${DUNE_BUILD_DIR}
+    when: 'always'
+    key: ${GDT_PYTHON_VERSION}_${ML_TAG}
   artifacts:
     expire_in: 1 day
     paths:
@@ -116,8 +121,6 @@ base:
   variables:
     GDT_PYTHON_VERSION: "{{py}}"
     STEP: {{md}}
-  cache:
-    key: $CI_COMMIT_REF_SLUG_{{py}}
 {% if not loop.first %}
   needs:
   - all {{py}}
