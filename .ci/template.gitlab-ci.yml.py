@@ -133,14 +133,30 @@ base:
     paths:
       - ${DUNE_BUILD_DIR}
 {% endif %}
+
+{# this step only serves to propagate _only_ the wheel instead of the build dir #}
+{# Otherwise we'd have the combined build output of xt+gdt wheel steps at some point #}
+{% if md != "all" %}
+wheel collect {{md}} {{py}}:
+  stage: wheels
+  dependencies: ["{{md}} {{py}}"]
+  needs: ["{{md}} {{py}}"]
+  image: harbor.uni-muenster.de/proxy-docker/library/alpine:3.15
+  script:
+    - rm -rf ${DUNE_BUILD_DIR}
+  artifacts:
+    paths:
+      - ${WHEEL_DIR}/final/dune*whl
+{% endif %}
+
 {% endfor %}
 
 test wheels {{py}}:
   extends: .test_base
   variables:
     GDT_PYTHON_VERSION: "{{py}}"
-  needs: ["gdt {{py}}"]
-  dependencies: ["gdt {{py}}"]
+  needs: ["wheel collect gdt {{py}}", "wheel collect xt {{py}}"]
+  dependencies: ["wheel collect gdt {{py}}", "wheel collect xt {{py}}"]
 
 {% endfor %}
 
@@ -148,11 +164,13 @@ test wheels {{py}}:
   image: alpine:3.15
   dependencies:
 {% for py in pythons %}
-  -  "gdt {{py}}"
+  -  "wheel collect gdt {{py}}"
+  -  "wheel collect xt {{py}}"
 {% endfor %}
   needs:
 {% for py in pythons %}
-  -  "gdt {{py}}"
+  -  "wheel collect gdt {{py}}"
+  -  "wheel collect xt {{py}}"
   -  "test wheels {{py}}"
 {% endfor %}
   stage: publish
