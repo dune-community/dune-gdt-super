@@ -105,7 +105,8 @@ base:
   stage: test
   script:
     - pip install ${WHEEL_DIR}/final/dune*whl
-    - python -c 'from dune.${md} import *'
+    - python -c 'from dune.xt import *'
+    - python -c 'from dune.gdt import *'
 
 {% for py in pythons %}
 
