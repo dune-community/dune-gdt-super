@@ -103,7 +103,10 @@ class SolverChunkGenerator:
                                 new_vecs[k].append(data["stages"][k])
                         else:
                             # this is a DEIM index
-                            residuals = data["residuals"][k - 3]
+                            if k == 3:
+                                residuals = data["residuals_nonlin"]
+                            else:
+                                residuals = data["residuals"][k - 3]
                             if self.normalize_residuals:
                                 residuals = residuals * np.array(
                                     [1 / norm if norm > 0 else 1 for norm in residuals.norm(product=self.products[k])]
@@ -195,7 +198,7 @@ if __name__ == "__main__":
         least_squares_ofield = False
     if not pod_stokes:
         least_squares_stokes = False
-    excluded_params = ("Pa",)
+    excluded_params = ("Pa","Ca")
     # product_type = "L2"
     # product_type = "H1"
     product_type = "l2"
@@ -210,7 +213,7 @@ if __name__ == "__main__":
     if mpi.rank_world == 0:
         if not os.path.exists(logfile_dir):
             os.mkdir(logfile_dir)
-    logfile_prefix = "results_{}{}_{}_{}_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_{}tppr_pfield{}_ofield{}_stokes{}_without".format(
+    logfile_prefix = "results_new_{}{}_{}_{}_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_{}tppr_pfield{}_ofield{}_stokes{}_without".format(
         "normalized_" if normalize_residuals else "",
         "mos" if pod_method == "method_of_snapshots" else "qr_svd",
         parameter_sampling_type,

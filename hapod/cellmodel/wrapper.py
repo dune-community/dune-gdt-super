@@ -7,6 +7,7 @@ from statistics import mean
 from timeit import default_timer as timer
 from typing import Any, Union
 import weakref
+
 # import matplotlib.pyplot as plt
 
 import gdt.cellmodel
@@ -240,15 +241,18 @@ class CellModelSolver(ParametricObject):
             U = self.numpy_vecarray_to_xt_listvecarray(U)
         else:
             assert U.dim == self.pfield_solution_space.dim
-        U_out = [self.impl.apply_pfield_residual_operator(vec.impl, cell_index, restricted) for vec in U._list]
-        # U_out = [self.impl.apply_pfield_residual_operator_without_mass_matrices(vec.impl, cell_index, restricted) for vec in U._list]
+        # U_out = [self.impl.apply_pfield_residual_operator(vec.impl, cell_index, restricted) for vec in U._list]
+        U_out = [
+            self.impl.apply_pfield_residual_operator_without_diagonal_mass_matrices(vec.impl, cell_index, restricted)
+            for vec in U._list
+        ]
         return self.pfield_solution_space.make_array(U_out)
 
     def apply_pfield_lin_operator(self, U, restricted=False):
         assert U.dim == self.pfield_solution_space.dim
-        # U_out = [self.impl.apply_pfield_diagonal_mass_matrices(vec.impl, 0, restricted) for vec in U._list]
-        # return self.pfield_solution_space.make_array(U_out)
-        return self.pfield_solution_space.zeros(len(U._list))
+        U_out = [self.impl.apply_pfield_diagonal_mass_matrices(vec.impl, 0, restricted) for vec in U._list]
+        return self.pfield_solution_space.make_array(U_out)
+        # return self.pfield_solution_space.zeros(len(U._list))
 
     def apply_ofield_operator(self, U, cell_index, restricted=False):
         if restricted:
@@ -904,6 +908,7 @@ class CellModel(Model):
         ofield_stages = [ofield_vecarray.empty()]
         stokes_stages = [stokes_vecarray.empty()]
         pfield_residuals = [pfield_vecarray.empty()]
+        pfield_residuals_nonlin = [pfield_vecarray.empty()]
         ofield_residuals = [ofield_vecarray.empty()]
         stokes_residuals = [stokes_vecarray.empty()]
 
@@ -938,7 +943,6 @@ class CellModel(Model):
             )
             ofield_vecarray, ofield_data = newton(
                 self.ofield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]),
-
                 self.ofield_op.range.zeros(),
                 initial_guess=ofield_vecarray,
                 mu=mu,
@@ -972,6 +976,7 @@ class CellModel(Model):
                 stokes_stages.append(stokes_data["stages"])
             if return_residuals:
                 pfield_residuals.append(pfield_data["residuals"])
+                pfield_residuals_nonlin.append(pfield_data["residuals_nonlin"])
                 ofield_residuals.append(ofield_data["residuals"])
                 stokes_residuals.append(stokes_data["residuals"])
 
@@ -980,17 +985,10 @@ class CellModel(Model):
             retval[1]["stages"] = (pfield_stages, ofield_stages, stokes_stages)
         if return_residuals:
             retval[1]["residuals"] = (pfield_residuals, ofield_residuals, stokes_residuals)
+            retval[1]["residuals_nonlin"] = pfield_residuals_nonlin
         return retval
 
-    def next_time_step(
-        self,
-        U_last,
-        t,
-        mu=None,
-        return_output=False,
-        return_stages=False,
-        return_residuals=False,
-    ):
+    def next_time_step(self, U_last, t, mu=None, return_output=False, return_stages=False, return_residuals=False):
         assert not return_output
 
         pfield_vecs, ofield_vecs, stokes_vecs = U_last._blocks
@@ -1001,6 +999,7 @@ class CellModel(Model):
                 retval[1]["stages"] = (None, None, None)
             if return_residuals:
                 retval[1]["residuals"] = (None, None, None)
+                retval[1]["residuals_nonlin"] = None
             return tuple(retval)
 
         # do not go past t_end
@@ -1056,6 +1055,7 @@ class CellModel(Model):
             retval[1]["stages"] = (pfield_data["stages"], ofield_data["stages"], stokes_data["stages"])
         if return_residuals:
             retval[1]["residuals"] = (pfield_data["residuals"], ofield_data["residuals"], stokes_data["residuals"])
+            retval[1]["residuals_nonlin"] = pfield_data["residuals_nonlin"]
         return retval
 
 
@@ -1316,27 +1316,25 @@ class CellModelReductor(ProjectionBasedReductor):
                 NumpyVectorSpace.make_array(pfield_deim_basis.inner(pfield_basis, product=self.products["pfield"]))
                 if not self.least_squares_pfield
                 else
-            # If we use least squares projection, we do not project via V^T, but we solve
-            # argmin_u ||R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)||_W
-            # where W is the positive definite matrix which defines the inner product.
-            # Since
-            #   argmin_u ||R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)||_W
-            # = argmin_u ||R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)||_W^2
-            # = argmin_u [R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)]^T W [R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)]
-            # = argmin_u R(Vu)^T E (E^T Z)^{-T} Z^T W Z (E^T Z)^{-1} E^T R(Vu) + u^T V^T R_lin^T W R_lin V u + u^T V^T R_lin^T W Z (E^T Z)^{-1} E^T R(Vu) + R(Vu)^T E (E^T Z)^{-T} Z^T W R_lin V u
-            # = argmin_u R(Vu)^T E (E^T Z)^{-T} (E^T Z)^{-1} E^T R(Vu) + u^T V^T R_lin W R_lin V u + 2 u^T V^T R_lin^T W Z (E^T Z)^{-1} E^T R(Vu)
-            # = argmin_u ||(E^T Z)^{-1} E^T R(Vu)||^2 + u^T X u + 2 u^T Y (E^T Z)^{-1} E^T R(Vu)
-            # with X = V^T R_lin^T W R_lin V in R^{nxn} and Y = V^T R_lin^T W Z in R^{nxl} where we assumed that the DEIM basis is
-            # W-orthonormal, i.e., Z^T W Z = I.
-            # The argument can be evaluated efficiently since X and Y can be precomputed and to compute (E^T Z)^{-1} E^T R(Vu)
-            # we only need the components of the nonlinear operator corresponding to the DEIM indices.
-            # we can compute the minimum in the space of DEIM coefficients (i.e., project the collateral_basis
-            # to its own spanned space which gives the unit matrix).
+                # If we use least squares projection, we do not project via V^T, but we solve
+                # argmin_u ||R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)||_W
+                # where W is the positive definite matrix which defines the inner product.
+                # Since
+                #   argmin_u ||R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)||_W
+                # = argmin_u ||R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)||_W^2
+                # = argmin_u [R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)]^T W [R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)]
+                # = argmin_u R(Vu)^T E (E^T Z)^{-T} Z^T W Z (E^T Z)^{-1} E^T R(Vu) + u^T V^T R_lin^T W R_lin V u + u^T V^T R_lin^T W Z (E^T Z)^{-1} E^T R(Vu) + R(Vu)^T E (E^T Z)^{-T} Z^T W R_lin V u
+                # = argmin_u R(Vu)^T E (E^T Z)^{-T} (E^T Z)^{-1} E^T R(Vu) + u^T V^T R_lin W R_lin V u + 2 u^T V^T R_lin^T W Z (E^T Z)^{-1} E^T R(Vu)
+                # = argmin_u ||(E^T Z)^{-1} E^T R(Vu)||^2 + u^T X u + 2 u^T Y (E^T Z)^{-1} E^T R(Vu)
+                # with X = V^T R_lin^T W R_lin V in R^{nxn} and Y = V^T R_lin^T W Z in R^{nxl} where we assumed that the DEIM basis is
+                # W-orthonormal, i.e., Z^T W Z = I.
+                # The argument can be evaluated efficiently since X and Y can be precomputed and to compute (E^T Z)^{-1} E^T R(Vu)
+                # we only need the components of the nonlinear operator corresponding to the DEIM indices.
+                # we can compute the minimum in the space of DEIM coefficients (i.e., project the collateral_basis
+                # to its own spanned space which gives the unit matrix).
                 # NumpyVectorSpace.make_array(np.eye(len(pfield_deim_basis)))  # assumes that pfield_deim_basis is ONB!!!
                 NumpyVectorSpace.make_array(pfield_deim_basis.to_numpy())
-
             )
-            print(projected_collateral_basis.to_numpy().shape)
             # R_lin_V = pfield_lin_op.apply(pfield_basis)
             # X should be computed in the projection of pfield_lin_op below
             # X = R_lin_V.inner(R_lin_V, product=self.products["pfield"])
@@ -1517,6 +1515,7 @@ def calculate_cellmodel_trajectory_errors(
     red_errs = [0.0] * len(modes)
     rel_red_errs = [0.0] * len(modes)
     proj_deim_errs = [0.0] * len(deim_modes)
+    nonlin_proj_deim_errs = 0.0
     norms = [[], [], [], [], [], []]
     # modes has length 2*num_cells+1
     num_cells = (len(modes) - 1) // 2
@@ -1559,6 +1558,9 @@ def calculate_cellmodel_trajectory_errors(
                         proj_res = deim_res - deim_modes[i].lincomb(deim_res.inner(deim_modes[i], product=products[i]))
                         proj_deim_errs[i] += np.sum(proj_res.norm2(product=products[i]))
                         n_deim[i] += len(proj_res)
+                nonlin_deim_res = data["residuals_nonlin"]
+                nonlin_proj_res = nonlin_deim_res - deim_modes[i].lincomb(nonlin_deim_res.inner(deim_modes[i], product=products[i]))
+                nonlin_proj_deim_errs += np.sum(nonlin_proj_res.norm2(product=products[i]))
             # get values for next time step
             n += 1
             current_values, data = cellmodel.next_time_step(
@@ -1607,7 +1609,7 @@ def calculate_cellmodel_trajectory_errors(
                     n_deim[i] += len(proj_res)
             n += chunk_size
         fom_time = chunk_data["elapsed"]
-    return proj_errs, proj_deim_errs, red_errs, rel_red_errs, n, n_deim, fom_time, norms
+    return proj_errs, proj_deim_errs, nonlin_proj_deim_errs, red_errs, rel_red_errs, n, n_deim, fom_time, norms
 
 
 def calculate_mean_cellmodel_projection_errors(
@@ -1643,6 +1645,7 @@ def calculate_mean_cellmodel_projection_errors(
         (
             proj_errs,
             proj_deim_errs,
+            nonlin_proj_deim_errs,
             red_errs,
             rel_red_errs,
             n,
@@ -1674,6 +1677,7 @@ def calculate_mean_cellmodel_projection_errors(
             red_errs_sum[i] += red_errs[i]
             rel_red_errs_sum[i] += rel_red_errs[i]
             num_residuals[i] += n_deim[i]
+        nonlin_proj_deim_errs_sum += nonlin_proj_deim_errs
         num_snapshots += n
         if fom_time is not None:
             mean_fom_time += fom_time
@@ -1682,6 +1686,7 @@ def calculate_mean_cellmodel_projection_errors(
     mean_fom_time = mean_fom_time / len(mus) if mean_fom_time is not None else None
     proj_errs = [0.0] * len(modes)
     proj_deim_errs = proj_errs.copy()
+    nonlin_proj_deim_errs = 0.0
     red_errs = [0.0] * len(modes)
     rel_red_errs = [0.0] * len(modes)
     num_snapshots = mpi_wrapper.comm_world.gather(num_snapshots, root=0)
@@ -1720,7 +1725,10 @@ def calculate_mean_cellmodel_projection_errors(
         err = mpi_wrapper.comm_world.gather(proj_deim_errs_sum[i], root=0)
         if mpi_wrapper.rank_world == 0:
             proj_deim_errs[i] = np.sqrt(np.sum(err) / num_residuals[i]) if num_residuals[i] != 0 else 0
-    return proj_errs, proj_deim_errs, red_errs, rel_red_errs, mean_fom_time, mean_rom_time, norms, all_mu_to_red_errs
+    err = mpi_wrapper.comm_world.gather(nonlin_proj_deim_errs_sum, root=0)
+    if mpi_wrapper.rank_world == 0:
+        nonlin_proj_deim_errs = np.sqrt(np.sum(err) / num_residuals[0]) if num_residuals[0] != 0 else 0
+    return proj_errs, proj_deim_errs, nonlin_proj_deim_errs, red_errs, rel_red_errs, mean_fom_time, mean_rom_time, norms, all_mu_to_red_errs
 
 
 def calculate_cellmodel_errors(
@@ -1750,6 +1758,7 @@ def calculate_cellmodel_errors(
     (
         errs,
         deim_errs,
+        nonlin_deim_errs,
         red_errs,
         rel_red_errs,
         mean_fom_time,
@@ -1793,6 +1802,9 @@ def calculate_cellmodel_errors(
             logfile.write("{}{} projection error for stokes is: {}\n".format(prefix, error_type, errs[2 * nc]))
             logfile.write(
                 "{}{} projection DEIM error for {}-th pfield is: {}\n".format(prefix, error_type, 0, deim_errs[0])
+            )
+            logfile.write(
+                "{}{} nonlin projection DEIM error for {}-th pfield is: {}\n".format(prefix, error_type, 0, nonlin_deim_errs)
             )
             logfile.write(
                 "{}{} projection DEIM error for {}-th ofield is: {}\n".format(prefix, error_type, 0, deim_errs[1])
@@ -1972,8 +1984,8 @@ def create_parameters(
         )
         Be_values2 = (1 / (1 / upper_bound_Be + 1 / lower_bound_Be - 1 / Be_log_values)).tolist()
         # if mpi.rank_world == 0:
-            # print(Be_values1, flush=True)
-            # print(Be_values2, flush=True)
+        # print(Be_values1, flush=True)
+        # print(Be_values2, flush=True)
         Be_values2 = Be_values2[1:-1]
         Be_values = Be_values1 + Be_values2 if "Be" not in excluded_params else [Be0]
         Ca_values1 = np.logspace(
