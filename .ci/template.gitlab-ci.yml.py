@@ -212,7 +212,7 @@ publish dune-gdt:
 
 
 tpl = jinja2.Template(tpl)
-pythons = ["3.7", "3.8", "3.9"]
+pythons = ["3.7", "3.8", "3.9", "3.10"]
 wheel_steps = ["all", "xt", "gdt"]
 # env_path = Path(os.path.dirname(__file__)) / '..' / '..' / '.env'
 # env = dotenv_values(env_path)
