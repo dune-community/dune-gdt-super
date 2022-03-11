@@ -94,7 +94,7 @@ base:
       - ninja_log_*.tar.gz
       - ${WHEEL_DIR}/final/dune*whl
   after_script:
-    - tar cfz ninja_log_${STEP}_${GDT_PYTHON_VERSION}.tar.gz ${DUNE_BUILD_DIR}/dune-*/.ninja_log
+    - tar cfz ninja_log_${STEP}_${GDT_PYTHON_VERSION}.tar.gz ${DUNE_BUILD_DIR}/dune-*/.ninja_log || true
 
 .test_base:
   image: pymor/testing_py${GDT_PYTHON_VERSION}:latest
