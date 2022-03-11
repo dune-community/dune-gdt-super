@@ -94,7 +94,7 @@ base:
   needs: []
   cache:
     paths:
-      - ${DUNE_BUILD_DIR}
+      - ccache
     when: 'always'
     key: ${GDT_PYTHON_VERSION}_${ML_TAG}
   artifacts:
