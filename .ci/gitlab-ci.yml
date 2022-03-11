@@ -11,7 +11,7 @@ stages:
 
 variables:
   GIT_SUBMODULE_STRATEGY: none
-  ML_TAG: 59e7b13c2af34a9509748e47b88d45da661adacb
+  ML_TAG: 4c42d22a2aefc41ab1d52f2c4b9df09cb3b8a6af
   WHEEL_DIR: ${CI_PROJECT_DIR}/wheelhouse
   DUNE_BUILD_DIR: ${CI_PROJECT_DIR}/build
   DUNE_SRC_DIR: ${CI_PROJECT_DIR}
@@ -136,7 +136,7 @@ xt 3.7:
   needs:
   - all 3.7
 
-  dependencies: [all 3.7]
+  dependencies: ["all 3.7"]
 
   
   script: ./make_wheels.bash xt
@@ -169,7 +169,7 @@ gdt 3.7:
 
   - xt 3.7
 
-  dependencies: [all 3.7]
+  dependencies: ["all 3.7"]
 
   
   script: ./make_wheels.bash gdt
@@ -231,7 +231,7 @@ xt 3.8:
   needs:
   - all 3.8
 
-  dependencies: [all 3.8]
+  dependencies: ["all 3.8"]
 
   
   script: ./make_wheels.bash xt
@@ -264,7 +264,7 @@ gdt 3.8:
 
   - xt 3.8
 
-  dependencies: [all 3.8]
+  dependencies: ["all 3.8"]
 
   
   script: ./make_wheels.bash gdt
@@ -326,7 +326,7 @@ xt 3.9:
   needs:
   - all 3.9
 
-  dependencies: [all 3.9]
+  dependencies: ["all 3.9"]
 
   
   script: ./make_wheels.bash xt
@@ -359,7 +359,7 @@ gdt 3.9:
 
   - xt 3.9
 
-  dependencies: [all 3.9]
+  dependencies: ["all 3.9"]
 
   
   script: ./make_wheels.bash gdt
@@ -421,7 +421,7 @@ xt 3.10:
   needs:
   - all 3.10
 
-  dependencies: [all 3.10]
+  dependencies: ["all 3.10"]
 
   
   script: ./make_wheels.bash xt
@@ -454,7 +454,7 @@ gdt 3.10:
 
   - xt 3.10
 
-  dependencies: [all 3.10]
+  dependencies: ["all 3.10"]
 
   
   script: ./make_wheels.bash gdt

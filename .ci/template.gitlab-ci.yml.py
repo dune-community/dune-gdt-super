@@ -20,7 +20,7 @@ stages:
 
 variables:
   GIT_SUBMODULE_STRATEGY: none
-  ML_TAG: 59e7b13c2af34a9509748e47b88d45da661adacb
+  ML_TAG: 4c42d22a2aefc41ab1d52f2c4b9df09cb3b8a6af
   WHEEL_DIR: ${CI_PROJECT_DIR}/wheelhouse
   DUNE_BUILD_DIR: ${CI_PROJECT_DIR}/build
   DUNE_SRC_DIR: ${CI_PROJECT_DIR}
@@ -127,7 +127,7 @@ base:
 {% if md == "gdt" %}
   - xt {{py}}
 {% endif %}
-  dependencies: [all {{py}}]
+  dependencies: ["all {{py}}"]
 {% endif %}
   {# this can only be one script exactly, to make skipping from within itself possible #}
   script: ./make_wheels.bash {{md}}
