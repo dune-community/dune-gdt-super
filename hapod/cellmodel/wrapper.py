@@ -134,8 +134,8 @@ class CellModelSolver(ParametricObject):
         U_out = [self.impl.apply_pfield_H1_product_operator(vec.impl) for vec in U._list]
         return self.pfield_solution_space.make_array(U_out)
 
-    def apply_pfield_H1_product_operator(self, U, mu=None):
-        U_out = [self.impl.apply_pfield_H1_product_operator(vec.impl) for vec in U._list]
+    def apply_ofield_H1_product_operator(self, U, mu=None):
+        U_out = [self.impl.apply_ofield_H1_product_operator(vec.impl) for vec in U._list]
         return self.pfield_solution_space.make_array(U_out)
 
     def pfield_vector(self, cell_index):
@@ -1406,7 +1406,47 @@ class CellModelReductor(ProjectionBasedReductor):
         pfield_op, ofield_op, stokes_op = fom.pfield_op, fom.ofield_op, fom.stokes_op
         pfield_lin_op = fom.pfield_lin_op
         if self.pfield_deim_basis:
-            pfield_dofs, pfield_deim_basis, _ = deim(self.pfield_deim_basis, pod=False, product=self.products["pfield"])
+            # pfield_dofs, pfield_deim_basis, _ = deim(self.pfield_deim_basis, pod=False, product=self.products["pfield"])
+            pfield_deim_dofs_field = [None] * 3
+            pfield_deim_basis_field = [None] * 3
+            for i in range(3):
+                pfield_deim_dofs_field[i], pfield_deim_basis_field[i], _ = deim(
+                    self.pfield_deim_basis[i], pod=False, product=None
+                )
+            size_phi = pfield_deim_basis_field[0].dim
+            pfield_deim_basis = pfield_basis.space.empty()
+            phi_deim_basis = DuneXtLaListVectorSpace.from_numpy(
+                np.hstack(
+                    (pfield_deim_basis_field[0].to_numpy(), np.zeros((len(pfield_deim_basis_field[0]), 2 * size_phi)))
+                ),
+                ensure_copy=True,
+            )
+            phinat_deim_basis = DuneXtLaListVectorSpace.from_numpy(
+                np.hstack(
+                    (
+                        np.zeros((len(pfield_deim_basis_field[1]), size_phi)),
+                        pfield_deim_basis_field[1].to_numpy(),
+                        np.zeros((len(pfield_deim_basis_field[1]), size_phi)),
+                    )
+                ),
+                ensure_copy=True,
+            )
+            mu_deim_basis = DuneXtLaListVectorSpace.from_numpy(
+                np.hstack(
+                    (np.zeros((len(pfield_deim_basis_field[2]), 2 * size_phi)), pfield_deim_basis_field[2].to_numpy())
+                ),
+                ensure_copy=True,
+            )
+            # pfield_space = fom.solver.pfield_solution_space
+            pfield_deim_basis.append(phi_deim_basis)
+            pfield_deim_basis.append(phinat_deim_basis)
+            pfield_deim_basis.append(mu_deim_basis)
+            pfield_dofs = []
+            pfield_dofs.extend(pfield_deim_dofs_field[0].tolist())
+            pfield_dofs.extend([dof + size_phi for dof in pfield_deim_dofs_field[1]])
+            pfield_dofs.extend([dof + 2 * size_phi for dof in pfield_deim_dofs_field[2]])
+            pfield_dofs = np.array(pfield_dofs)
+            print(pfield_deim_basis, pfield_dofs)
             pfield_op = EmpiricalInterpolatedOperatorWithFixComponent(pfield_op, pfield_dofs, pfield_deim_basis, False)
             # assert self.least_squares_pfield
             if fom.solver.split_pfield:
@@ -2240,6 +2280,11 @@ class BinaryTreeHapodResults:
         self.timings = {}
         self.incremental_gramian = False
         self.win: Any = None
+        self.pfield_win: list[Any] = [None] * 3
+        self.pfield_modes: Union[list[ListVectorArray], list[NumpyVectorArray], list[None]] = [None] * 3
+        self.pfield_svals: list[Any] = [None] * 3
+        self.pfield_num_modes: list[int] = [0] * 3
+        self.gathered_pfield_modes: Union[list[ListVectorArray], list[NumpyVectorArray], list[None]] = [None] * 3
 
 
 # Performs a POD on each processor core with the data vectors computed on that core,
@@ -2247,6 +2292,34 @@ class BinaryTreeHapodResults:
 # The resulting modes are stored in results.gathered_modes on processor rank 0
 # results.num_snaps (on rank 0) contains the total number of snapshots
 # that have been processed (on all ranks)
+def pods_on_processor_cores_in_binary_tree_hapod_pfield(r, vecs, mpi, root, product, method="method_of_snapshots"):
+    assert isinstance(vecs, ListVectorArray)
+    print("start processor pod: ", mpi.rank_world)
+    snaps_on_rank = len(vecs)
+    r.max_vectors_before_pod = max(r.max_vectors_before_pod, snaps_on_rank)
+    vecs_field = [None] * 3
+    svals_field = [None] * 3
+    size_phi = vecs.dim // 3
+    for i in range(3):
+        vecs_field[i] = NumpyVectorSpace.make_array(vecs.to_numpy()[:, i * size_phi : (i + 1) * size_phi])
+        vecs_field[i], svals_field[i] = local_pod(
+            [vecs_field[i]],
+            snaps_on_rank,
+            r.params,
+            product=product,
+            incremental_gramian=False,
+            orth_tol=r.orth_tol,
+            method=method,
+        )
+        vecs_field[i].scal(svals_field[i])
+    # r.max_local_modes = max(r.max_local_modes, len(vecs))
+    idle_wait(mpi.comm_proc, root=root)
+    for i in range(3):
+        r.gathered_pfield_modes[i], _, r.num_snaps, _ = mpi.comm_proc.gather_on_root_rank(
+            vecs_field[i], num_snapshots_on_rank=snaps_on_rank, num_modes_equal=False, root=root
+        )
+
+
 def pods_on_processor_cores_in_binary_tree_hapod(r, vecs, mpi, root, product, method="method_of_snapshots"):
     assert isinstance(vecs, ListVectorArray)
     print("start processor pod: ", mpi.rank_world)
@@ -2261,6 +2334,41 @@ def pods_on_processor_cores_in_binary_tree_hapod(r, vecs, mpi, root, product, me
     r.gathered_modes, _, r.num_snaps, _ = mpi.comm_proc.gather_on_root_rank(
         vecs, num_snapshots_on_rank=snaps_on_rank, num_modes_equal=False, root=root
     )
+
+
+# perform a POD with gathered modes on rank 0 on each processor/node
+def pod_on_node_in_binary_tree_hapod_pfield(
+    r, is_first_chunk, is_last_chunk, mpi, root, product, method="method_of_snapshots"
+):
+    print("start node pod: ", mpi.rank_world)
+    r.total_num_snapshots += r.num_snaps
+    if is_first_chunk:
+        # r.max_vectors_before_pod = max(r.max_vectors_before_pod, len(r.gathered_pfield_modes))
+        for i in range(3):
+            r.pfield_modes[i], r.pfield_svals[i] = local_pod(
+                inputs=[r.gathered_pfield_modes[i]],
+                num_snaps_in_leafs=r.num_snaps,
+                parameters=r.params,
+                product=product,
+                orth_tol=r.orth_tol,
+                incremental_gramian=False,
+                method=method,
+            )
+    else:
+        for i in range(3):
+            # r.max_vectors_before_pod = max(r.max_vectors_before_pod, len(r.modes) + len(r.gathered_modes))
+            root_of_tree = is_last_chunk and mpi.size_rank_group[root] == 1
+            r.pfield_modes[i], r.pfield_svals[i] = local_pod(
+                inputs=[[r.pfield_modes[i], r.pfield_svals[i]], r.gathered_pfield_modes[i]],
+                num_snaps_in_leafs=r.total_num_snapshots,
+                parameters=r.params,
+                orth_tol=r.final_orth_tol if root_of_tree else r.orth_tol,
+                incremental_gramian=r.incremental_gramian,
+                product=product,
+                root_of_tree=root_of_tree,
+                method=method,
+            )
+    # r.max_local_modes = max(r.max_local_modes, len(r.modes))
 
 
 # perform a POD with gathered modes on rank 0 on each processor/node
@@ -2294,6 +2402,31 @@ def pod_on_node_in_binary_tree_hapod(
             method=method,
         )
     r.max_local_modes = max(r.max_local_modes, len(r.modes))
+
+
+def final_hapod_in_binary_tree_hapod_pfield(r, mpi, root, product, method="method_of_snapshots"):
+    print("start final pod: ", mpi.rank_world)
+    for i in range(3):
+        (
+            r.pfield_modes[i],
+            r.pfield_svals[i],
+            r.total_num_snapshots,
+            max_num_input_vecs,
+            max_num_local_modes,
+        ) = binary_tree_hapod_over_ranks(
+            mpi.comm_rank_group[root],
+            r.pfield_modes[i],
+            r.total_num_snapshots,
+            r.params,
+            svals=r.pfield_svals[i],
+            last_hapod=True,
+            incremental_gramian=r.incremental_gramian,
+            product=product,
+            orth_tol=r.final_orth_tol,
+            method=method,
+        )
+    # r.max_vectors_before_pod = max(r.max_vectors_before_pod, max_num_input_vecs)
+    # r.max_local_modes = max(r.max_local_modes, max_num_local_modes)
 
 
 def final_hapod_in_binary_tree_hapod(r, mpi, root, product, method="method_of_snapshots"):
@@ -2354,9 +2487,14 @@ def binary_tree_hapod(
         for k in indices:
             t1 = timer()
             root_rank = k % mpi.size_proc
-            pods_on_processor_cores_in_binary_tree_hapod(
-                results[k], chunk[k], mpi, root=root_rank, product=products[k], method=pod_method
-            )
+            if k == 3:
+                pods_on_processor_cores_in_binary_tree_hapod_pfield(
+                    results[k], chunk[k], mpi, root=root_rank, product=products[k], method=pod_method
+                )
+            else:
+                pods_on_processor_cores_in_binary_tree_hapod(
+                    results[k], chunk[k], mpi, root=root_rank, product=products[k], method=pod_method
+                )
             timings[f"POD{k}"] += timer() - t1
         for k in indices:
             t1 = timer()
@@ -2364,15 +2502,26 @@ def binary_tree_hapod(
             root_rank = k % mpi.size_proc
             if mpi.rank_proc == root_rank:
                 # perform pod on rank root_rank with gathered modes and modes from the last chunk
-                pod_on_node_in_binary_tree_hapod(
-                    results[k],
-                    is_first_chunk=chunk_generator.chunk_index() == 0,
-                    is_last_chunk=chunk_generator.done(),
-                    mpi=mpi,
-                    root=root_rank,
-                    product=products[k],
-                    method=pod_method,
-                )
+                if k == 3:
+                    pod_on_node_in_binary_tree_hapod_pfield(
+                        results[k],
+                        is_first_chunk=chunk_generator.chunk_index() == 0,
+                        is_last_chunk=chunk_generator.done(),
+                        mpi=mpi,
+                        root=root_rank,
+                        product=products[k],
+                        method=pod_method,
+                    )
+                else:
+                    pod_on_node_in_binary_tree_hapod(
+                        results[k],
+                        is_first_chunk=chunk_generator.chunk_index() == 0,
+                        is_last_chunk=chunk_generator.done(),
+                        mpi=mpi,
+                        root=root_rank,
+                        product=products[k],
+                        method=pod_method,
+                    )
             timings[f"POD{k}"] += timer() - t1
 
     # Finally, perform a HAPOD over a binary tree of nodes
@@ -2381,37 +2530,59 @@ def binary_tree_hapod(
         r = results[k]
         if mpi.rank_proc == root_rank:
             t1 = timer()
-            final_hapod_in_binary_tree_hapod(r, mpi, root=root_rank, product=products[k], method=pod_method)
+            if k == 3:
+                final_hapod_in_binary_tree_hapod_pfield(r, mpi, root=root_rank, product=products[k], method=pod_method)
+            else:
+                final_hapod_in_binary_tree_hapod(r, mpi, root=root_rank, product=products[k], method=pod_method)
             timings[f"POD{k}"] += timer() - t1
 
-        # calculate max number of local modes
-        # The 'or [0]' is only here to silence pyright which otherwise complains below that we cannot apply max to None
-        r.max_vectors_before_pod = mpi.comm_world.gather(r.max_vectors_before_pod, root=0) or [0]
-        r.max_local_modes = mpi.comm_world.gather(r.max_local_modes, root=0) or [0]
-        r.num_modes = mpi.comm_world.gather(len(r.modes) if r.modes is not None else 0, root=0) or [0]
         r.total_num_snapshots = mpi.comm_world.gather(r.total_num_snapshots, root=0) or [0]
+        # The 'or [0]' is only here to silence pyright which otherwise complains below that we cannot apply max to None
         gathered_timings = mpi.comm_world.gather(timings, root=0) or [0]
-        if mpi.rank_world == 0:
-            r.max_vectors_before_pod = max(r.max_vectors_before_pod)
-            r.max_local_modes = max(r.max_local_modes)
-            r.num_modes = max(r.num_modes)
-            r.total_num_snapshots = max(r.total_num_snapshots)
-            r.timings = {}
-            for key in timings.keys():
-                r.timings[key] = max([timing[key] for timing in gathered_timings])
+        if k == 3:
+            for i in range(3):
+                pfield_num_modes = mpi.comm_world.gather(
+                    len(r.pfield_modes[i]) if r.pfield_modes[i] is not None else 0, root=0
+                ) or [0]
+                print(r.pfield_modes[i])
+                if mpi.rank_world == 0:
+                    r.pfield_num_modes[i] = max(pfield_num_modes)
+            if mpi.rank_world == 0:
+                r.total_num_snapshots = max(r.total_num_snapshots)
+        else:
+            r.max_vectors_before_pod = mpi.comm_world.gather(r.max_vectors_before_pod, root=0) or [0]
+            r.max_local_modes = mpi.comm_world.gather(r.max_local_modes, root=0) or [0]
+            r.num_modes = mpi.comm_world.gather(len(r.modes) if r.modes is not None else 0, root=0) or [0]
+            if mpi.rank_world == 0:
+                r.max_vectors_before_pod = max(r.max_vectors_before_pod)
+                r.max_local_modes = max(r.max_local_modes)
+                r.num_modes = max(r.num_modes)
+                r.total_num_snapshots = max(r.total_num_snapshots)
+                r.timings = {}
+                for key in timings.keys():
+                    r.timings[key] = max([timing[key] for timing in gathered_timings])
 
     # write statistics to file
     if logfile is not None and mpi.rank_world == 0:
         with open(logfile, "a") as ff:
             for k in indices:
-                r = results[k]
                 ff.write(f"Hapod for index {k}\n")
-                ff.write(
-                    f"The HAPOD resulted in {r.num_modes} final modes taken from a total of {r.total_num_snapshots} snapshots!\n"
-                )
-                ff.write(f"The maximal number of local modes was {r.max_local_modes}\n")
-                ff.write(f"The maximal number of input vectors to a local POD was: {r.max_vectors_before_pod}\n")
-                ff.write("PODs took {} s.\n".format(r.timings[f"POD{k}"]))
+                r = results[k]
+                if k == 3:
+                    for i in range(3):
+                        ff.write(
+                            f"The Pfield HAPOD {i} resulted in {r.pfield_num_modes[i]} final modes taken from a total of {r.total_num_snapshots} snapshots!\n"
+                        )
+                    # ff.write(f"The maximal number of local modes was {r.max_local_modes}\n")
+                    # ff.write(f"The maximal number of input vectors to a local POD was: {r.max_vectors_before_pod}\n")
+                    # ff.write("PODs took {} s.\n".format(r.timings[f"POD{k}"]))
+                else:
+                    ff.write(
+                        f"The HAPOD resulted in {r.num_modes} final modes taken from a total of {r.total_num_snapshots} snapshots!\n"
+                    )
+                    ff.write(f"The maximal number of local modes was {r.max_local_modes}\n")
+                    ff.write(f"The maximal number of input vectors to a local POD was: {r.max_vectors_before_pod}\n")
+                    ff.write("PODs took {} s.\n".format(r.timings[f"POD{k}"]))
             ff.write(
                 f"The maximum amount of memory used on rank 0 was: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1000.0 ** 2} GB\n"
             )

@@ -328,12 +328,16 @@ if __name__ == "__main__":
     )
     for k in indices:
         r = results[k]
-        r.modes, r.win = mpi.shared_memory_bcast_modes(r.modes, returnlistvectorarray=True, proc_rank=k % mpi.size_proc)
+        if k == 3:
+            for i in range(3):
+                r.pfield_modes[i], r.pfield_win[i] = mpi.shared_memory_bcast_modes(r.pfield_modes[i], returnlistvectorarray=False, proc_rank=k % mpi.size_proc)
+        else:
+            r.modes, r.win = mpi.shared_memory_bcast_modes(r.modes, returnlistvectorarray=True, proc_rank=k % mpi.size_proc)
 
     pfield_basis = results[0].modes if pod_pfield else None
     ofield_basis = results[1].modes if pod_ofield else None
     stokes_basis = results[2].modes if pod_stokes else None
-    pfield_deim_basis = results[3].modes if deim_pfield else None
+    pfield_deim_basis = results[3].pfield_modes if deim_pfield else None
     ofield_deim_basis = results[4].modes if deim_ofield else None
     stokes_deim_basis = results[5].modes if deim_stokes else None
 
@@ -388,7 +392,7 @@ if __name__ == "__main__":
     mpi.comm_world.Barrier()
     calculate_cellmodel_errors(
         modes=[pfield_basis, ofield_basis, stokes_basis],
-        deim_modes=[pfield_deim_basis, ofield_deim_basis, stokes_deim_basis],
+        deim_modes=[None, ofield_deim_basis, stokes_deim_basis],
         testcase=testcase,
         t_end=t_end,
         dt=dt,
