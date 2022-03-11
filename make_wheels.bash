@@ -23,3 +23,4 @@ if [[ "${md}" != "all" ]] ; then
   echo '************************************'
 fi
 
+du -sch ${DUNE_BUILD_DIR}/*
