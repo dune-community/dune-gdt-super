@@ -85,7 +85,7 @@ class SolverChunkGenerator:
                 for time_index in range(self.chunk_size - 1 if chunk_index == 0 else self.chunk_size):
                     # t1 = timer()
                     current_values[p], data = self.cellmodel.next_time_step(
-                        current_values[p], t, mu=mu, return_stages=self.include_newton_stages, return_residuals=True,
+                        current_values[p], t, mu=mu, return_stages=self.include_newton_stages, return_residuals=True
                     )
                     # timings["data"] += timer() - t1
                     t = data["t"]
@@ -103,7 +103,7 @@ class SolverChunkGenerator:
                                 new_vecs[k].append(data["stages"][k])
                         else:
                             # this is a DEIM index
-                            if k == 3:
+                            if self.cellmodel.solver.split_pfield and k == 3:
                                 residuals = data["residuals_nonlin"]
                             else:
                                 residuals = data["residuals"][k - 3]
@@ -178,7 +178,8 @@ if __name__ == "__main__":
     pfield_deim_atol = 1e-10 if argc < 16 else float(sys.argv[15])
     ofield_deim_atol = 1e-10 if argc < 17 else float(sys.argv[16])
     stokes_deim_atol = 1e-10 if argc < 18 else float(sys.argv[17])
-    parameter_sampling_type = "log_reciprocal" if argc < 19 else sys.argv[18]
+    split_pfield = False if argc < 19 else (False if sys.argv[18] == "False" else True)
+    parameter_sampling_type = "uniform_reciprocal" if argc < 20 else sys.argv[19]
     pod_method = "method_of_snapshots" if argc < 21 else sys.argv[20]
     assert pod_method in ("qr_svd", "method_of_snapshots")
     normalize_residuals = False
@@ -198,7 +199,7 @@ if __name__ == "__main__":
         least_squares_ofield = False
     if not pod_stokes:
         least_squares_stokes = False
-    excluded_params = ("Pa","Ca")
+    excluded_params = ("Be", "Ca")
     # product_type = "L2"
     # product_type = "H1"
     product_type = "l2"
@@ -213,7 +214,8 @@ if __name__ == "__main__":
     if mpi.rank_world == 0:
         if not os.path.exists(logfile_dir):
             os.mkdir(logfile_dir)
-    logfile_prefix = "results_new_{}{}_{}_{}_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_{}tppr_pfield{}_ofield{}_stokes{}_without".format(
+    logfile_prefix = "results_twoops_{}{}{}_{}_{}_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_{}tppr_pfield{}_ofield{}_stokes{}_without".format(
+        "split_" if split_pfield else "",
         "normalized_" if normalize_residuals else "",
         "mos" if pod_method == "method_of_snapshots" else "qr_svd",
         parameter_sampling_type,
@@ -282,7 +284,9 @@ if __name__ == "__main__":
     pickle_prefix = os.path.join(pickle_dir, pickle_prefix)
 
     # create solver
-    solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])
+    solver = CellModelSolver(
+        testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0], split_pfield=split_pfield
+    )
     if product_type == "L2":
         products = [
             CellModelPfieldL2ProductOperator(solver),
@@ -399,6 +403,7 @@ if __name__ == "__main__":
         products=products,
         pickled_data_available=False,
         num_chunks=chunk_generator.num_chunks,
+        split_pfield=split_pfield,
     )
 
     ################## test new parameters #######################
@@ -447,6 +452,7 @@ if __name__ == "__main__":
     #     products=products,
     #     pickled_data_available=False,
     #     rom_time=mean_rom_time,
+    #     split_pfield=split_pfield,
     # )
 
     sys.stdout.flush()
