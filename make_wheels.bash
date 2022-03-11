@@ -15,9 +15,11 @@ python3 -m pip install -q twine
 build-wheels.sh ${md}
 
 if [[ "${md}" != "all" ]] ; then
+  echo '************************************'
+  echo Wheels are in ${WHEEL_DIR}/final
+
   python3 -m twine check ${WHEEL_DIR}/final/*${md}*.whl
   python3 -m twine upload --repository-url ${GITLAB_PYPI} ${WHEEL_DIR}/final/*${md}*.whl
+  echo '************************************'
 fi
 
-echo '************************************'
-echo Wheels are in ${WHEEL_DIR}/final
