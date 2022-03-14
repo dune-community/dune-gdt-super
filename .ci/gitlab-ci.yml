@@ -97,7 +97,7 @@ base:
     - tar cfz ninja_log_${STEP}_${GDT_PYTHON_VERSION}.tar.gz ${DUNE_BUILD_DIR}/dune-*/.ninja_log || true
 
 .test_base:
-  image: pymor/testing_py${GDT_PYTHON_VERSION}:latest
+  image: harbor.uni-muenster.de/proxy-docker/library/python:${GDT_PYTHON_VERSION}-slim
   stage: test
   script:
     - pip install ${WHEEL_DIR}/final/dune*whl
@@ -145,7 +145,7 @@ wheel collect 3.7:
     - "xt 3.7" 
     - "gdt 3.7"
   image: harbor.uni-muenster.de/proxy-docker/library/alpine:3.15
-  before_script:
+  script:
     - rm -rf ${DUNE_BUILD_DIR}
   artifacts:
     paths:
@@ -155,8 +155,8 @@ test wheels 3.7:
   extends: .test_base
   variables:
     GDT_PYTHON_VERSION: "3.7"
-  needs: ["wheel collect gdt 3.7", "wheel collect xt 3.7"]
-  dependencies: ["wheel collect gdt 3.7", "wheel collect xt 3.7"]
+  needs: ["wheel collect 3.7",]
+  dependencies: ["wheel collect 3.7",]
 xt 3.8:
   extends: .wheels_base
   variables:
@@ -199,7 +199,7 @@ wheel collect 3.8:
     - "xt 3.8" 
     - "gdt 3.8"
   image: harbor.uni-muenster.de/proxy-docker/library/alpine:3.15
-  before_script:
+  script:
     - rm -rf ${DUNE_BUILD_DIR}
   artifacts:
     paths:
@@ -209,8 +209,8 @@ test wheels 3.8:
   extends: .test_base
   variables:
     GDT_PYTHON_VERSION: "3.8"
-  needs: ["wheel collect gdt 3.8", "wheel collect xt 3.8"]
-  dependencies: ["wheel collect gdt 3.8", "wheel collect xt 3.8"]
+  needs: ["wheel collect 3.8",]
+  dependencies: ["wheel collect 3.8",]
 xt 3.9:
   extends: .wheels_base
   variables:
@@ -253,7 +253,7 @@ wheel collect 3.9:
     - "xt 3.9" 
     - "gdt 3.9"
   image: harbor.uni-muenster.de/proxy-docker/library/alpine:3.15
-  before_script:
+  script:
     - rm -rf ${DUNE_BUILD_DIR}
   artifacts:
     paths:
@@ -263,8 +263,8 @@ test wheels 3.9:
   extends: .test_base
   variables:
     GDT_PYTHON_VERSION: "3.9"
-  needs: ["wheel collect gdt 3.9", "wheel collect xt 3.9"]
-  dependencies: ["wheel collect gdt 3.9", "wheel collect xt 3.9"]
+  needs: ["wheel collect 3.9",]
+  dependencies: ["wheel collect 3.9",]
 xt 3.10:
   extends: .wheels_base
   variables:
@@ -307,7 +307,7 @@ wheel collect 3.10:
     - "xt 3.10" 
     - "gdt 3.10"
   image: harbor.uni-muenster.de/proxy-docker/library/alpine:3.15
-  before_script:
+  script:
     - rm -rf ${DUNE_BUILD_DIR}
   artifacts:
     paths:
@@ -317,32 +317,24 @@ test wheels 3.10:
   extends: .test_base
   variables:
     GDT_PYTHON_VERSION: "3.10"
-  needs: ["wheel collect gdt 3.10", "wheel collect xt 3.10"]
-  dependencies: ["wheel collect gdt 3.10", "wheel collect xt 3.10"]
+  needs: ["wheel collect 3.10",]
+  dependencies: ["wheel collect 3.10",]
 
 .publish:
   image: alpine:3.15
   dependencies:
-  -  "wheel collect gdt 3.7"
-  -  "wheel collect xt 3.7"
-  -  "wheel collect gdt 3.8"
-  -  "wheel collect xt 3.8"
-  -  "wheel collect gdt 3.9"
-  -  "wheel collect xt 3.9"
-  -  "wheel collect gdt 3.10"
-  -  "wheel collect xt 3.10"
+  -  "wheel collect 3.7"
+  -  "wheel collect 3.8"
+  -  "wheel collect 3.9"
+  -  "wheel collect 3.10"
   needs:
-  -  "wheel collect gdt 3.7"
-  -  "wheel collect xt 3.7"
+  -  "wheel collect 3.7"
   -  "test wheels 3.7"
-  -  "wheel collect gdt 3.8"
-  -  "wheel collect xt 3.8"
+  -  "wheel collect 3.8"
   -  "test wheels 3.8"
-  -  "wheel collect gdt 3.9"
-  -  "wheel collect xt 3.9"
+  -  "wheel collect 3.9"
   -  "test wheels 3.9"
-  -  "wheel collect gdt 3.10"
-  -  "wheel collect xt 3.10"
+  -  "wheel collect 3.10"
   -  "test wheels 3.10"
   stage: publish
   before_script:

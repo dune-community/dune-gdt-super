@@ -153,7 +153,7 @@ wheel collect {{py}}:
     - "{{md}} {{py}}"
   {%- endfor %}
   image: harbor.uni-muenster.de/proxy-docker/library/alpine:3.15
-  before_script:
+  script:
     - rm -rf ${DUNE_BUILD_DIR}
   artifacts:
     paths:
@@ -163,21 +163,19 @@ test wheels {{py}}:
   extends: .test_base
   variables:
     GDT_PYTHON_VERSION: "{{py}}"
-  needs: ["wheel collect gdt {{py}}", "wheel collect xt {{py}}"]
-  dependencies: ["wheel collect gdt {{py}}", "wheel collect xt {{py}}"]
+  needs: ["wheel collect {{py}}",]
+  dependencies: ["wheel collect {{py}}",]
 {%- endfor %}
 
 .publish:
   image: alpine:3.15
   dependencies:
 {%- for py in pythons %}
-  -  "wheel collect gdt {{py}}"
-  -  "wheel collect xt {{py}}"
+  -  "wheel collect {{py}}"
 {%- endfor %}
   needs:
 {%- for py in pythons %}
-  -  "wheel collect gdt {{py}}"
-  -  "wheel collect xt {{py}}"
+  -  "wheel collect {{py}}"
   -  "test wheels {{py}}"
 {%- endfor %}
   stage: publish
