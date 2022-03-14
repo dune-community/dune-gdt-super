@@ -121,7 +121,7 @@ base:
   variables:
     GDT_PYTHON_VERSION: "{{py}}"
     STEP: {{md}}
-{%- if not loop.first %}
+{%- if md != "all" %}
   needs:
   - all {{py}}
 {%- if md == "gdt" %}

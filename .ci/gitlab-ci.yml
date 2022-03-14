@@ -108,6 +108,9 @@ xt 3.7:
   variables:
     GDT_PYTHON_VERSION: "3.7"
     STEP: xt
+  needs:
+  - all 3.7
+  dependencies: ["all 3.7"]
   script: ./make_wheels.bash xt
 gdt 3.7:
   extends: .wheels_base
@@ -124,9 +127,6 @@ all 3.7:
   variables:
     GDT_PYTHON_VERSION: "3.7"
     STEP: all
-  needs:
-  - all 3.7
-  dependencies: ["all 3.7"]
   script: ./make_wheels.bash all
 
   artifacts:
@@ -162,6 +162,9 @@ xt 3.8:
   variables:
     GDT_PYTHON_VERSION: "3.8"
     STEP: xt
+  needs:
+  - all 3.8
+  dependencies: ["all 3.8"]
   script: ./make_wheels.bash xt
 gdt 3.8:
   extends: .wheels_base
@@ -178,9 +181,6 @@ all 3.8:
   variables:
     GDT_PYTHON_VERSION: "3.8"
     STEP: all
-  needs:
-  - all 3.8
-  dependencies: ["all 3.8"]
   script: ./make_wheels.bash all
 
   artifacts:
@@ -216,6 +216,9 @@ xt 3.9:
   variables:
     GDT_PYTHON_VERSION: "3.9"
     STEP: xt
+  needs:
+  - all 3.9
+  dependencies: ["all 3.9"]
   script: ./make_wheels.bash xt
 gdt 3.9:
   extends: .wheels_base
@@ -232,9 +235,6 @@ all 3.9:
   variables:
     GDT_PYTHON_VERSION: "3.9"
     STEP: all
-  needs:
-  - all 3.9
-  dependencies: ["all 3.9"]
   script: ./make_wheels.bash all
 
   artifacts:
@@ -270,6 +270,9 @@ xt 3.10:
   variables:
     GDT_PYTHON_VERSION: "3.10"
     STEP: xt
+  needs:
+  - all 3.10
+  dependencies: ["all 3.10"]
   script: ./make_wheels.bash xt
 gdt 3.10:
   extends: .wheels_base
@@ -286,9 +289,6 @@ all 3.10:
   variables:
     GDT_PYTHON_VERSION: "3.10"
     STEP: all
-  needs:
-  - all 3.10
-  dependencies: ["all 3.10"]
   script: ./make_wheels.bash all
 
   artifacts:
