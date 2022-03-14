@@ -142,20 +142,22 @@ base:
 
 {# this step serves to propagate _only_ the wheel instead of the build dir #}
 {# Otherwise we'd have the combined build output of xt+gdt wheel steps at some point #}
-{% if md != "all" %}
-wheel collect {{md}} {{py}}:
+wheel collect {{py}}:
   stage: wheels
-  dependencies: ["{{md}} {{py}}"]
-  needs: ["{{md}} {{py}}"]
+  dependencies:
+  {%- for md in wheel_steps_no_all %} 
+    - "{{md}} {{py}}"
+  {%- endfor %}
+  needs: 
+  {%- for md in wheel_steps_no_all %} 
+    - "{{md}} {{py}}"
+  {%- endfor %}
   image: harbor.uni-muenster.de/proxy-docker/library/alpine:3.15
-  script:
+  before_script:
     - rm -rf ${DUNE_BUILD_DIR}
   artifacts:
     paths:
       - ${WHEEL_DIR}/final/dune*whl
-{% endif %}
-
-{% endfor %}
 
 test wheels {{py}}:
   extends: .test_base
@@ -214,7 +216,8 @@ publish dune-gdt:
 
 tpl = jinja2.Template(tpl)
 pythons = ["3.7", "3.8", "3.9", "3.10"]
-wheel_steps = ["all", "xt", "gdt"]
+wheel_steps_no_all = ["xt", "gdt"]
+wheel_steps = wheel_steps_no_all + ["all", ]
 # env_path = Path(os.path.dirname(__file__)) / '..' / '..' / '.env'
 # env = dotenv_values(env_path)
 # ci_image_tag = env['CI_IMAGE_TAG']
