@@ -113,32 +113,34 @@ base:
     - python -c 'from dune.xt import *'
     - python -c 'from dune.gdt import *'
 
-{% for py in pythons %}
+{%- for py in pythons %}
 
-{% for md in wheel_steps %}
+{%- for md in wheel_steps %}
 {{md}} {{py}}:
   extends: .wheels_base
   variables:
     GDT_PYTHON_VERSION: "{{py}}"
     STEP: {{md}}
-{% if not loop.first %}
+{%- if not loop.first %}
   needs:
   - all {{py}}
-{% if md == "gdt" %}
+{%- if md == "gdt" %}
   - xt {{py}}
-{% endif %}
+{%- endif %}
   dependencies: ["all {{py}}"]
-{% endif %}
-  {# this can only be one script exactly, to make skipping from within itself possible #}
+{%- endif %}
+  {#- this can only be one script exactly, to make skipping from within itself possible #}
   script: ./make_wheels.bash {{md}}
-{% if md == "all" %}
+{%- if md == "all" %}
 {# only the 'make all' output needs to be available in xt+gdt steps #}
   artifacts:
     paths:
       - ${DUNE_BUILD_DIR}
-{% endif %}
+{%- endif %}
+{%- endfor %}
 
-{# this step only serves to propagate _only_ the wheel instead of the build dir #}
+
+{# this step serves to propagate _only_ the wheel instead of the build dir #}
 {# Otherwise we'd have the combined build output of xt+gdt wheel steps at some point #}
 {% if md != "all" %}
 wheel collect {{md}} {{py}}:
@@ -161,22 +163,21 @@ test wheels {{py}}:
     GDT_PYTHON_VERSION: "{{py}}"
   needs: ["wheel collect gdt {{py}}", "wheel collect xt {{py}}"]
   dependencies: ["wheel collect gdt {{py}}", "wheel collect xt {{py}}"]
-
-{% endfor %}
+{%- endfor %}
 
 .publish:
   image: alpine:3.15
   dependencies:
-{% for py in pythons %}
+{%- for py in pythons %}
   -  "wheel collect gdt {{py}}"
   -  "wheel collect xt {{py}}"
-{% endfor %}
+{%- endfor %}
   needs:
-{% for py in pythons %}
+{%- for py in pythons %}
   -  "wheel collect gdt {{py}}"
   -  "wheel collect xt {{py}}"
   -  "test wheels {{py}}"
-{% endfor %}
+{%- endfor %}
   stage: publish
   before_script:
       - apk --update add py3-pip git file bash python3 py3-cffi py3-cryptography
