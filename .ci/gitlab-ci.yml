@@ -10,7 +10,7 @@ stages:
   - publish
 
 variables:
-  GIT_SUBMODULE_STRATEGY: none
+  GIT_SUBMODULE_STRATEGY: recursive
   ML_TAG: 4c42d22a2aefc41ab1d52f2c4b9df09cb3b8a6af
   WHEEL_DIR: ${CI_PROJECT_DIR}/wheelhouse
   DUNE_BUILD_DIR: ${CI_PROJECT_DIR}/build
@@ -112,6 +112,8 @@ xt 3.7:
   - all 3.7
   dependencies: ["all 3.7"]
   script: ./make_wheels.bash xt
+  after_script:
+  - ccache --show-stats
 gdt 3.7:
   extends: .wheels_base
   variables:
@@ -122,12 +124,16 @@ gdt 3.7:
   - xt 3.7
   dependencies: ["all 3.7"]
   script: ./make_wheels.bash gdt
+  after_script:
+  - ccache --show-stats
 all 3.7:
   extends: .wheels_base
   variables:
     GDT_PYTHON_VERSION: "3.7"
     STEP: all
   script: ./make_wheels.bash all
+  after_script:
+  - ccache --show-stats
 
   artifacts:
     paths:
@@ -138,6 +144,8 @@ all 3.7:
 
 wheel collect 3.7:
   stage: wheels
+  variables:
+    GIT_SUBMODULE_STRATEGY: none
   dependencies: 
     - "xt 3.7" 
     - "gdt 3.7"
@@ -154,6 +162,8 @@ wheel collect 3.7:
 test wheels 3.7:
   extends: .test_base
   variables:
+    GIT_SUBMODULE_STRATEGY: none
+  variables:
     GDT_PYTHON_VERSION: "3.7"
   needs: ["wheel collect 3.7",]
   dependencies: ["wheel collect 3.7",]
@@ -166,6 +176,8 @@ xt 3.8:
   - all 3.8
   dependencies: ["all 3.8"]
   script: ./make_wheels.bash xt
+  after_script:
+  - ccache --show-stats
 gdt 3.8:
   extends: .wheels_base
   variables:
@@ -176,12 +188,16 @@ gdt 3.8:
   - xt 3.8
   dependencies: ["all 3.8"]
   script: ./make_wheels.bash gdt
+  after_script:
+  - ccache --show-stats
 all 3.8:
   extends: .wheels_base
   variables:
     GDT_PYTHON_VERSION: "3.8"
     STEP: all
   script: ./make_wheels.bash all
+  after_script:
+  - ccache --show-stats
 
   artifacts:
     paths:
@@ -192,6 +208,8 @@ all 3.8:
 
 wheel collect 3.8:
   stage: wheels
+  variables:
+    GIT_SUBMODULE_STRATEGY: none
   dependencies: 
     - "xt 3.8" 
     - "gdt 3.8"
@@ -208,6 +226,8 @@ wheel collect 3.8:
 test wheels 3.8:
   extends: .test_base
   variables:
+    GIT_SUBMODULE_STRATEGY: none
+  variables:
     GDT_PYTHON_VERSION: "3.8"
   needs: ["wheel collect 3.8",]
   dependencies: ["wheel collect 3.8",]
@@ -220,6 +240,8 @@ xt 3.9:
   - all 3.9
   dependencies: ["all 3.9"]
   script: ./make_wheels.bash xt
+  after_script:
+  - ccache --show-stats
 gdt 3.9:
   extends: .wheels_base
   variables:
@@ -230,12 +252,16 @@ gdt 3.9:
   - xt 3.9
   dependencies: ["all 3.9"]
   script: ./make_wheels.bash gdt
+  after_script:
+  - ccache --show-stats
 all 3.9:
   extends: .wheels_base
   variables:
     GDT_PYTHON_VERSION: "3.9"
     STEP: all
   script: ./make_wheels.bash all
+  after_script:
+  - ccache --show-stats
 
   artifacts:
     paths:
@@ -246,6 +272,8 @@ all 3.9:
 
 wheel collect 3.9:
   stage: wheels
+  variables:
+    GIT_SUBMODULE_STRATEGY: none
   dependencies: 
     - "xt 3.9" 
     - "gdt 3.9"
@@ -262,6 +290,8 @@ wheel collect 3.9:
 test wheels 3.9:
   extends: .test_base
   variables:
+    GIT_SUBMODULE_STRATEGY: none
+  variables:
     GDT_PYTHON_VERSION: "3.9"
   needs: ["wheel collect 3.9",]
   dependencies: ["wheel collect 3.9",]
@@ -274,6 +304,8 @@ xt 3.10:
   - all 3.10
   dependencies: ["all 3.10"]
   script: ./make_wheels.bash xt
+  after_script:
+  - ccache --show-stats
 gdt 3.10:
   extends: .wheels_base
   variables:
@@ -284,12 +316,16 @@ gdt 3.10:
   - xt 3.10
   dependencies: ["all 3.10"]
   script: ./make_wheels.bash gdt
+  after_script:
+  - ccache --show-stats
 all 3.10:
   extends: .wheels_base
   variables:
     GDT_PYTHON_VERSION: "3.10"
     STEP: all
   script: ./make_wheels.bash all
+  after_script:
+  - ccache --show-stats
 
   artifacts:
     paths:
@@ -300,6 +336,8 @@ all 3.10:
 
 wheel collect 3.10:
   stage: wheels
+  variables:
+    GIT_SUBMODULE_STRATEGY: none
   dependencies: 
     - "xt 3.10" 
     - "gdt 3.10"
@@ -315,6 +353,8 @@ wheel collect 3.10:
 
 test wheels 3.10:
   extends: .test_base
+  variables:
+    GIT_SUBMODULE_STRATEGY: none
   variables:
     GDT_PYTHON_VERSION: "3.10"
   needs: ["wheel collect 3.10",]
@@ -345,6 +385,8 @@ test wheels 3.10:
     TWINE_USERNAME: ${TWINE_USERNAME}
   script:
     - cd ${MOD_DIR}
+    - pwd
+    - git describe --tags HEAD
     # upload only if a tag points to checked out commit
     - (git describe --exact-match --tags HEAD && python3 -m twine upload ${WHEEL_DIR}/final/${MOD_WHEEL_PREFIX}*whl) || echo "not uploading untagged wheels"
   artifacts:

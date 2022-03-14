@@ -42,7 +42,7 @@ DOCKER_RUN="docker run ${DT} --env-file=${DOCKER_ENVFILE} -e DUNE_SRC_DIR=/home/
   -e LOCAL_USER=${LOCAL_USER} -e LOCAL_GID=${LOCAL_GID} -e LOCAL_UID=${LOCAL_UID} \
   -i ${IMAGE}"
 
-${DOCKER_RUN} build-wheels.sh ${md}
+echo ${DOCKER_RUN} build-wheels.sh ${md}
 
 if [[ "${md}" != "all" ]] ; then
   # wait for pull to finish

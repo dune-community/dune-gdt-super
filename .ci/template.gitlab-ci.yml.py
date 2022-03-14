@@ -19,7 +19,7 @@ stages:
   - publish
 
 variables:
-  GIT_SUBMODULE_STRATEGY: none
+  GIT_SUBMODULE_STRATEGY: recursive
   ML_TAG: 4c42d22a2aefc41ab1d52f2c4b9df09cb3b8a6af
   WHEEL_DIR: ${CI_PROJECT_DIR}/wheelhouse
   DUNE_BUILD_DIR: ${CI_PROJECT_DIR}/build
@@ -131,6 +131,8 @@ base:
 {%- endif %}
   {#- this can only be one script exactly, to make skipping from within itself possible #}
   script: ./make_wheels.bash {{md}}
+  after_script:
+  - ccache --show-stats
 {%- if md == "all" %}
 {# only the 'make all' output needs to be available in xt+gdt steps #}
   artifacts:
@@ -144,6 +146,8 @@ base:
 {# Otherwise we'd have the combined build output of xt+gdt wheel steps at some point #}
 wheel collect {{py}}:
   stage: wheels
+  variables:
+    GIT_SUBMODULE_STRATEGY: none
   dependencies:
   {%- for md in wheel_steps_no_all %} 
     - "{{md}} {{py}}"
@@ -161,6 +165,8 @@ wheel collect {{py}}:
 
 test wheels {{py}}:
   extends: .test_base
+  variables:
+    GIT_SUBMODULE_STRATEGY: none
   variables:
     GDT_PYTHON_VERSION: "{{py}}"
   needs: ["wheel collect {{py}}",]
@@ -187,6 +193,8 @@ test wheels {{py}}:
     TWINE_USERNAME: ${TWINE_USERNAME}
   script:
     - cd ${MOD_DIR}
+    - pwd
+    - git describe --tags HEAD
     # upload only if a tag points to checked out commit
     - (git describe --exact-match --tags HEAD && python3 -m twine upload ${WHEEL_DIR}/final/${MOD_WHEEL_PREFIX}*whl) || echo "not uploading untagged wheels"
   artifacts:
