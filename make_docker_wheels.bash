@@ -20,7 +20,7 @@ PYTHON_VERSION=${GDT_PYTHON_VERSION:-3.8}
 set -eu
 
 IMAGE=zivgitlab.wwu.io/ag-ohlberger/dune-community/docker/manylinux-2014_py${PYTHON_VERSION}:${ML_TAG}
-TEST_IMAGE=docker.io/python:${PYTHON_VERSION}-latest
+TEST_IMAGE=docker.io/python:${PYTHON_VERSION}-slim
 # check if we a have TTY first, else docker run would throw an error
 if [ -t 1 ] ; then
   DT="-t"
@@ -44,11 +44,13 @@ DOCKER_RUN="docker run ${DT} --env-file=${DOCKER_ENVFILE} -e DUNE_SRC_DIR=/home/
 
 ${DOCKER_RUN} build-wheels.sh ${md}
 
-# wait for pull to finish
-wait
-# makes sure wheels are importable
-docker run ${DT} -v ${THISDIR}/docker/wheelhouse/final:/wheelhouse:ro -i ${TEST_IMAGE} \
-  bash -c "pip install /wheelhouse/dune* && python -c 'from dune.${md} import *'"
+if [[ "${md}" != "all" ]] ; then
+  # wait for pull to finish
+  wait
+  # makes sure wheels are importable
+  docker run ${DT} -v ${THISDIR}/docker/wheelhouse/final:/wheelhouse:ro -i ${TEST_IMAGE} \
+    bash -c "pip install /wheelhouse/dune* && python -c 'from dune.${md} import *'"
 
-echo '************************************'
-echo Wheels are in ${THISDIR}/docker/wheelhouse/final
+  echo '************************************'
+  echo Wheels are in ${THISDIR}/docker/wheelhouse/final
+fi
