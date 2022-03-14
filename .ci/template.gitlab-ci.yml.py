@@ -106,7 +106,7 @@ base:
     - tar cfz ninja_log_${STEP}_${GDT_PYTHON_VERSION}.tar.gz ${DUNE_BUILD_DIR}/dune-*/.ninja_log || true
 
 .test_base:
-  image: pymor/testing_py${GDT_PYTHON_VERSION}:latest
+  image: harbor.uni-muenster.de/proxy-docker/library/python:${GDT_PYTHON_VERSION}-slim
   stage: test
   script:
     - pip install ${WHEEL_DIR}/final/dune*whl
