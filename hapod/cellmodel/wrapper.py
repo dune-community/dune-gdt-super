@@ -1,14 +1,11 @@
 import math
 from numbers import Number
-import pickle
 import random
 import resource
 from statistics import mean
 from timeit import default_timer as timer
 from typing import Any, Union
 import weakref
-
-# import matplotlib.pyplot as plt
 
 import gdt.cellmodel
 from hapod.hapod import binary_tree_depth
@@ -17,15 +14,14 @@ from hapod.mpi import MPIWrapper, idle_wait
 from hapod.xt import DuneXtLaListVectorSpace, DuneXtLaVector
 import numpy as np
 from pymor.algorithms.ei import deim
-from pymor.algorithms.gram_schmidt import gram_schmidt
-from pymor.algorithms.newton import newton, newton_two_ops
+from pymor.algorithms.newton import newton
 from pymor.algorithms.projection import project
 from pymor.core.base import abstractmethod
+from pymor.core.exceptions import AccuracyError
 from pymor.models.interface import Model
 from pymor.operators.constructions import ProjectedOperator, VectorOperator
 from pymor.operators.ei import EmpiricalInterpolatedOperator, ProjectedEmpiricalInterpolatedOperator
 from pymor.operators.interface import Operator
-from pymor.operators.numpy import NumpyMatrixOperator
 from pymor.parameters.base import Parameters, ParametricObject
 from pymor.reductors.basic import ProjectionBasedReductor
 from pymor.vectorarrays.block import BlockVectorSpace
@@ -48,8 +44,14 @@ NEWTON_PARAMS = {
 
 
 class CellModelSolver(ParametricObject):
-    def __init__(self, testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu, split_pfield):
-        self.__auto_init(locals())
+    def __init__(self, testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu):
+        self.testcase = testcase
+        self.t_end = t_end
+        self.dt = dt
+        self.grid_size_x = grid_size_x
+        self.grid_size_y = grid_size_y
+        self.pol_order = pol_order
+        self.mu = mu
         self.impl = gdt.cellmodel.CellModelSolver(
             testcase,
             t_end,
@@ -109,172 +111,139 @@ class CellModelSolver(ParametricObject):
     def finished(self):
         return self.impl.finished()
 
-    def apply_pfield_L2_product_operator(self, U, mu=None, numpy=False):
-        pfield_space = self.pfield_solution_space
-        if not numpy:
-            U_out = [self.impl.apply_pfield_L2_product_operator(vec.impl) for vec in U._list]
-            return pfield_space.make_array(U_out)
-        else:
-            U_list = pfield_space.make_array([pfield_space.vector_from_numpy(vec).impl for vec in U.to_numpy()])
-            U_out = [
-                DuneXtLaVector(self.impl.apply_pfield_L2_product_operator(vec.impl)).to_numpy(True)
-                for vec in U_list._list
-            ]
-            return self.pfield_numpy_space.make_array(U_out)
+    def apply_pfield_L2_product_operator(self, U):
+        U_out = [self.impl.apply_pfield_L2_product_operator(vec.impl) for vec in U._list]
+        return self.pfield_solution_space.make_array(U_out)
 
-    def apply_ofield_L2_product_operator(self, U, mu=None):
+    def apply_ofield_L2_product_operator(self, U):
         U_out = [self.impl.apply_ofield_L2_product_operator(vec.impl) for vec in U._list]
         return self.ofield_solution_space.make_array(U_out)
 
-    def apply_stokes_L2_product_operator(self, U, mu=None):
+    def apply_stokes_L2_product_operator(self, U):
         U_out = [self.impl.apply_stokes_L2_product_operator(vec.impl) for vec in U._list]
         return self.stokes_solution_space.make_array(U_out)
 
-    def apply_pfield_H1_product_operator(self, U, mu=None):
+    def apply_pfield_H1_product_operator(self, U):
         U_out = [self.impl.apply_pfield_H1_product_operator(vec.impl) for vec in U._list]
         return self.pfield_solution_space.make_array(U_out)
 
-    def apply_ofield_H1_product_operator(self, U, mu=None):
+    def apply_ofield_H1_product_operator(self, U):
         U_out = [self.impl.apply_ofield_H1_product_operator(vec.impl) for vec in U._list]
         return self.pfield_solution_space.make_array(U_out)
 
-    def pfield_vector(self, cell_index):
-        return DuneXtLaVector(self.impl.pfield_vec(cell_index))
+    def pfield_vector(self):
+        return DuneXtLaVector(self.impl.pfield_vec(0))
 
-    def ofield_vector(self, cell_index):
-        return DuneXtLaVector(self.impl.ofield_vec(cell_index))
+    def ofield_vector(self):
+        return DuneXtLaVector(self.impl.ofield_vec(0))
 
     def stokes_vector(self):
         return DuneXtLaVector(self.impl.stokes_vec())
 
-    def compute_pfield_deim_dofs(self, range_dofs, cell_index=0):
-        self.impl.compute_restricted_pfield_dofs([int(i) for i in range_dofs], cell_index)
+    def compute_pfield_deim_dofs(self, range_dofs):
+        self.impl.compute_restricted_pfield_dofs([int(i) for i in range_dofs], 0)
 
-    def compute_ofield_deim_dofs(self, range_dofs, cell_index=0):
-        self.impl.compute_restricted_ofield_dofs([int(i) for i in range_dofs], cell_index)
+    def compute_ofield_deim_dofs(self, range_dofs):
+        self.impl.compute_restricted_ofield_dofs([int(i) for i in range_dofs], 0)
 
     def compute_stokes_deim_dofs(self, range_dofs):
         self.impl.compute_restricted_stokes_dofs([int(i) for i in range_dofs])
 
-    def pfield_deim_source_dofs(self, cell_index):
-        return self.impl.pfield_deim_source_dofs(cell_index)
+    def pfield_deim_source_dofs(self):
+        return self.impl.pfield_deim_source_dofs(0)
 
-    def ofield_deim_source_dofs(self, cell_index):
-        return self.impl.ofield_deim_source_dofs(cell_index)
+    def ofield_deim_source_dofs(self):
+        return self.impl.ofield_deim_source_dofs(0)
 
     def stokes_deim_source_dofs(self):
         return self.impl.stokes_deim_source_dofs()
 
-    def set_pfield_vec(self, cell_index, vec):
+    def set_pfield_vec(self, vec):
         assert isinstance(vec, DuneXtLaVector)
         assert vec.dim == self.pfield_solution_space.dim
-        return self.impl.set_pfield_vec(cell_index, vec.impl)
+        return self.impl.set_pfield_vec(0, vec.impl)
 
-    def set_ofield_vec(self, cell_index, vec):
+    def set_ofield_vec(self, vec):
         assert isinstance(vec, DuneXtLaVector)
         assert vec.dim == self.ofield_solution_space.dim
-        return self.impl.set_ofield_vec(cell_index, vec.impl)
+        return self.impl.set_ofield_vec(0, vec.impl)
 
     def set_stokes_vec(self, vec):
         assert isinstance(vec, DuneXtLaVector)
         assert vec.dim == self.stokes_solution_space.dim
         return self.impl.set_stokes_vec(vec.impl)
 
-    def set_pfield_vec_dofs(self, cell_index, vec, dofs):
+    def set_pfield_vec_dofs(self, vec, dofs):
         assert len(vec) == len(dofs)
         assert all([dof < self.pfield_solution_space.dim for dof in dofs])
-        return self.impl.set_pfield_vec_dofs(cell_index, vec, dofs)
+        return self.impl.set_pfield_vec_dofs(0, vec, dofs)
 
-    def set_ofield_vec_dofs(self, cell_index, vec, dofs):
+    def set_ofield_vec_dofs(self, vec, dofs):
         assert len(vec) == len(dofs)
         assert all([dof < self.ofield_solution_space.dim for dof in dofs])
-        return self.impl.set_ofield_vec_dofs(cell_index, vec, dofs)
+        return self.impl.set_ofield_vec_dofs(0, vec, dofs)
 
     def set_stokes_vec_dofs(self, vec, dofs):
         assert len(vec) == len(dofs)
         assert all([dof < self.stokes_solution_space.dim for dof in dofs])
         return self.impl.set_stokes_vec_dofs(vec, dofs)
 
-    def prepare_pfield_operator(self, cell_index, restricted=False):
-        return self.impl.prepare_pfield_operator(cell_index, restricted)
+    def prepare_pfield_operator(self, restricted=False):
+        return self.impl.prepare_pfield_operator(0, restricted)
 
-    def prepare_ofield_operator(self, cell_index, restricted=False):
-        return self.impl.prepare_ofield_operator(cell_index, restricted)
+    def prepare_ofield_operator(self, restricted=False):
+        return self.impl.prepare_ofield_operator(0, restricted)
 
     def prepare_stokes_operator(self, restricted=False):
         return self.impl.prepare_stokes_operator(restricted)
 
-    def set_pfield_jacobian_state(self, vec, cell_index):
+    def set_pfield_jacobian_state(self, vec):
         assert isinstance(vec, DuneXtLaVector)
         assert vec.dim == self.pfield_solution_space.dim
-        self.impl.set_pfield_jacobian_state(vec.impl, cell_index)
+        self.impl.set_pfield_jacobian_state(vec.impl, 0)
 
-    def set_ofield_jacobian_state(self, vec, cell_index):
+    def set_ofield_jacobian_state(self, vec):
         assert isinstance(vec, DuneXtLaVector)
         assert vec.dim == self.ofield_solution_space.dim
-        self.impl.set_ofield_jacobian_state(vec.impl, cell_index)
+        self.impl.set_ofield_jacobian_state(vec.impl, 0)
 
-    def set_pfield_jacobian_state_dofs(self, vec, cell_index):
-        self.impl.set_pfield_jacobian_state_dofs(vec, cell_index)
+    def set_pfield_jacobian_state_dofs(self, vec):
+        self.impl.set_pfield_jacobian_state_dofs(vec, 0)
 
-    def set_ofield_jacobian_state_dofs(self, vec, cell_index):
-        self.impl.set_ofield_jacobian_state_dofs(vec, cell_index)
+    def set_ofield_jacobian_state_dofs(self, vec):
+        self.impl.set_ofield_jacobian_state_dofs(vec, 0)
 
-    def apply_inverse_pfield_operator(self, guess_vec, cell_index):
+    def apply_inverse_pfield_operator(self, guess_vec):
         assert isinstance(guess_vec, DuneXtLaVector)
         assert guess_vec.dim == self.pfield_solution_space.dim
         return self.pfield_solution_space.make_array(
-            [self.impl.apply_inverse_pfield_operator(guess_vec.impl, cell_index)]
+            [self.impl.apply_inverse_pfield_operator(guess_vec.impl, 0)]
         )
 
-    def apply_inverse_ofield_operator(self, guess_vec, cell_index):
+    def apply_inverse_ofield_operator(self, guess_vec):
         assert isinstance(guess_vec, DuneXtLaVector)
         assert guess_vec.dim == self.ofield_solution_space.dim
         return self.ofield_solution_space.make_array(
-            [self.impl.apply_inverse_ofield_operator(guess_vec.impl, cell_index)]
+            [self.impl.apply_inverse_ofield_operator(guess_vec.impl, 0)]
         )
 
     def apply_inverse_stokes_operator(self):
         return self.stokes_solution_space.make_array([self.impl.apply_inverse_stokes_operator()])
 
-    def apply_pfield_operator(self, U, cell_index, restricted=False):
+    def apply_pfield_operator(self, U, restricted=False):
         if restricted:
             U = self.numpy_vecarray_to_xt_listvecarray(U)
         else:
             assert U.dim == self.pfield_solution_space.dim
-        if self.split_pfield:
-            U_out = [
-                self.impl.apply_pfield_residual_operator_without_diagonal_mass_matrices(
-                    vec.impl, cell_index, restricted
-                )
-                for vec in U._list
-            ]
-        else:
-            U_out = [self.impl.apply_pfield_residual_operator(vec.impl, cell_index, restricted) for vec in U._list]
+        U_out = [self.impl.apply_pfield_residual_operator(vec.impl, 0, restricted) for vec in U._list]
         return self.pfield_solution_space.make_array(U_out)
 
-    def apply_full_pfield_operator(self, U, cell_index, restricted=False):
-        if restricted:
-            U = self.numpy_vecarray_to_xt_listvecarray(U)
-        else:
-            assert U.dim == self.pfield_solution_space.dim
-        U_out = [self.impl.apply_pfield_residual_operator(vec.impl, cell_index, restricted) for vec in U._list]
-        return self.pfield_solution_space.make_array(U_out)
-
-    def apply_pfield_lin_operator(self, U, restricted=False):
-        assert U.dim == self.pfield_solution_space.dim
-        if self.split_pfield:
-            U_out = [self.impl.apply_pfield_diagonal_mass_matrices(vec.impl, 0, restricted) for vec in U._list]
-            return self.pfield_solution_space.make_array(U_out)
-        else:
-            return self.pfield_solution_space.zeros(len(U._list))
-
-    def apply_ofield_operator(self, U, cell_index, restricted=False):
+    def apply_ofield_operator(self, U, restricted=False):
         if restricted:
             U = self.numpy_vecarray_to_xt_listvecarray(U)
         else:
             assert U.dim == self.ofield_solution_space.dim
-        U_out = [self.impl.apply_ofield_operator(vec.impl, cell_index, restricted) for vec in U._list]
+        U_out = [self.impl.apply_ofield_operator(vec.impl, 0, restricted) for vec in U._list]
         return self.ofield_solution_space.make_array(U_out)
 
     def apply_stokes_operator(self, U, restricted=False):
@@ -285,14 +254,14 @@ class CellModelSolver(ParametricObject):
         U_out = [self.impl.apply_stokes_operator(vec.impl, restricted) for vec in U._list]
         return self.stokes_solution_space.make_array(U_out)
 
-    def apply_inverse_pfield_jacobian(self, V, cell_index):
+    def apply_inverse_pfield_jacobian(self, V):
         return self.pfield_solution_space.make_array(
-            [self.impl.apply_inverse_pfield_jacobian(vec.impl, cell_index) for vec in V._list]
+            [self.impl.apply_inverse_pfield_jacobian(vec.impl, 0) for vec in V._list]
         )
 
-    def apply_inverse_ofield_jacobian(self, V, cell_index):
+    def apply_inverse_ofield_jacobian(self, V):
         return self.ofield_solution_space.make_array(
-            [self.impl.apply_inverse_ofield_jacobian(vec.impl, cell_index) for vec in V._list]
+            [self.impl.apply_inverse_ofield_jacobian(vec.impl, 0) for vec in V._list]
         )
 
     def apply_inverse_stokes_jacobian(self, V):
@@ -304,30 +273,16 @@ class CellModelSolver(ParametricObject):
         ret = DuneXtLaListVectorSpace.from_memory(U._data)
         return ret.copy() if copy else ret
 
-    def apply_pfield_jacobian(self, U, cell_index, restricted=False):
+    def apply_pfield_jacobian(self, U, restricted=False):
         if restricted:
             U = self.numpy_vecarray_to_xt_listvecarray(U)
-        if self.split_pfield:
-            U_out = [
-                self.impl.apply_pfield_jacobian_without_diagonal_mass_matrices(vec.impl, cell_index, restricted)
-                for vec in U._list
-            ]
-        else:
-            U_out = [self.impl.apply_pfield_jacobian(vec.impl, cell_index, restricted) for vec in U._list]
-        ret = self.pfield_solution_space.make_array(U_out)
-        return ret
+        U_out = [self.impl.apply_pfield_jacobian(vec.impl, 0, restricted) for vec in U._list]
+        return self.pfield_solution_space.make_array(U_out)
 
-    def apply_full_pfield_jacobian(self, U, cell_index, restricted=False):
+    def apply_ofield_jacobian(self, U, restricted=False):
         if restricted:
             U = self.numpy_vecarray_to_xt_listvecarray(U)
-        U_out = [self.impl.apply_pfield_jacobian(vec.impl, cell_index, restricted) for vec in U._list]
-        ret = self.pfield_solution_space.make_array(U_out)
-        return ret
-
-    def apply_ofield_jacobian(self, U, cell_index, restricted=False):
-        if restricted:
-            U = self.numpy_vecarray_to_xt_listvecarray(U)
-        U_out = [self.impl.apply_ofield_jacobian(vec.impl, cell_index, restricted) for vec in U._list]
+        U_out = [self.impl.apply_ofield_jacobian(vec.impl, 0, restricted) for vec in U._list]
         return self.ofield_solution_space.make_array(U_out)
 
     def apply_stokes_jacobian(self, U, restricted=False):
@@ -336,22 +291,11 @@ class CellModelSolver(ParametricObject):
         U_out = [self.impl.apply_stokes_jacobian(vec.impl, restricted) for vec in U._list]
         return self.stokes_solution_space.make_array(U_out)
 
-    def update_pfield_parameters(self, mu, cell_index=0, restricted=False):
-        self.impl.update_pfield_parameters(float(mu["Be"]), float(mu["Ca"]), float(mu["Pa"]), cell_index, restricted)
+    def update_pfield_parameters(self, mu, restricted=False):
+        self.impl.update_pfield_parameters(float(mu["Be"]), float(mu["Ca"]), float(mu["Pa"]), 0, restricted)
 
-    def update_ofield_parameters(self, mu, cell_index=0, restricted=False):
-        self.impl.update_ofield_parameters(float(mu["Pa"]), cell_index, restricted)
-
-
-class CellModelPfieldLinOperator(Operator):
-    def __init__(self, solver):
-        self.solver = solver
-        self.source = self.range = self.solver.pfield_solution_space
-        self.linear = True
-        self._parameters = Parameters()  # the mass matrices are parameter-independent
-
-    def apply(self, U, mu=None):
-        return self.solver.apply_pfield_lin_operator(U)
+    def update_ofield_parameters(self, mu, restricted=False):
+        self.impl.update_ofield_parameters(float(mu["Pa"]), 0, restricted)
 
 
 class CellModelPfieldL2ProductOperator(Operator):
@@ -360,8 +304,8 @@ class CellModelPfieldL2ProductOperator(Operator):
         self.source = self.range = self.solver.pfield_solution_space
         self.linear = True
 
-    def apply(self, U, mu=None, numpy=False):
-        return self.solver.apply_pfield_L2_product_operator(U, numpy=numpy)
+    def apply(self, U, mu=None):
+        return self.solver.apply_pfield_L2_product_operator(U)
 
 
 class CellModelOfieldL2ProductOperator(Operator):
@@ -405,6 +349,18 @@ class CellModelOfieldH1ProductOperator(Operator):
 
 
 class MutableStateComponentOperator(Operator):
+
+    def __init__(self, solver, range_dofs):
+        self.solver = solver
+        self.range_dofs = range_dofs
+        self.linear = False
+        self.solver.compute_pfield_deim_dofs(self.range_dofs)
+        self.source_dofs = self.solver.pfield_deim_source_dofs()
+        self.source_dofs = [self.source_dofs[0], *self.source_dofs]
+        self._fixed_component_source_dofs = self.source_dofs[0]
+        self.source = BlockVectorSpace([NumpyVectorSpace(len(dofs)) for dofs in self.source_dofs])
+        self.range = NumpyVectorSpace(len(self.range_dofs))
+        self.parameters_own = CELLMODEL_PARAMETER_TYPE
 
     mutable_state_index = (1,)
 
@@ -480,11 +436,6 @@ class MutableStateFixedComponentOperator(Operator):
         self.operator._set_state(self.component_value, mu)
         return self.operator._fixed_component_apply(U)
 
-    def full_apply(self, U, mu=None):
-        assert U in self.source
-        self.operator._set_state(self.component_value, mu)
-        return self.operator._fixed_component_full_apply(U)
-
     def apply_inverse(self, V, mu=None, initial_guess=None, least_squares=False):
         assert V in self.range
         self.operator._set_state(self.component_value, mu)
@@ -501,14 +452,10 @@ class MutableStateFixedComponentOperator(Operator):
         self.operator._set_state(self.component_value, mu)
         return self.operator._fixed_component_jacobian(U, mu=mu)
 
-    def full_jacobian(self, U, mu=None):
-        assert U in self.source
-        assert len(U) == 1
-        self.operator._set_state(self.component_value, mu)
-        return self.operator._fixed_component_full_jacobian(U, mu=mu)
-
-
 class MutableStateComponentJacobianOperator(MutableStateComponentOperator):
+
+    def __init__(self, solver, range_dofs):
+        super.__init__(solver, range_dofs)
 
     _last_jacobian_value = None
 
@@ -553,17 +500,6 @@ class MutableStateComponentJacobianOperator(MutableStateComponentOperator):
             U,
         )
 
-    def _fixed_component_full_jacobian(self, U, mu=None):
-        assert len(U) == 1
-        assert mu is None or mu == self.solver._last_mu
-        return MutableStateFixedComponentFullJacobianOperator(
-            self,
-            (self.solver._last_pfield_dofs, self.solver._last_ofield_dofs, self.solver._last_stokes_dofs),
-            self.solver._last_mu,
-            U,
-        )
-
-
 class MutableStateFixedComponentJacobianOperator(Operator):
     def __init__(self, operator, component_value, mu, jacobian_value):
         mu = mu.copy() if mu is not None else None
@@ -604,64 +540,24 @@ class MutableStateFixedComponentJacobianOperator(Operator):
         return ret_op, restricted_source_dofs
 
 
-class MutableStateFixedComponentFullJacobianOperator(Operator):
-    def __init__(self, operator, component_value, mu, jacobian_value):
-        mu = mu.copy() if mu is not None else None
-        jacobian_value = jacobian_value.copy()
-        self.__auto_init(locals())
-        self.source = operator.fixed_component_source
-        self.range = operator.range
-        self.linear = True
-        self._parameters = Parameters()  # mu is already fixed, so no parameters
-
-    def apply(self, U, mu=None):
-        assert U in self.source
-        self.operator._set_state_jacobian(self.component_value, self.mu, self.jacobian_value)
-        return self.operator._fixed_component_full_jacobian_apply(U)
-
-    def apply_inverse(self, V, mu=None, initial_guess=None, least_squares=False):
-        assert V in self.range
-        # assert mu == None or mu == self.mu # mu has to be set in the constructor
-        self.operator._set_state_jacobian(self.component_value, self.mu, self.jacobian_value)
-        return self.operator._fixed_component_jacobian_apply_inverse(V, least_squares=least_squares)
-
-    def restricted(self, dofs):
-        restricted_operator, source_dofs = self.operator.restricted(dofs)
-        restricted_source_dofs = restricted_operator._fixed_component_source_dofs
-        restricted_component_value = [
-            NumpyVectorArray(
-                value.dofs(source_dofs[restricted_operator.mutable_state_index[i]]),
-                NumpyVectorSpace(len(self.component_value)),
-            )
-            for i, value in enumerate(self.component_value)
-        ]
-        restricted_jacobian_value = NumpyVectorSpace.make_array(self.jacobian_value.dofs(restricted_source_dofs))
-        ret_op = self.with_(
-            operator=restricted_operator,
-            component_value=restricted_component_value,
-            jacobian_value=restricted_jacobian_value,
-        )
-        return ret_op, restricted_source_dofs
-
-
 class CellModelRestrictedPfieldOperator(MutableStateComponentJacobianOperator):
 
     mutable_state_index = (1, 2, 3)
 
-    def __init__(self, solver, cell_index, range_dofs):
-        self.__auto_init(locals())
+    def __init__(self, solver, range_dofs):
+        super().__init__(solver, range_dofs)
         self.linear = False
-        self.solver.compute_pfield_deim_dofs(self.range_dofs, self.cell_index)
-        self.source_dofs = self.solver.pfield_deim_source_dofs(self.cell_index)
+        self.solver.compute_pfield_deim_dofs(self.range_dofs)
+        self.source_dofs = self.solver.pfield_deim_source_dofs()
         self.source_dofs = [self.source_dofs[0], *self.source_dofs]
         self._fixed_component_source_dofs = self.source_dofs[0]
         self.source = BlockVectorSpace([NumpyVectorSpace(len(dofs)) for dofs in self.source_dofs])
-        self.range = NumpyVectorSpace(len(range_dofs))
+        self.range = NumpyVectorSpace(len(self.range_dofs))
         self.parameters_own = CELLMODEL_PARAMETER_TYPE
 
     def _change_state(self, pfield_dofs=None, ofield_dofs=None, stokes_dofs=None, mu=None):
         if mu is not None:
-            self.solver.update_pfield_parameters(mu, self.cell_index, restricted=True)
+            self.solver.update_pfield_parameters(mu, restricted=True)
         if pfield_dofs is not None:
             self.solver.set_pfield_vec_dofs(0, pfield_dofs._data[0], self.source_dofs[1])
         if ofield_dofs is not None:
@@ -669,29 +565,22 @@ class CellModelRestrictedPfieldOperator(MutableStateComponentJacobianOperator):
         if stokes_dofs is not None:
             self.solver.set_stokes_vec_dofs(stokes_dofs._data[0], self.source_dofs[3])
         if not pfield_dofs == ofield_dofs == stokes_dofs == mu == None:
-            self.solver.prepare_pfield_operator(self.cell_index, restricted=True)
+            self.solver.prepare_pfield_operator(restricted=True)
 
     def _change_jacobian_state(self, jacobian_value):
         assert jacobian_value.dim == len(self._fixed_component_source_dofs)
-        self.solver.set_pfield_jacobian_state_dofs(jacobian_value.to_numpy().ravel(), self.cell_index)
+        self.solver.set_pfield_jacobian_state_dofs(jacobian_value.to_numpy().ravel())
 
     def _need_to_invalidate_jacobian_state(self, pfield_changed, ofield_changed, stokes_changed, mu_changed):
         return pfield_changed or mu_changed
 
     def _fixed_component_apply(self, U):
-        return self.solver.apply_pfield_operator(U, self.cell_index, restricted=True)
-
-    def _fixed_component_full_apply(self, U):
-        return self.solver.apply_full_pfield_operator(U, self.cell_index, restricted=True)
-
+        return self.solver.apply_pfield_operator(U, restricted=True)
     def _fixed_component_apply_inverse(self, V, initial_guess=None, least_squares=False):
         raise NotImplementedError
 
     def _fixed_component_jacobian_apply(self, U):
-        return self.solver.apply_pfield_jacobian(U, self.cell_index, restricted=True)
-
-    def _fixed_component_full_jacobian_apply(self, U):
-        return self.solver.apply_full_pfield_jacobian(U, self.cell_index, restricted=True)
+        return self.solver.apply_pfield_jacobian(U, restricted=True)
 
     def _fixed_component_jacobian_apply_inverse(self, V, least_squares=False):
         raise NotImplementedError
@@ -701,8 +590,8 @@ class CellModelPfieldOperator(MutableStateComponentJacobianOperator):
 
     mutable_state_index = (1, 2, 3)
 
-    def __init__(self, solver, cell_index):
-        self.__auto_init(locals())
+    def __init__(self, solver):
+        self.solver = solver
         self.linear = False
         self.source = BlockVectorSpace(
             [
@@ -717,7 +606,7 @@ class CellModelPfieldOperator(MutableStateComponentJacobianOperator):
 
     def _change_state(self, pfield_dofs=None, ofield_dofs=None, stokes_dofs=None, mu=None):
         if mu is not None:
-            self.solver.update_pfield_parameters(mu, self.cell_index, restricted=False)
+            self.solver.update_pfield_parameters(mu, restricted=False)
         if pfield_dofs is not None:
             self.solver.set_pfield_vec(0, pfield_dofs._list[0])
         if ofield_dofs is not None:
@@ -725,35 +614,32 @@ class CellModelPfieldOperator(MutableStateComponentJacobianOperator):
         if stokes_dofs is not None:
             self.solver.set_stokes_vec(stokes_dofs._list[0])
         if not pfield_dofs == ofield_dofs == stokes_dofs == mu == None:
-            self.solver.prepare_pfield_operator(self.cell_index, restricted=False)
+            self.solver.prepare_pfield_operator(restricted=False)
 
     def _change_jacobian_state(self, jacobian_value):
-        self.solver.set_pfield_jacobian_state(jacobian_value._list[0], self.cell_index)
+        self.solver.set_pfield_jacobian_state(jacobian_value._list[0])
 
     def _need_to_invalidate_jacobian_state(self, pfield_changed, ofield_changed, stokes_changed, mu_changed):
         return pfield_changed or mu_changed
 
     def _fixed_component_apply(self, U):
-        return self.solver.apply_pfield_operator(U, self.cell_index)
-
-    def _fixed_component_full_apply(self, U):
-        return self.solver.apply_full_pfield_operator(U, self.cell_index)
+        return self.solver.apply_pfield_operator(U)
 
     def _fixed_component_apply_inverse(self, V, initial_guess=None, least_squares=False):
         raise NotImplementedError
         assert sum(V.norm()) == 0.0, "Not implemented for non-zero rhs!"
         assert not least_squares, "Least squares not implemented!"
-        return self.solver.apply_inverse_pfield_operator(self.solver.pfield_vector(self.cell_index), self.cell_index)
+        return self.solver.apply_inverse_pfield_operator(self.solver.pfield_vector())
 
     def _fixed_component_jacobian_apply(self, U):
-        return self.solver.apply_pfield_jacobian(U, self.cell_index)
+        return self.solver.apply_pfield_jacobian(U)
 
     def _fixed_component_jacobian_apply_inverse(self, V, initial_guess=None, least_squares=False):
         assert not least_squares, "Least squares not implemented!"
-        return self.solver.apply_inverse_pfield_jacobian(V, self.cell_index)
+        return self.solver.apply_inverse_pfield_jacobian(V)
 
     def restricted(self, dofs):
-        restricted_op = CellModelRestrictedPfieldOperator(self.solver, self.cell_index, dofs)
+        restricted_op = CellModelRestrictedPfieldOperator(self.solver, dofs)
         return restricted_op, restricted_op.source_dofs
 
 
@@ -761,20 +647,20 @@ class CellModelRestrictedOfieldOperator(MutableStateComponentJacobianOperator):
 
     mutable_state_index = (1, 2, 3)
 
-    def __init__(self, solver, cell_index, range_dofs):
-        self.__auto_init(locals())
+    def __init__(self, solver, range_dofs):
+        super().__init__(solver, range_dofs)
         self.linear = False
-        self.solver.compute_ofield_deim_dofs(self.range_dofs, self.cell_index)
-        self.source_dofs = self.solver.ofield_deim_source_dofs(self.cell_index)
+        self.solver.compute_ofield_deim_dofs(self.range_dofs)
+        self.source_dofs = self.solver.ofield_deim_source_dofs()
         self.source_dofs = [self.source_dofs[1], *self.source_dofs]
         self._fixed_component_source_dofs = self.source_dofs[0]
         self.source = BlockVectorSpace([NumpyVectorSpace(len(dofs)) for dofs in self.source_dofs])
         self.range = NumpyVectorSpace(len(range_dofs))
-        self.parameters_own = {"Be": 1, "Ca": 1, "Pa": 1}
+        self.parameters_own = CELLMODEL_PARAMETER_TYPE
 
     def _change_state(self, pfield_dofs=None, ofield_dofs=None, stokes_dofs=None, mu=None):
         if mu is not None:
-            self.solver.update_ofield_parameters(mu, self.cell_index, restricted=True)
+            self.solver.update_ofield_parameters(mu, restricted=True)
         if pfield_dofs is not None:
             self.solver.set_pfield_vec_dofs(0, pfield_dofs._data[0], self.source_dofs[1])
         if ofield_dofs is not None:
@@ -782,23 +668,23 @@ class CellModelRestrictedOfieldOperator(MutableStateComponentJacobianOperator):
         if stokes_dofs is not None:
             self.solver.set_stokes_vec_dofs(stokes_dofs._data[0], self.source_dofs[3])
         if not pfield_dofs == ofield_dofs == stokes_dofs == mu == None:
-            self.solver.prepare_ofield_operator(self.cell_index, restricted=True)
+            self.solver.prepare_ofield_operator(restricted=True)
 
     def _change_jacobian_state(self, jacobian_value):
         assert jacobian_value.dim == len(self._fixed_component_source_dofs)
-        self.solver.set_ofield_jacobian_state_dofs(jacobian_value.to_numpy().ravel(), self.cell_index)
+        self.solver.set_ofield_jacobian_state_dofs(jacobian_value.to_numpy().ravel())
 
     def _need_to_invalidate_jacobian_state(self, pfield_changed, ofield_changed, stokes_changed, mu_changed):
         return ofield_changed or mu_changed
 
     def _fixed_component_apply(self, U):
-        return self.solver.apply_ofield_operator(U, self.cell_index, restricted=True)
+        return self.solver.apply_ofield_operator(U, restricted=True)
 
     def _fixed_component_apply_inverse(self, V, initial_guess=None, least_squares=False):
         raise NotImplementedError
 
     def _fixed_component_jacobian_apply(self, U):
-        return self.solver.apply_ofield_jacobian(U, self.cell_index, restricted=True)
+        return self.solver.apply_ofield_jacobian(U, restricted=True)
 
     def _fixed_component_jacobian_apply_inverse(self, V, initial_guess=None, least_squares=False):
         raise NotImplementedError
@@ -808,8 +694,8 @@ class CellModelOfieldOperator(MutableStateComponentJacobianOperator):
 
     mutable_state_index = (1, 2, 3)
 
-    def __init__(self, solver, cell_index):
-        self.__auto_init(locals())
+    def __init__(self, solver):
+        self.solver = solver
         self.linear = False
         self.source = BlockVectorSpace(
             [
@@ -824,7 +710,7 @@ class CellModelOfieldOperator(MutableStateComponentJacobianOperator):
 
     def _change_state(self, pfield_dofs=None, ofield_dofs=None, stokes_dofs=None, mu=None):
         if mu is not None:
-            self.solver.update_ofield_parameters(mu, self.cell_index, restricted=False)
+            self.solver.update_ofield_parameters(mu, restricted=False)
         if pfield_dofs is not None:
             self.solver.set_pfield_vec(0, pfield_dofs._list[0])
         if ofield_dofs is not None:
@@ -832,32 +718,32 @@ class CellModelOfieldOperator(MutableStateComponentJacobianOperator):
         if stokes_dofs is not None:
             self.solver.set_stokes_vec(stokes_dofs._list[0])
         if not pfield_dofs == ofield_dofs == stokes_dofs == mu == None:
-            self.solver.prepare_ofield_operator(self.cell_index, restricted=False)
+            self.solver.prepare_ofield_operator(restricted=False)
 
     def _change_jacobian_state(self, jacobian_value):
-        self.solver.set_ofield_jacobian_state(jacobian_value._list[0], self.cell_index)
+        self.solver.set_ofield_jacobian_state(jacobian_value._list[0])
 
     def _need_to_invalidate_jacobian_state(self, pfield_changed, ofield_changed, stokes_changed, mu_changed):
         return ofield_changed or mu_changed
 
     def _fixed_component_apply(self, U):
-        return self.solver.apply_ofield_operator(U, self.cell_index)
+        return self.solver.apply_ofield_operator(U)
 
     def _fixed_component_apply_inverse(self, V, initial_guess=None, least_squares=False):
         raise NotImplementedError
         assert sum(V.norm()) == 0.0, "Not implemented for non-zero rhs!"
         assert not least_squares, "Least squares not implemented!"
-        return self.solver.apply_inverse_ofield_operator(self.solver.ofield_vector(self.cell_index), self.cell_index)
+        return self.solver.apply_inverse_ofield_operator(self.solver.ofield_vector())
 
     def _fixed_component_jacobian_apply(self, U):
-        return self.solver.apply_ofield_jacobian(U, self.cell_index)
+        return self.solver.apply_ofield_jacobian(U)
 
     def _fixed_component_jacobian_apply_inverse(self, V, initial_guess=None, least_squares=False):
         assert not least_squares, "Least squares not implemented!"
-        return self.solver.apply_inverse_ofield_jacobian(V, self.cell_index)
+        return self.solver.apply_inverse_ofield_jacobian(V)
 
     def restricted(self, dofs):
-        restricted_op = CellModelRestrictedOfieldOperator(self.solver, self.cell_index, dofs)
+        restricted_op = CellModelRestrictedOfieldOperator(self.solver, dofs)
         return restricted_op, restricted_op.source_dofs
 
 
@@ -866,7 +752,7 @@ class CellModelRestrictedStokesOperator(MutableStateComponentJacobianOperator):
     mutable_state_index = (1, 2)
 
     def __init__(self, solver, range_dofs):
-        self.__auto_init(locals())
+        super().__init__(solver, range_dofs)
         self.linear = False
         self.solver.compute_stokes_deim_dofs(self.range_dofs)
         self.source_dofs = self.solver.stokes_deim_source_dofs()
@@ -954,13 +840,11 @@ class CellModel(Model):
         t_end,
         dt,
         pfield_op,
-        pfield_lin_op,
         ofield_op,
         stokes_op,
         initial_pfield,
         initial_ofield,
         initial_stokes,
-        split_pfield,
         newton_params_pfield=NEWTON_PARAMS,
         newton_params_ofield=NEWTON_PARAMS,
         newton_params_stokes=NEWTON_PARAMS,
@@ -971,21 +855,6 @@ class CellModel(Model):
         products={"pfield": None, "ofield": None, "stokes": None},
     ):
         self.__auto_init(locals())
-        # self.t_end = t_end
-        # self.dt = dt
-        # self.pfield_op = pfield_op
-        # self.ofield_op = ofield_op
-        # self.stokes_op = stokes_op
-        # self.initial_pfield = initial_pfield
-        # self.initial_ofield = initial_ofield
-        # self.initial_stokes = initial_stokes
-        # self.newton_params_pfield = newton_params_pfield
-        # self.newton_params_ofield = newton_params_ofield
-        # self.newton_params_stokes = newton_params_stokes
-        # self.least_squares_pfield = least_squares_pfield
-        # self.least_squares_ofield = least_squares_ofield
-        # self.least_squares_stokes = least_squares_stokes
-        # self.name = name
         self.solution_space = BlockVectorSpace(
             [pfield_op.source.subspaces[0], ofield_op.source.subspaces[0], stokes_op.source.subspaces[0]]
         )
@@ -1010,7 +879,6 @@ class CellModel(Model):
         ofield_stages = [ofield_vecarray.empty()]
         stokes_stages = [stokes_vecarray.empty()]
         pfield_residuals = [pfield_vecarray.empty()]
-        pfield_residuals_nonlin = [pfield_vecarray.empty()]
         ofield_residuals = [ofield_vecarray.empty()]
         stokes_residuals = [stokes_vecarray.empty()]
 
@@ -1028,10 +896,7 @@ class CellModel(Model):
             actual_dt = min(self.dt, self.t_end - t)
             # do a timestep
             print("Current time: {}".format(t), flush=True)
-            # pfield_vecarray, pfield_data = newton(
-            pfield_vecarray, pfield_data = newton_two_ops(
-                # self.pfield_lin_op + self.pfield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]),
-                self.pfield_lin_op,
+            pfield_vecarray, pfield_data = newton(
                 self.pfield_op.fix_components((1, 2, 3), [pfield_vecarray, ofield_vecarray, stokes_vecarray]),
                 self.pfield_op.range.zeros(),  # pfield_op has same range as pfield_op with fixed components
                 initial_guess=pfield_vecarray,
@@ -1041,8 +906,6 @@ class CellModel(Model):
                 return_residuals=return_residuals,
                 source_product=self.products["pfield"] if is_fom else None,
                 range_product=self.products["pfield"] if is_fom else None,
-                is_fom=is_fom,
-                split_pfield=self.split_pfield,
                 **self.newton_params_pfield,
             )
             ofield_vecarray, ofield_data = newton(
@@ -1080,7 +943,6 @@ class CellModel(Model):
                 stokes_stages.append(stokes_data["stages"])
             if return_residuals:
                 pfield_residuals.append(pfield_data["residuals"])
-                pfield_residuals_nonlin.append(pfield_data["residuals_nonlin"])
                 ofield_residuals.append(ofield_data["residuals"])
                 stokes_residuals.append(stokes_data["residuals"])
 
@@ -1089,7 +951,6 @@ class CellModel(Model):
             retval[1]["stages"] = (pfield_stages, ofield_stages, stokes_stages)
         if return_residuals:
             retval[1]["residuals"] = (pfield_residuals, ofield_residuals, stokes_residuals)
-            retval[1]["residuals_nonlin"] = pfield_residuals_nonlin
         return retval
 
     def next_time_step(self, U_last, t, mu=None, return_output=False, return_stages=False, return_residuals=False):
@@ -1103,7 +964,6 @@ class CellModel(Model):
                 retval[1]["stages"] = (None, None, None)
             if return_residuals:
                 retval[1]["residuals"] = (None, None, None)
-                retval[1]["residuals_nonlin"] = None
             return tuple(retval)
 
         # do not go past t_end
@@ -1112,10 +972,7 @@ class CellModel(Model):
         is_fom = isinstance(self.pfield_op, CellModelPfieldOperator)
         # do a timestep
         print("Current time: {}".format(t), flush=True)
-        # pfield_vecs, pfield_data = newton(
-        pfield_vecs, pfield_data = newton_two_ops(
-            # self.pfield_lin_op + self.pfield_op.fix_components((1, 2, 3), [pfield_vecs, ofield_vecs, stokes_vecs]),
-            self.pfield_lin_op,
+        pfield_vecs, pfield_data = newton(
             self.pfield_op.fix_components((1, 2, 3), [pfield_vecs, ofield_vecs, stokes_vecs]),
             self.pfield_op.range.zeros(),  # pfield_op has same range as the pfield_op with fixed components
             initial_guess=pfield_vecs,
@@ -1125,8 +982,6 @@ class CellModel(Model):
             return_residuals=return_residuals,
             source_product=self.products["pfield"] if is_fom else None,
             range_product=self.products["pfield"] if is_fom else None,
-            is_fom=is_fom,
-            split_pfield=self.pfield_op.solver.split_pfield,
             **self.newton_params_pfield,
         )
         ofield_vecs, ofield_data = newton(
@@ -1161,14 +1016,12 @@ class CellModel(Model):
             retval[1]["stages"] = (pfield_data["stages"], ofield_data["stages"], stokes_data["stages"])
         if return_residuals:
             retval[1]["residuals"] = (pfield_data["residuals"], ofield_data["residuals"], stokes_data["residuals"])
-            retval[1]["residuals_nonlin"] = pfield_data["residuals_nonlin"]
         return retval
 
 
 class DuneCellModel(CellModel):
     def __init__(self, solver, products, name=None):
         pfield_op = CellModelPfieldOperator(solver, 0)
-        pfield_lin_op = CellModelPfieldLinOperator(solver)
         ofield_op = CellModelOfieldOperator(solver, 0)
         stokes_op = CellModelStokesOperator(solver)
         initial_pfield = VectorOperator(solver.pfield_solution_space.make_array([solver.pfield_vector(0)]))
@@ -1180,7 +1033,6 @@ class DuneCellModel(CellModel):
             t_end=self.t_end,
             dt=self.dt,
             pfield_op=pfield_op,
-            pfield_lin_op=pfield_lin_op,
             ofield_op=ofield_op,
             stokes_op=stokes_op,
             initial_pfield=initial_pfield,
@@ -1190,7 +1042,6 @@ class DuneCellModel(CellModel):
             newton_params_ofield=NEWTON_PARAMS,
             newton_params_stokes=NEWTON_PARAMS,
             name=name,
-            split_pfield=solver.split_pfield,
             products=products,
         )
         self.parameters_own = CELLMODEL_PARAMETER_TYPE
@@ -1404,9 +1255,7 @@ class CellModelReductor(ProjectionBasedReductor):
         fom = self.fom
         pfield_basis, ofield_basis, stokes_basis = (self.bases["pfield"], self.bases["ofield"], self.bases["stokes"])
         pfield_op, ofield_op, stokes_op = fom.pfield_op, fom.ofield_op, fom.stokes_op
-        pfield_lin_op = fom.pfield_lin_op
         if self.pfield_deim_basis:
-            # pfield_dofs, pfield_deim_basis, _ = deim(self.pfield_deim_basis, pod=False, product=self.products["pfield"])
             pfield_deim_dofs_field = [None] * 3
             pfield_deim_basis_field = [None] * 3
             for i in range(3):
@@ -1437,7 +1286,6 @@ class CellModelReductor(ProjectionBasedReductor):
                 ),
                 ensure_copy=True,
             )
-            # pfield_space = fom.solver.pfield_solution_space
             pfield_deim_basis.append(phi_deim_basis)
             pfield_deim_basis.append(phinat_deim_basis)
             pfield_deim_basis.append(mu_deim_basis)
@@ -1448,57 +1296,30 @@ class CellModelReductor(ProjectionBasedReductor):
             pfield_dofs = np.array(pfield_dofs)
             print(pfield_deim_basis, pfield_dofs)
             pfield_op = EmpiricalInterpolatedOperatorWithFixComponent(pfield_op, pfield_dofs, pfield_deim_basis, False)
-            # assert self.least_squares_pfield
-            if fom.solver.split_pfield:
-                pfield_deim_basis.append(pfield_lin_op.apply(pfield_basis))
-                gram_schmidt(pfield_deim_basis, offset=len(pfield_dofs), product=self.products["pfield"], copy=False)
-                projected_collateral_basis = np.hstack(
-                    [np.eye(len(pfield_dofs)), np.zeros((len(pfield_dofs), len(pfield_deim_basis) - len(pfield_dofs)))]
-                )
-                projected_collateral_basis = NumpyVectorSpace.make_array(projected_collateral_basis)
-            else:
-                projected_collateral_basis = NumpyVectorSpace.make_array(
-                    np.eye(len(pfield_deim_basis))
-                )  # assumes that pfield_deim_basis is ONB!!!
-
-            # projected_collateral_basis = (
-            #     # If the full-order residual formulation is R(U) = 0, then
-            #     # the Galerkin DEIM reduced model is
-            #     #   V^T W Z (E^T Z)^{-1} E^T R(Vu) = 0,
-            #     # where V in R^{Nxn} and Z in R^{Nxl} have the POD and DEIM basis as their columns, respectively,
-            #     # E = (e_{k_1}, ..., e_{k_l}) in R^{Nxl} contains the unit vectors corresponding to the DEIM indices
-            #     # and W is the positive definite matrix which defines the inner product.
-            #     # If we split up the operator and only approximate the nonlinear part via DEIM, R(U) + R_lin U = 0, then
-            #     # the Galerkin DEIM reduced model is
-            #     #  V^T W R_lin V u + V^T W Z (E^T Z)^{-1} E^T R(Vu) = 0,
-            #     # The pfield_deim_basis.inner(pfield_basis) part below computes (V^T W Z)^T.
-            #     # E^T Z is stored in pfield_op.interpolation_matrix.
-            #     NumpyVectorSpace.make_array(pfield_deim_basis.inner(pfield_basis, product=self.products["pfield"]))
-            #     if not self.least_squares_pfield
-            #     else
-            #     # If we use least squares projection, we do not project via V^T, but we solve
-            #     # argmin_u ||R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)||_W
-            #     # where W is the positive definite matrix which defines the inner product.
-            #     # Since
-            #     #   argmin_u ||R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)||_W
-            #     # = argmin_u ||R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)||_W^2
-            #     # = argmin_u [R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)]^T W [R_lin V u + Z (E^T Z)^{-1} E^T R(Vu)]
-            #     # = argmin_u R(Vu)^T E (E^T Z)^{-T} Z^T W Z (E^T Z)^{-1} E^T R(Vu) + u^T V^T R_lin^T W R_lin V u + u^T V^T R_lin^T W Z (E^T Z)^{-1} E^T R(Vu) + R(Vu)^T E (E^T Z)^{-T} Z^T W R_lin V u
-            #     # = argmin_u R(Vu)^T E (E^T Z)^{-T} (E^T Z)^{-1} E^T R(Vu) + u^T V^T R_lin W R_lin V u + 2 u^T V^T R_lin^T W Z (E^T Z)^{-1} E^T R(Vu)
-            #     # = argmin_u ||(E^T Z)^{-1} E^T R(Vu)||^2 + u^T X u + 2 u^T Y (E^T Z)^{-1} E^T R(Vu)
-            #     # with X = V^T R_lin^T W R_lin V in R^{nxn} and Y = V^T R_lin^T W Z in R^{nxl} where we assumed that the DEIM basis is
-            #     # W-orthonormal, i.e., Z^T W Z = I.
-            #     # The argument can be evaluated efficiently since X and Y can be precomputed and to compute (E^T Z)^{-1} E^T R(Vu)
-            #     # we only need the components of the nonlinear operator corresponding to the DEIM indices.
-            #     # we can compute the minimum in the space of DEIM coefficients (i.e., project the collateral_basis
-            #     # to its own spanned space which gives the unit matrix).
-            #     # NumpyVectorSpace.make_array(np.eye(len(pfield_deim_basis)))  # assumes that pfield_deim_basis is ONB!!!
-            #     NumpyVectorSpace.make_array(pfield_deim_basis.to_numpy())
-            # )
-            # R_lin_V = pfield_lin_op.apply(pfield_basis)
-            # X should be computed in the projection of pfield_lin_op below
-            # X = R_lin_V.inner(R_lin_V, product=self.products["pfield"])
-            # Y = R_lin_V.inner(pfield_deim_basis, product=self.products["pfield"])
+            projected_collateral_basis = (
+                # If the full-order residual formulation is R(U) = 0, then
+                # the Galerkin DEIM reduced model is
+                #   V^T W Z (E^T Z)^{-1} E^T R(Vu) = 0,
+                # where V in R^{Nxn} and Z in R^{Nxl} have the POD and DEIM basis as their columns, respectively,
+                # E = (e_{k_1}, ..., e_{k_l}) in R^{Nxl} contains the unit vectors corresponding to the DEIM indices
+                # and W is the positive definite matrix which defines the inner product.
+                NumpyVectorSpace.make_array(pfield_deim_basis.inner(pfield_basis, product=self.products["pfield"]))
+                if not self.least_squares_pfield
+                else
+                # If we use least squares projection, we do not project via V^T, but we solve
+                # argmin_u ||Z (E^T Z)^{-1} E^T R(Vu)||_W
+                # Since
+                #   argmin_u ||Z (E^T Z)^{-1} E^T R(Vu)||_W
+                # = argmin_u ||Z (E^T Z)^{-1} E^T R(Vu)||_W^2
+                # = argmin_u [Z (E^T Z)^{-1} E^T R(Vu)]^T W [Z (E^T Z)^{-1} E^T R(Vu)]
+                # = argmin_u R(Vu)^T E (E^T Z)^{-T} Z^T W Z (E^T Z)^{-1} E^T R(Vu)
+                # = argmin_u R(Vu)^T E (E^T Z)^{-T} (E^T Z)^{-1} E^T R(Vu)
+                # = argmin_u ||(E^T Z)^{-1} E^T R(Vu)||^2
+                # (assuming that the DEIM basis is W-orthonormal, i.e., Z^T W Z = I),
+                # we can compute the minimum in the space of DEIM coefficients (i.e., project the collateral_basis
+                # to its own spanned space which gives the unit matrix).
+                NumpyVectorSpace.make_array(np.eye(len(pfield_deim_basis)))
+            )
             # Extract dofs for the reduced operator
             source_basis_dofs = []
             bases = [pfield_basis, pfield_basis, ofield_basis, stokes_basis]
@@ -1641,7 +1462,6 @@ class CellModelReductor(ProjectionBasedReductor):
             newton_params_pfield=NEWTON_PARAMS,
             newton_params_ofield=NEWTON_PARAMS,
             newton_params_stokes=NEWTON_PARAMS,
-            split_pfield=self.fom.split_pfield,
             **projected_operators,
         )
 
@@ -1669,16 +1489,12 @@ def calculate_cellmodel_trajectory_errors(
     u_rom,
     reductor,
     products,
-    pickled_data_available,
     num_chunks,
-    pickle_prefix,
-    split_pfield,
 ):
     proj_errs = [0.0] * len(modes)
     red_errs = [0.0] * len(modes)
     rel_red_errs = [0.0] * len(modes)
     proj_deim_errs = [0.0] * len(deim_modes)
-    nonlin_proj_deim_errs = 0.0
     norms = [[], [], [], [], [], []]
     # modes has length 2*num_cells+1
     num_cells = (len(modes) - 1) // 2
@@ -1687,97 +1503,51 @@ def calculate_cellmodel_trajectory_errors(
     n_deim = [0] * 3
     t = 0.0
     timestep_residuals = None
-    if not pickled_data_available:
-        solver = CellModelSolver(
-            testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu, split_pfield=split_pfield
-        )
-        cellmodel = DuneCellModel(
-            solver, products={"pfield": products[0], "ofield": products[1], "stokes": products[2]}
-        )
-        current_values = cellmodel.initial_values.copy()
-        while True:
-            # POD basis errors
-            U_rom = reductor.reconstruct(u_rom[n])
+    solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu)
+    cellmodel = DuneCellModel(
+        solver, products={"pfield": products[0], "ofield": products[1], "stokes": products[2]}
+    )
+    current_values = cellmodel.initial_values.copy()
+    while True:
+        # POD basis errors
+        U_rom = reductor.reconstruct(u_rom[n])
+        for i in range(3):
+            vals = current_values.block(i)
+            # projection errors
+            proj_res = vals - modes[i].lincomb(vals.inner(modes[i], product=products[i]))
+            proj_errs[i] += np.sum(proj_res.norm2(product=products[i]))
+            # model reduction errors
+            res = vals - U_rom.block(i)
+            res_norms2 = res.norm2(product=products[i])
+            red_errs[i] += np.sum(res_norms2)
+            # relative model reduction errors
+            vals_norms2 = vals.norm2(product=products[i])
+            rel_errs_list = [
+                res_norm2 / val_norm2
+                for res_norm2, val_norm2 in zip(res_norms2, vals_norms2)
+                if not np.isclose(val_norm2, 0)
+            ]
+            rel_red_errs[i] += np.sum(rel_errs_list)
+        # DEIM basis errors
+        if timestep_residuals is not None:
             for i in range(3):
-                vals = current_values.block(i)
-                # projection errors
-                proj_res = vals - modes[i].lincomb(vals.inner(modes[i], product=products[i]))
-                proj_errs[i] += np.sum(proj_res.norm2(product=products[i]))
-                # model reduction errors
-                res = vals - U_rom.block(i)
-                res_norms2 = res.norm2(product=products[i])
-                red_errs[i] += np.sum(res_norms2)
-                # relative model reduction errors
-                vals_norms2 = vals.norm2(product=products[i])
-                rel_errs_list = [
-                    res_norm2 / val_norm2
-                    for res_norm2, val_norm2 in zip(res_norms2, vals_norms2)
-                    if not np.isclose(val_norm2, 0)
-                ]
-                rel_red_errs[i] += np.sum(rel_errs_list)
-            # DEIM basis errors
-            if timestep_residuals is not None:
-                for i in range(3):
-                    deim_res = timestep_residuals[i]
-                    if deim_modes[i] is not None:
-                        proj_res = deim_res - deim_modes[i].lincomb(deim_res.inner(deim_modes[i], product=products[i]))
-                        proj_deim_errs[i] += np.sum(proj_res.norm2(product=products[i]))
-                        n_deim[i] += len(proj_res)
-                if deim_modes[0] is not None:
-                    nonlin_deim_res = data["residuals_nonlin"]
-                    nonlin_proj_res = nonlin_deim_res - deim_modes[0].lincomb(
-                        nonlin_deim_res.inner(deim_modes[0], product=products[0])
-                    )
-                    nonlin_proj_deim_errs += np.sum(nonlin_proj_res.norm2(product=products[0]))
-            # get values for next time step
-            n += 1
-            current_values, data = cellmodel.next_time_step(
-                current_values, t, mu=mu, return_stages=False, return_residuals=True
-            )
-            t = data["t"]
-            timestep_residuals = data["residuals"]
-            if current_values is None:
-                break
-        fom_time = None
-    else:
-        n = 0
-        for chunk_index in range(num_chunks):
-            with open(f"{pickle_prefix}{chunk_index}.pickle", "rb") as f:
-                chunk_data = pickle.load(f)
-            chunk_size = len(chunk_data["snaps"][0])
-            U_rom = reductor.reconstruct(u_rom[n : n + chunk_size])
-            # POD basis errors
-            for i in range(3):
-                vals = chunk_data["snaps"][i]
-                # norms[i].extend(vals.norm(product=products[i]).tolist())
-                # projection errors
-                if modes[i] is not None:
-                    proj_res = vals - modes[i].lincomb(vals.inner(modes[i], product=products[i]))
-                    proj_errs[i] += np.sum(proj_res.norm2(product=products[i]))
-                # model reduction errors
-                res = vals - U_rom.block(i)
-                res_norms2 = res.norm2(product=products[i])
-                red_errs[i] += np.sum(res_norms2)
-                # relative model reduction errors
-                vals_norms2 = vals.norm2(product=products[i])
-                rel_errs_list = [
-                    res_norm2 / val_norm2
-                    for res_norm2, val_norm2 in zip(res_norms2, vals_norms2)
-                    if not np.isclose(val_norm2, 0)
-                ]
-                rel_red_errs[i] += np.sum(rel_errs_list)
-            # DEIM basis errors
-            for i in range(3):
-                deim_res = chunk_data["residuals"][i]
-                # deim_res = deim_res * np.array([1/norm if norm > 0 else 1 for norm in deim_res.norm(product=products[i])])
-                # norms[3+i].extend(deim_res.norm(product=products[i]).tolist())
+                deim_res = timestep_residuals[i]
                 if deim_modes[i] is not None:
                     proj_res = deim_res - deim_modes[i].lincomb(deim_res.inner(deim_modes[i], product=products[i]))
                     proj_deim_errs[i] += np.sum(proj_res.norm2(product=products[i]))
                     n_deim[i] += len(proj_res)
-            n += chunk_size
-        fom_time = chunk_data["elapsed"]
-    return proj_errs, proj_deim_errs, nonlin_proj_deim_errs, red_errs, rel_red_errs, n, n_deim, fom_time, norms
+        # get values for next time step
+        n += 1
+        current_values, data = cellmodel.next_time_step(
+            current_values, t, mu=mu, return_stages=False, return_residuals=True
+        )
+        t = data["t"]
+        timestep_residuals = data["residuals"]
+        if current_values is None:
+            break
+    fom_time = None
+    fom_time = chunk_data["elapsed"]
+    return proj_errs, proj_deim_errs, red_errs, rel_red_errs, n, n_deim, fom_time, norms
 
 
 def calculate_mean_cellmodel_projection_errors(
@@ -1794,15 +1564,11 @@ def calculate_mean_cellmodel_projection_errors(
     reductor,
     mpi_wrapper,
     products,
-    pickled_data_available,
     num_chunks,
-    pickle_prefix,
     rom_time,
-    split_pfield,
 ):
     proj_errs_sum = [0] * 3
     proj_deim_errs_sum = [0] * 3
-    nonlin_proj_deim_errs_sum = 0
     red_errs_sum = [0] * 3
     rel_red_errs_sum = [0] * 3
     num_residuals = [0] * 3
@@ -1811,11 +1577,9 @@ def calculate_mean_cellmodel_projection_errors(
     norms = 0
     mu_to_red_errs = dict()
     for mu, u_rom in zip(mus, reduced_us):
-        pickle_prefix_mu = f"{pickle_prefix}_Be{mu['Be']}_Ca{mu['Ca']}_Pa{mu['Pa']}_chunk"
         (
             proj_errs,
             proj_deim_errs,
-            nonlin_proj_deim_errs,
             red_errs,
             rel_red_errs,
             n,
@@ -1835,10 +1599,7 @@ def calculate_mean_cellmodel_projection_errors(
             u_rom=u_rom,
             reductor=reductor,
             products=products,
-            pickled_data_available=pickled_data_available,
             num_chunks=num_chunks,
-            pickle_prefix=pickle_prefix_mu,
-            split_pfield=split_pfield,
         )
         mu_as_str = f"Be: {mu['Be']:.3f}, Ca: {mu['Ca']:.3f}, Pa: {mu['Pa']:.3f}"
         mu_to_red_errs[mu_as_str] = red_errs
@@ -1848,7 +1609,6 @@ def calculate_mean_cellmodel_projection_errors(
             red_errs_sum[i] += red_errs[i]
             rel_red_errs_sum[i] += rel_red_errs[i]
             num_residuals[i] += n_deim[i]
-        nonlin_proj_deim_errs_sum += nonlin_proj_deim_errs
         num_snapshots += n
         if fom_time is not None:
             mean_fom_time += fom_time
@@ -1857,7 +1617,6 @@ def calculate_mean_cellmodel_projection_errors(
     mean_fom_time = mean_fom_time / len(mus) if mean_fom_time is not None else None
     proj_errs = [0.0] * len(modes)
     proj_deim_errs = proj_errs.copy()
-    nonlin_proj_deim_errs = 0.0
     red_errs = [0.0] * len(modes)
     rel_red_errs = [0.0] * len(modes)
     num_snapshots = mpi_wrapper.comm_world.gather(num_snapshots, root=0)
@@ -1896,13 +1655,9 @@ def calculate_mean_cellmodel_projection_errors(
         err = mpi_wrapper.comm_world.gather(proj_deim_errs_sum[i], root=0)
         if mpi_wrapper.rank_world == 0:
             proj_deim_errs[i] = np.sqrt(np.sum(err) / num_residuals[i]) if num_residuals[i] != 0 else 0
-    err = mpi_wrapper.comm_world.gather(nonlin_proj_deim_errs_sum, root=0)
-    if mpi_wrapper.rank_world == 0:
-        nonlin_proj_deim_errs = np.sqrt(np.sum(err) / num_residuals[0]) if num_residuals[0] != 0 else 0
     return (
         proj_errs,
         proj_deim_errs,
-        nonlin_proj_deim_errs,
         red_errs,
         rel_red_errs,
         mean_fom_time,
@@ -1928,11 +1683,8 @@ def calculate_cellmodel_errors(
     logfile_name=None,
     prefix="",
     products=[None] * 3,
-    pickled_data_available=False,
     num_chunks=0,
-    pickle_prefix=None,
     rom_time=None,
-    split_pfield=False,
 ):
     """Calculates projection error. As we cannot store all snapshots due to memory restrictions, the
     problem is solved again and the error calculated on the fly"""
@@ -1940,7 +1692,6 @@ def calculate_cellmodel_errors(
     (
         errs,
         deim_errs,
-        nonlin_deim_errs,
         red_errs,
         rel_red_errs,
         mean_fom_time,
@@ -1961,11 +1712,8 @@ def calculate_cellmodel_errors(
         reductor=reductor,
         mpi_wrapper=mpi_wrapper,
         products=products,
-        pickled_data_available=pickled_data_available,
         num_chunks=num_chunks,
-        pickle_prefix=pickle_prefix,
         rom_time=rom_time,
-        split_pfield=split_pfield,
     )
     elapsed = timer() - start
     if mpi_wrapper.rank_world == 0 and logfile_name is not None:
@@ -1985,11 +1733,6 @@ def calculate_cellmodel_errors(
             logfile.write("{}{} projection error for stokes is: {}\n".format(prefix, error_type, errs[2 * nc]))
             logfile.write(
                 "{}{} projection DEIM error for {}-th pfield is: {}\n".format(prefix, error_type, 0, deim_errs[0])
-            )
-            logfile.write(
-                "{}{} nonlin projection DEIM error for {}-th pfield is: {}\n".format(
-                    prefix, error_type, 0, nonlin_deim_errs
-                )
             )
             logfile.write(
                 "{}{} projection DEIM error for {}-th ofield is: {}\n".format(prefix, error_type, 0, deim_errs[1])
@@ -2297,8 +2040,8 @@ def pods_on_processor_cores_in_binary_tree_hapod_pfield(r, vecs, mpi, root, prod
     print("start processor pod: ", mpi.rank_world)
     snaps_on_rank = len(vecs)
     r.max_vectors_before_pod = max(r.max_vectors_before_pod, snaps_on_rank)
-    vecs_field = [None] * 3
-    svals_field = [None] * 3
+    vecs_field = [vecs.empty()] * 3
+    svals_field = [0] * 3
     size_phi = vecs.dim // 3
     for i in range(3):
         vecs_field[i] = NumpyVectorSpace.make_array(vecs.to_numpy()[:, i * size_phi : (i + 1) * size_phi])

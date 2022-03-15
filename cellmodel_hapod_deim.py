@@ -1,6 +1,5 @@
 # import cProfile
 import os
-import pickle
 import random
 import sys
 from timeit import default_timer as timer
@@ -28,19 +27,9 @@ from rich import pretty, traceback
 traceback.install()
 pretty.install()
 
-# If this is set to true, we check the computed solutions against the pickled solutions (which have to be available in that case)
-# Should usually be False, enable only for debug purposes (to ensure that we get the same result with and without pickling)
-check_against_pickled = False
-# There seem to be some errors in the order of 1e-13.
-# Not sure where these come from, pickling and unpickling the data does not seem to introduce any errors (see cellmodel_write_data.py)
-check_atol = 2e-12
-check_rtol = 0
-
-
 class SolverChunkGenerator:
     def __init__(
         self,
-        pickle_prefix: str,
         cellmodel: DuneCellModel,
         t_end: float,
         dt: float,
@@ -49,9 +38,7 @@ class SolverChunkGenerator:
         include_newton_stages: bool,
         indices: "list[int]",
         products: "list[Any]",
-        normalize_residuals: bool,
     ):
-        self.pickle_prefix = pickle_prefix
         self.cellmodel = cellmodel
         self.mus = mus
         self.include_newton_stages = include_newton_stages
@@ -60,7 +47,6 @@ class SolverChunkGenerator:
         self.chunk_size = chunk_size
         self.num_chunks, _ = solver_statistics(t_end=t_end, dt=dt, chunk_size=chunk_size)
         self.products = products
-        self.normalize_residuals = normalize_residuals
 
     def __iter__(self):
         # walk over time chunks
@@ -71,8 +57,6 @@ class SolverChunkGenerator:
         for chunk_index in range(self.num_chunks):
             self.current_chunk_index = chunk_index
             new_vecs = [self.cellmodel.solution_space.subspaces[i % 3].empty() for i in range(6)]
-            if check_against_pickled:
-                new_vecs2 = [self.cellmodel.solution_space.subspaces[i % 3].empty() for i in range(6)]
             # walk over parameters
             for p, mu in enumerate(self.mus):
                 t = old_t
@@ -103,49 +87,10 @@ class SolverChunkGenerator:
                                 new_vecs[k].append(data["stages"][k])
                         else:
                             # this is a DEIM index
-                            if self.cellmodel.solver.split_pfield and k == 3:
-                                residuals = data["residuals_nonlin"]
-                            else:
-                                residuals = data["residuals"][k - 3]
-                            if self.normalize_residuals:
-                                residuals = residuals * np.array(
-                                    [1 / norm if norm > 0 else 1 for norm in residuals.norm(product=self.products[k])]
-                                )
+                            residuals = data["residuals"][k - 3]
                             new_vecs[k].append(residuals)
 
-                if check_against_pickled:
-                    filename = f"{self.pickle_prefix}_Be{mu['Be']}_Ca{mu['Ca']}_Pa{mu['Pa']}_chunk{chunk_index}.pickle"
-                    with open(filename, "rb") as pickle_file:
-                        data = pickle.load(pickle_file)
-                    for k in self.indices:
-                        if k < 3:
-                            # this is a POD index
-                            new_vecs2[k].append(data["snaps"][k])
-                            if self.include_newton_stages:
-                                new_vecs2[k].append(data["stages"][k])
-                        else:
-                            # this is a DEIM index
-                            residuals = data["residuals"][k - 3]
-                            if self.normalize_residuals:
-                                residuals = residuals * np.array(
-                                    [1 / norm if norm > 0 else 1 for norm in residuals.norm(product=self.products[k])]
-                                )
-                            new_vecs2[k].append(data["residuals"][k - 3])
             old_t = t
-
-            if check_against_pickled:
-                np.set_printoptions(precision=15)
-                for k in range(6):
-                    for j in range(len(new_vecs[k])):
-                        vec1 = new_vecs[k]._list[j].to_numpy()
-                        vec2 = new_vecs2[k]._list[j].to_numpy()
-                        for z in range(new_vecs[k]._list[j].dim):
-                            if not np.isclose(vec1[z], vec2[z], rtol=check_rtol, atol=check_atol):
-                                print(
-                                    f"{vec1[z]} vs. {vec2[z]}, err: { vec1[z] - vec2[z] }, relerr: { (vec1[z] - vec2[z]) / max(vec1[z], vec2[z]) }",
-                                    flush=True,
-                                )
-                                raise AssertionError
 
             yield new_vecs
 
@@ -178,11 +123,9 @@ if __name__ == "__main__":
     pfield_deim_atol = 1e-10 if argc < 16 else float(sys.argv[15])
     ofield_deim_atol = 1e-10 if argc < 17 else float(sys.argv[16])
     stokes_deim_atol = 1e-10 if argc < 18 else float(sys.argv[17])
-    split_pfield = False if argc < 19 else (False if sys.argv[18] == "False" else True)
     parameter_sampling_type = "uniform_reciprocal" if argc < 20 else sys.argv[19]
     pod_method = "method_of_snapshots" if argc < 21 else sys.argv[20]
     assert pod_method in ("qr_svd", "method_of_snapshots")
-    normalize_residuals = False
     incremental_gramian = False
     pol_order = 2
     chunk_size = 10
@@ -214,9 +157,7 @@ if __name__ == "__main__":
     if mpi.rank_world == 0:
         if not os.path.exists(logfile_dir):
             os.mkdir(logfile_dir)
-    logfile_prefix = "results_twoops_{}{}{}_{}_{}_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_{}tppr_pfield{}_ofield{}_stokes{}_without".format(
-        "split_" if split_pfield else "",
-        "normalized_" if normalize_residuals else "",
+    logfile_prefix = "results_{}_{}_{}_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_{}tppr_pfield{}_ofield{}_stokes{}_without".format(
         "mos" if pod_method == "method_of_snapshots" else "qr_svd",
         parameter_sampling_type,
         testcase,
@@ -278,14 +219,9 @@ if __name__ == "__main__":
     )
 
     ################### Start HAPOD #####################
-    # only needed if check_against_pickled is True
-    pickle_dir = "pickle_files"
-    pickle_prefix = f"{testcase}_grid{grid_size_x}x{grid_size_y}_tend{t_end}_dt{dt}"
-    pickle_prefix = os.path.join(pickle_dir, pickle_prefix)
-
     # create solver
     solver = CellModelSolver(
-        testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0], split_pfield=split_pfield
+        testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0],
     )
     if product_type == "L2":
         products = [
@@ -296,7 +232,7 @@ if __name__ == "__main__":
     elif product_type == "H1":
         products = [
             CellModelPfieldH1ProductOperator(solver),
-            CellModelOfieldL2ProductOperator(solver),
+            CellModelOfieldH1ProductOperator(solver),
             CellModelStokesL2ProductOperator(solver),
         ] * 2
     else:
@@ -306,7 +242,6 @@ if __name__ == "__main__":
     # create chunk_generator
     chunk_generator = SolverChunkGenerator(
         cellmodel=m,
-        pickle_prefix=pickle_prefix,
         t_end=t_end,
         dt=dt,
         mus=mus,
@@ -314,7 +249,6 @@ if __name__ == "__main__":
         include_newton_stages=include_newton_stages,
         indices=indices,
         products=products,
-        normalize_residuals=normalize_residuals,
     )
     # perform HAPOD
     results = binary_tree_hapod(
@@ -405,9 +339,7 @@ if __name__ == "__main__":
         mpi_wrapper=mpi,
         logfile_name=logfile_name,
         products=products,
-        pickled_data_available=False,
         num_chunks=chunk_generator.num_chunks,
-        split_pfield=split_pfield,
     )
 
     ################## test new parameters #######################
@@ -454,9 +386,7 @@ if __name__ == "__main__":
     #     logfile_name=logfile_name,
     #     prefix="new ",
     #     products=products,
-    #     pickled_data_available=False,
     #     rom_time=mean_rom_time,
-    #     split_pfield=split_pfield,
     # )
 
     sys.stdout.flush()
