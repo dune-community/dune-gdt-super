@@ -72,7 +72,6 @@ class CellModelSolver(ParametricObject):
         self.pfield_numpy_space = NumpyVectorSpace(self.impl.pfield_vec(0).size)
         self.ofield_solution_space = DuneXtLaListVectorSpace(self.impl.ofield_vec(0).size)
         self.stokes_solution_space = DuneXtLaListVectorSpace(self.impl.stokes_vec().size)
-        self.num_cells = self.impl.num_cells()
 
     def linear(self):
         return self.impl.linear()
@@ -88,12 +87,9 @@ class CellModelSolver(ParametricObject):
 
     def dune_result_to_pymor(self, result):
         ret = []
-        nc = self.num_cells
-        for k in range(nc):
-            ret.append(self.pfield_solution_space.make_array(result[k]))
-        for k in range(nc):
-            ret.append(self.ofield_solution_space.make_array(result[nc + k]))
-        ret.append(self.stokes_solution_space.make_array(result[2 * nc]))
+        ret.append(self.pfield_solution_space.make_array(result[0]))
+        ret.append(self.ofield_solution_space.make_array(result[1]))
+        ret.append(self.stokes_solution_space.make_array(result[2]))
         return ret
 
     def visualize(self, prefix, num, t, subsampling=True):
@@ -216,16 +212,12 @@ class CellModelSolver(ParametricObject):
     def apply_inverse_pfield_operator(self, guess_vec):
         assert isinstance(guess_vec, DuneXtLaVector)
         assert guess_vec.dim == self.pfield_solution_space.dim
-        return self.pfield_solution_space.make_array(
-            [self.impl.apply_inverse_pfield_operator(guess_vec.impl, 0)]
-        )
+        return self.pfield_solution_space.make_array([self.impl.apply_inverse_pfield_operator(guess_vec.impl, 0)])
 
     def apply_inverse_ofield_operator(self, guess_vec):
         assert isinstance(guess_vec, DuneXtLaVector)
         assert guess_vec.dim == self.ofield_solution_space.dim
-        return self.ofield_solution_space.make_array(
-            [self.impl.apply_inverse_ofield_operator(guess_vec.impl, 0)]
-        )
+        return self.ofield_solution_space.make_array([self.impl.apply_inverse_ofield_operator(guess_vec.impl, 0)])
 
     def apply_inverse_stokes_operator(self):
         return self.stokes_solution_space.make_array([self.impl.apply_inverse_stokes_operator()])
@@ -349,18 +341,9 @@ class CellModelOfieldH1ProductOperator(Operator):
 
 
 class MutableStateComponentOperator(Operator):
-
     def __init__(self, solver, range_dofs):
         self.solver = solver
         self.range_dofs = range_dofs
-        self.linear = False
-        self.solver.compute_pfield_deim_dofs(self.range_dofs)
-        self.source_dofs = self.solver.pfield_deim_source_dofs()
-        self.source_dofs = [self.source_dofs[0], *self.source_dofs]
-        self._fixed_component_source_dofs = self.source_dofs[0]
-        self.source = BlockVectorSpace([NumpyVectorSpace(len(dofs)) for dofs in self.source_dofs])
-        self.range = NumpyVectorSpace(len(self.range_dofs))
-        self.parameters_own = CELLMODEL_PARAMETER_TYPE
 
     mutable_state_index = (1,)
 
@@ -452,10 +435,10 @@ class MutableStateFixedComponentOperator(Operator):
         self.operator._set_state(self.component_value, mu)
         return self.operator._fixed_component_jacobian(U, mu=mu)
 
-class MutableStateComponentJacobianOperator(MutableStateComponentOperator):
 
+class MutableStateComponentJacobianOperator(MutableStateComponentOperator):
     def __init__(self, solver, range_dofs):
-        super.__init__(solver, range_dofs)
+        super().__init__(solver, range_dofs)
 
     _last_jacobian_value = None
 
@@ -499,6 +482,7 @@ class MutableStateComponentJacobianOperator(MutableStateComponentOperator):
             self.solver._last_mu,
             U,
         )
+
 
 class MutableStateFixedComponentJacobianOperator(Operator):
     def __init__(self, operator, component_value, mu, jacobian_value):
@@ -559,9 +543,9 @@ class CellModelRestrictedPfieldOperator(MutableStateComponentJacobianOperator):
         if mu is not None:
             self.solver.update_pfield_parameters(mu, restricted=True)
         if pfield_dofs is not None:
-            self.solver.set_pfield_vec_dofs(0, pfield_dofs._data[0], self.source_dofs[1])
+            self.solver.set_pfield_vec_dofs(pfield_dofs._data[0], self.source_dofs[1])
         if ofield_dofs is not None:
-            self.solver.set_ofield_vec_dofs(0, ofield_dofs._data[0], self.source_dofs[2])
+            self.solver.set_ofield_vec_dofs(ofield_dofs._data[0], self.source_dofs[2])
         if stokes_dofs is not None:
             self.solver.set_stokes_vec_dofs(stokes_dofs._data[0], self.source_dofs[3])
         if not pfield_dofs == ofield_dofs == stokes_dofs == mu == None:
@@ -576,6 +560,7 @@ class CellModelRestrictedPfieldOperator(MutableStateComponentJacobianOperator):
 
     def _fixed_component_apply(self, U):
         return self.solver.apply_pfield_operator(U, restricted=True)
+
     def _fixed_component_apply_inverse(self, V, initial_guess=None, least_squares=False):
         raise NotImplementedError
 
@@ -608,9 +593,9 @@ class CellModelPfieldOperator(MutableStateComponentJacobianOperator):
         if mu is not None:
             self.solver.update_pfield_parameters(mu, restricted=False)
         if pfield_dofs is not None:
-            self.solver.set_pfield_vec(0, pfield_dofs._list[0])
+            self.solver.set_pfield_vec(pfield_dofs._list[0])
         if ofield_dofs is not None:
-            self.solver.set_ofield_vec(0, ofield_dofs._list[0])
+            self.solver.set_ofield_vec(ofield_dofs._list[0])
         if stokes_dofs is not None:
             self.solver.set_stokes_vec(stokes_dofs._list[0])
         if not pfield_dofs == ofield_dofs == stokes_dofs == mu == None:
@@ -662,9 +647,9 @@ class CellModelRestrictedOfieldOperator(MutableStateComponentJacobianOperator):
         if mu is not None:
             self.solver.update_ofield_parameters(mu, restricted=True)
         if pfield_dofs is not None:
-            self.solver.set_pfield_vec_dofs(0, pfield_dofs._data[0], self.source_dofs[1])
+            self.solver.set_pfield_vec_dofs(pfield_dofs._data[0], self.source_dofs[1])
         if ofield_dofs is not None:
-            self.solver.set_ofield_vec_dofs(0, ofield_dofs._data[0], self.source_dofs[2])
+            self.solver.set_ofield_vec_dofs(ofield_dofs._data[0], self.source_dofs[2])
         if stokes_dofs is not None:
             self.solver.set_stokes_vec_dofs(stokes_dofs._data[0], self.source_dofs[3])
         if not pfield_dofs == ofield_dofs == stokes_dofs == mu == None:
@@ -712,9 +697,9 @@ class CellModelOfieldOperator(MutableStateComponentJacobianOperator):
         if mu is not None:
             self.solver.update_ofield_parameters(mu, restricted=False)
         if pfield_dofs is not None:
-            self.solver.set_pfield_vec(0, pfield_dofs._list[0])
+            self.solver.set_pfield_vec(pfield_dofs._list[0])
         if ofield_dofs is not None:
-            self.solver.set_ofield_vec(0, ofield_dofs._list[0])
+            self.solver.set_ofield_vec(ofield_dofs._list[0])
         if stokes_dofs is not None:
             self.solver.set_stokes_vec(stokes_dofs._list[0])
         if not pfield_dofs == ofield_dofs == stokes_dofs == mu == None:
@@ -763,9 +748,9 @@ class CellModelRestrictedStokesOperator(MutableStateComponentJacobianOperator):
 
     def _change_state(self, pfield_dofs=None, ofield_dofs=None, stokes_dofs=None, mu=None):
         if pfield_dofs is not None:
-            self.solver.set_pfield_vec_dofs(0, pfield_dofs._data[0], self.source_dofs[1])
+            self.solver.set_pfield_vec_dofs(pfield_dofs._data[0], self.source_dofs[1])
         if ofield_dofs is not None:
-            self.solver.set_ofield_vec_dofs(0, ofield_dofs._data[0], self.source_dofs[2])
+            self.solver.set_ofield_vec_dofs(ofield_dofs._data[0], self.source_dofs[2])
         if not pfield_dofs == ofield_dofs == None:
             self.solver.prepare_stokes_operator(restricted=True)
 
@@ -802,9 +787,9 @@ class CellModelStokesOperator(MutableStateComponentJacobianOperator):
 
     def _change_state(self, pfield_dofs=None, ofield_dofs=None, stokes_dofs=None, mu=None):
         if pfield_dofs is not None:
-            self.solver.set_pfield_vec(0, pfield_dofs._list[0])
+            self.solver.set_pfield_vec(pfield_dofs._list[0])
         if ofield_dofs is not None:
-            self.solver.set_ofield_vec(0, ofield_dofs._list[0])
+            self.solver.set_ofield_vec(ofield_dofs._list[0])
         if not pfield_dofs == ofield_dofs == None:
             self.solver.prepare_stokes_operator(restricted=False)
 
@@ -1021,11 +1006,11 @@ class CellModel(Model):
 
 class DuneCellModel(CellModel):
     def __init__(self, solver, products, name=None):
-        pfield_op = CellModelPfieldOperator(solver, 0)
-        ofield_op = CellModelOfieldOperator(solver, 0)
+        pfield_op = CellModelPfieldOperator(solver)
+        ofield_op = CellModelOfieldOperator(solver)
         stokes_op = CellModelStokesOperator(solver)
-        initial_pfield = VectorOperator(solver.pfield_solution_space.make_array([solver.pfield_vector(0)]))
-        initial_ofield = VectorOperator(solver.ofield_solution_space.make_array([solver.ofield_vector(0)]))
+        initial_pfield = VectorOperator(solver.pfield_solution_space.make_array([solver.pfield_vector()]))
+        initial_ofield = VectorOperator(solver.ofield_solution_space.make_array([solver.ofield_vector()]))
         initial_stokes = VectorOperator(solver.stokes_solution_space.make_array([solver.stokes_vector()]))
         self.dt = solver.dt
         self.t_end = solver.t_end
@@ -1051,8 +1036,8 @@ class DuneCellModel(CellModel):
         assert U in self.solution_space
         for i in range(len(U)):
             if every_nth is None or i % every_nth == 0:
-                self.solver.set_pfield_vec(0, U._blocks[0]._list[i])
-                self.solver.set_ofield_vec(0, U._blocks[1]._list[i])
+                self.solver.set_pfield_vec(U._blocks[0]._list[i])
+                self.solver.set_ofield_vec(U._blocks[1]._list[i])
                 self.solver.set_stokes_vec(U._blocks[2]._list[i])
                 step = i if every_nth is None else i // every_nth
                 self.solver.visualize(prefix, step, step, subsampling)
@@ -1256,45 +1241,41 @@ class CellModelReductor(ProjectionBasedReductor):
         pfield_basis, ofield_basis, stokes_basis = (self.bases["pfield"], self.bases["ofield"], self.bases["stokes"])
         pfield_op, ofield_op, stokes_op = fom.pfield_op, fom.ofield_op, fom.stokes_op
         if self.pfield_deim_basis:
-            pfield_deim_dofs_field = [None] * 3
-            pfield_deim_basis_field = [None] * 3
-            for i in range(3):
-                pfield_deim_dofs_field[i], pfield_deim_basis_field[i], _ = deim(
-                    self.pfield_deim_basis[i], pod=False, product=None
-                )
-            size_phi = pfield_deim_basis_field[0].dim
-            pfield_deim_basis = pfield_basis.space.empty()
-            phi_deim_basis = DuneXtLaListVectorSpace.from_numpy(
-                np.hstack(
-                    (pfield_deim_basis_field[0].to_numpy(), np.zeros((len(pfield_deim_basis_field[0]), 2 * size_phi)))
-                ),
-                ensure_copy=True,
+            # check that we have a basis for each of the three variables phi, phinat, mu
+            assert len(self.pfield_deim_basis) == 3
+            # get degrees of freedom that we have to compute for the DEIM interpolation for each of the three variables
+            phi_dofs, phi_basis, _ = deim(self.pfield_deim_basis[0], pod=False, product=None)
+            phinat_dofs, phinat_basis, _ = deim(self.pfield_deim_basis[1], pod=False, product=None)
+            mu_dofs, mu_basis, _ = deim(self.pfield_deim_basis[2], pod=False, product=None)
+            # Build basis in the phase field space by padding each basis with zeros
+            size_phi = phi_basis.dim
+            phi_basis = DuneXtLaListVectorSpace.from_numpy(
+                np.hstack((phi_basis.to_numpy(), np.zeros((len(phi_basis), 2 * size_phi)))), ensure_copy=True
             )
-            phinat_deim_basis = DuneXtLaListVectorSpace.from_numpy(
+            phinat_basis = DuneXtLaListVectorSpace.from_numpy(
                 np.hstack(
                     (
-                        np.zeros((len(pfield_deim_basis_field[1]), size_phi)),
-                        pfield_deim_basis_field[1].to_numpy(),
-                        np.zeros((len(pfield_deim_basis_field[1]), size_phi)),
+                        np.zeros((len(phinat_basis), size_phi)),
+                        phinat_basis.to_numpy(),
+                        np.zeros((len(phinat_basis), size_phi)),
                     )
                 ),
                 ensure_copy=True,
             )
-            mu_deim_basis = DuneXtLaListVectorSpace.from_numpy(
-                np.hstack(
-                    (np.zeros((len(pfield_deim_basis_field[2]), 2 * size_phi)), pfield_deim_basis_field[2].to_numpy())
-                ),
-                ensure_copy=True,
+            mu_basis = DuneXtLaListVectorSpace.from_numpy(
+                np.hstack((np.zeros((len(mu_basis), 2 * size_phi)), mu_basis.to_numpy())), ensure_copy=True
             )
-            pfield_deim_basis.append(phi_deim_basis)
-            pfield_deim_basis.append(phinat_deim_basis)
-            pfield_deim_basis.append(mu_deim_basis)
+            pfield_deim_basis = pfield_basis.space.empty()
+            pfield_deim_basis.append(phi_basis)
+            pfield_deim_basis.append(phinat_basis)
+            pfield_deim_basis.append(mu_basis)
+            # Extend DEIM dofs for the separate variables to DEIM dofs for the phase field space
             pfield_dofs = []
-            pfield_dofs.extend(pfield_deim_dofs_field[0].tolist())
-            pfield_dofs.extend([dof + size_phi for dof in pfield_deim_dofs_field[1]])
-            pfield_dofs.extend([dof + 2 * size_phi for dof in pfield_deim_dofs_field[2]])
+            pfield_dofs.extend(phi_dofs.tolist())
+            pfield_dofs.extend([dof + size_phi for dof in phinat_dofs])
+            pfield_dofs.extend([dof + 2 * size_phi for dof in mu_dofs])
             pfield_dofs = np.array(pfield_dofs)
-            print(pfield_deim_basis, pfield_dofs)
+            # Create DEIM interpolated operator for phase field
             pfield_op = EmpiricalInterpolatedOperatorWithFixComponent(pfield_op, pfield_dofs, pfield_deim_basis, False)
             projected_collateral_basis = (
                 # If the full-order residual formulation is R(U) = 0, then
@@ -1436,12 +1417,6 @@ class CellModelReductor(ProjectionBasedReductor):
             )
         projected_operators = {
             "pfield_op": pfield_op,
-            "pfield_lin_op": project(
-                fom.pfield_lin_op,
-                pfield_deim_basis if self.pfield_deim_basis else None,
-                pfield_basis,
-                product=fom.products["pfield"],
-            ),
             "ofield_op": ofield_op,
             "stokes_op": stokes_op,
             "initial_pfield": project(fom.initial_pfield, pfield_basis, None, product=fom.products["pfield"]),
@@ -1477,36 +1452,19 @@ class CellModelReductor(ProjectionBasedReductor):
 
 
 def calculate_cellmodel_trajectory_errors(
-    modes,
-    deim_modes,
-    testcase,
-    t_end,
-    dt,
-    grid_size_x,
-    grid_size_y,
-    pol_order,
-    mu,
-    u_rom,
-    reductor,
-    products,
-    num_chunks,
+    modes, deim_modes, testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu, u_rom, reductor, products
 ):
-    proj_errs = [0.0] * len(modes)
-    red_errs = [0.0] * len(modes)
-    rel_red_errs = [0.0] * len(modes)
-    proj_deim_errs = [0.0] * len(deim_modes)
-    norms = [[], [], [], [], [], []]
-    # modes has length 2*num_cells+1
-    num_cells = (len(modes) - 1) // 2
-    assert num_cells == 1, "Not tested for more than 1 cell, most likely there are errors!"
+    proj_errs = [0.0] * 3
+    red_errs = [0.0] * 3
+    rel_red_errs = [0.0] * 3
+    proj_deim_errs = [0.0] * 3
+    pfield_proj_deim_errs = [0.0] * 3
     n = 0
     n_deim = [0] * 3
     t = 0.0
     timestep_residuals = None
     solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu)
-    cellmodel = DuneCellModel(
-        solver, products={"pfield": products[0], "ofield": products[1], "stokes": products[2]}
-    )
+    cellmodel = DuneCellModel(solver, products={"pfield": products[0], "ofield": products[1], "stokes": products[2]})
     current_values = cellmodel.initial_values.copy()
     while True:
         # POD basis errors
@@ -1530,12 +1488,28 @@ def calculate_cellmodel_trajectory_errors(
             rel_red_errs[i] += np.sum(rel_errs_list)
         # DEIM basis errors
         if timestep_residuals is not None:
-            for i in range(3):
+            # special treatment for phase field since we have separate bases for each variable here
+            if deim_modes[0] is not None:
+                assert len(deim_modes[0]) == 3
+                deim_res = timestep_residuals[0]
+                size_phi = deim_modes[0][0].dim
+                n_deim[0] += len(deim_res)
+                for k in range(3):
+                    deim_res_k = DuneXtLaListVectorSpace.from_numpy(
+                        deim_res.to_numpy()[:, k * size_phi : (k + 1) * size_phi]
+                    )
+                    deim_res_k_projected = deim_modes[0][k].lincomb(deim_res_k.inner(deim_modes[0][k]))
+                    proj_res_k = deim_res_k - deim_res_k_projected
+                    proj_res_k_norm2 = np.sum(proj_res_k.norm2())
+                    pfield_proj_deim_errs[k] += proj_res_k_norm2
+                    proj_deim_errs[0] += proj_res_k_norm2
+            # orientation field and stokes variables
+            for i in (1, 2):
                 deim_res = timestep_residuals[i]
                 if deim_modes[i] is not None:
                     proj_res = deim_res - deim_modes[i].lincomb(deim_res.inner(deim_modes[i], product=products[i]))
                     proj_deim_errs[i] += np.sum(proj_res.norm2(product=products[i]))
-                    n_deim[i] += len(proj_res)
+                    n_deim[i] += len(deim_res)
         # get values for next time step
         n += 1
         current_values, data = cellmodel.next_time_step(
@@ -1545,9 +1519,7 @@ def calculate_cellmodel_trajectory_errors(
         timestep_residuals = data["residuals"]
         if current_values is None:
             break
-    fom_time = None
-    fom_time = chunk_data["elapsed"]
-    return proj_errs, proj_deim_errs, red_errs, rel_red_errs, n, n_deim, fom_time, norms
+    return proj_errs, proj_deim_errs, pfield_proj_deim_errs, red_errs, rel_red_errs, n, n_deim
 
 
 def calculate_mean_cellmodel_projection_errors(
@@ -1564,28 +1536,27 @@ def calculate_mean_cellmodel_projection_errors(
     reductor,
     mpi_wrapper,
     products,
-    num_chunks,
     rom_time,
+    fom_time,
 ):
     proj_errs_sum = [0] * 3
     proj_deim_errs_sum = [0] * 3
+    pfield_proj_deim_errs_sum = [0] * 3
     red_errs_sum = [0] * 3
     rel_red_errs_sum = [0] * 3
     num_residuals = [0] * 3
     num_snapshots = 0
     mean_fom_time = 0.0
-    norms = 0
     mu_to_red_errs = dict()
     for mu, u_rom in zip(mus, reduced_us):
         (
             proj_errs,
             proj_deim_errs,
+            pfield_proj_deim_errs,
             red_errs,
             rel_red_errs,
             n,
             n_deim,
-            fom_time,
-            norms,
         ) = calculate_cellmodel_trajectory_errors(
             modes=modes,
             deim_modes=deim_modes,
@@ -1599,24 +1570,20 @@ def calculate_mean_cellmodel_projection_errors(
             u_rom=u_rom,
             reductor=reductor,
             products=products,
-            num_chunks=num_chunks,
         )
         mu_as_str = f"Be: {mu['Be']:.3f}, Ca: {mu['Ca']:.3f}, Pa: {mu['Pa']:.3f}"
         mu_to_red_errs[mu_as_str] = red_errs
         for i in range(3):
             proj_errs_sum[i] += proj_errs[i]
             proj_deim_errs_sum[i] += proj_deim_errs[i]
+            pfield_proj_deim_errs_sum[i] += pfield_proj_deim_errs[i]
             red_errs_sum[i] += red_errs[i]
             rel_red_errs_sum[i] += rel_red_errs[i]
             num_residuals[i] += n_deim[i]
         num_snapshots += n
-        if fom_time is not None:
-            mean_fom_time += fom_time
-        else:
-            mean_fom_time = None
-    mean_fom_time = mean_fom_time / len(mus) if mean_fom_time is not None else None
     proj_errs = [0.0] * len(modes)
     proj_deim_errs = proj_errs.copy()
+    pfield_proj_deim_errs = proj_errs.copy()
     red_errs = [0.0] * len(modes)
     rel_red_errs = [0.0] * len(modes)
     num_snapshots = mpi_wrapper.comm_world.gather(num_snapshots, root=0)
@@ -1626,10 +1593,10 @@ def calculate_mean_cellmodel_projection_errors(
         rom_time = mpi_wrapper.comm_world.gather(rom_time, root=0)
     # num_residuals_list is a list of lists. The inner lists have length 3 and contain the number of residuals for each field on that rank
     num_residuals_list = mpi_wrapper.comm_world.gather(num_residuals, root=0)
-    mean_rom_time = None
+    mean_fom_time = mean_rom_time = None
     if mpi_wrapper.rank_world == 0:
         num_snapshots = np.sum(num_snapshots)
-        mean_fom_time = mean(fom_time) if mean_fom_time is not None else None
+        mean_fom_time = mean(fom_time) if fom_time is not None else None
         mean_rom_time = mean(rom_time) if rom_time is not None else None
         num_residuals = [0] * 3
         for i in range(3):
@@ -1655,14 +1622,18 @@ def calculate_mean_cellmodel_projection_errors(
         err = mpi_wrapper.comm_world.gather(proj_deim_errs_sum[i], root=0)
         if mpi_wrapper.rank_world == 0:
             proj_deim_errs[i] = np.sqrt(np.sum(err) / num_residuals[i]) if num_residuals[i] != 0 else 0
+    for k in range(3):
+        err = mpi_wrapper.comm_world.gather(pfield_proj_deim_errs_sum[k], root=0)
+        if mpi_wrapper.rank_world == 0:
+            pfield_proj_deim_errs[k] = np.sqrt(np.sum(err) / num_residuals[0]) if num_residuals[0] != 0 else 0
     return (
         proj_errs,
         proj_deim_errs,
+        pfield_proj_deim_errs,
         red_errs,
         rel_red_errs,
         mean_fom_time,
         mean_rom_time,
-        norms,
         all_mu_to_red_errs,
     )
 
@@ -1683,8 +1654,8 @@ def calculate_cellmodel_errors(
     logfile_name=None,
     prefix="",
     products=[None] * 3,
-    num_chunks=0,
     rom_time=None,
+    fom_time=None,
 ):
     """Calculates projection error. As we cannot store all snapshots due to memory restrictions, the
     problem is solved again and the error calculated on the fly"""
@@ -1692,11 +1663,11 @@ def calculate_cellmodel_errors(
     (
         errs,
         deim_errs,
+        pfield_deim_errs,
         red_errs,
         rel_red_errs,
         mean_fom_time,
         mean_rom_time,
-        norms,
         mus_to_red_errs,
     ) = calculate_mean_cellmodel_projection_errors(
         modes=modes,
@@ -1712,72 +1683,50 @@ def calculate_cellmodel_errors(
         reductor=reductor,
         mpi_wrapper=mpi_wrapper,
         products=products,
-        num_chunks=num_chunks,
         rom_time=rom_time,
+        fom_time=fom_time,
     )
     elapsed = timer() - start
     if mpi_wrapper.rank_world == 0 and logfile_name is not None:
         with open(logfile_name, "a") as logfile:
             logfile.write("Time used for calculating error: " + str(elapsed) + "\n")
-            nc = (len(modes) - 1) // 2
             error_type = "l2"
             if isinstance(products[0], CellModelPfieldH1ProductOperator):
                 error_type = "H1"
             elif isinstance(products[0], CellModelPfieldL2ProductOperator):
                 error_type = "L2"
-            for k in range(nc):
-                logfile.write("{}{} projection error for {}-th pfield is: {}\n".format(prefix, error_type, k, errs[k]))
-                logfile.write(
-                    "{}{} projection error for {}-th ofield is: {}\n".format(prefix, error_type, k, errs[nc + k])
-                )
-            logfile.write("{}{} projection error for stokes is: {}\n".format(prefix, error_type, errs[2 * nc]))
+            logfile.write("{}{} projection error for pfield is: {}\n".format(prefix, error_type, errs[0]))
+            logfile.write("{}{} projection error for ofield is: {}\n".format(prefix, error_type, errs[1]))
+            logfile.write("{}{} projection error for stokes is: {}\n".format(prefix, error_type, errs[2]))
+            logfile.write("{}{} projection DEIM error for phi is: {}\n".format(prefix, error_type, pfield_deim_errs[0]))
             logfile.write(
-                "{}{} projection DEIM error for {}-th pfield is: {}\n".format(prefix, error_type, 0, deim_errs[0])
+                "{}{} projection DEIM error for phinat is: {}\n".format(prefix, error_type, pfield_deim_errs[1])
             )
-            logfile.write(
-                "{}{} projection DEIM error for {}-th ofield is: {}\n".format(prefix, error_type, 0, deim_errs[1])
-            )
+            logfile.write("{}{} projection DEIM error for mu is: {}\n".format(prefix, error_type, pfield_deim_errs[2]))
+            logfile.write("{}{} projection DEIM error for pfield is: {}\n".format(prefix, error_type, deim_errs[0]))
+            logfile.write("{}{} projection DEIM error for ofield is: {}\n".format(prefix, error_type, deim_errs[1]))
             logfile.write("{}{} projection DEIM error for stokes is: {}\n".format(prefix, error_type, deim_errs[2]))
-            for k in range(nc):
-                logfile.write(
-                    "{}{} reduction error for {}-th pfield is: {}\n".format(prefix, error_type, k, red_errs[k])
-                )
-                logfile.write(
-                    "{}{} reduction error for {}-th ofield is: {}\n".format(prefix, error_type, k, red_errs[nc + k])
-                )
+            logfile.write("{}{} reduction error for pfield is: {}\n".format(prefix, error_type, red_errs[0]))
+            logfile.write("{}{} reduction error for ofield is: {}\n".format(prefix, error_type, red_errs[1]))
+            logfile.write("{}{} reduction error for stokes is: {}\n".format(prefix, error_type, red_errs[2]))
             logfile.write(
-                "{}{} reduction error for {}-th stokes is: {}\n".format(prefix, error_type, 0, red_errs[2 * nc])
+                "{}{} relative reduction error for pfield is: {}\n".format(prefix, error_type, rel_red_errs[0])
             )
-            for k in range(nc):
-                logfile.write(
-                    "{}{} relative reduction error for {}-th pfield is: {}\n".format(
-                        prefix, error_type, k, rel_red_errs[k]
-                    )
-                )
-                logfile.write(
-                    "{}{} relative reduction error for {}-th ofield is: {}\n".format(
-                        prefix, error_type, k, rel_red_errs[nc + k]
-                    )
-                )
             logfile.write(
-                "{}{} relative reduction error for {}-th stokes is: {}\n".format(
-                    prefix, error_type, 0, rel_red_errs[2 * nc]
-                )
+                "{}{} relative reduction error for ofield is: {}\n".format(prefix, error_type, rel_red_errs[1])
+            )
+            logfile.write(
+                "{}{} relative reduction error for stokes is: {}\n".format(prefix, error_type, rel_red_errs[2])
             )
             if mean_fom_time is not None and mean_rom_time is not None:
-                logfile.write(f"{mean_fom_time:.2f} vs. {mean_rom_time:.2f}, speedup {mean_fom_time/mean_rom_time:.2f}")
+                logfile.write(
+                    f"{mean_fom_time:.2f} vs. {mean_rom_time:.2f}, speedup {mean_fom_time/mean_rom_time:.2f}\n"
+                )
             for mu, red_err in mus_to_red_errs.items():
                 logfile.write(f"{mu}: ")
                 for err in red_err:
                     logfile.write(f"{err:.2e} ")
                 logfile.write("\n")
-            # logfile.write("{}L2 reduction error for {}-th ofield is: {}\n".format(prefix, k, red_errs[nc + k]))
-            # logfile.write("{}L2 reduction error for stokes is: {}\n".format(prefix, red_errs[2 * nc]))
-        # for i, filename in enumerate(("norms_pfield_40.txt", "norms_ofield_40.txt", "norms_stokes_40.txt", "norms_pfield_deim_40.txt", "norms_ofield_deim_40.txt", "norms_stokes_deim_40.txt")):
-        #     with open(filename, "w") as f:
-        #         f.write("index norm\n")
-        #         for index, norm in enumerate(norms[i]):
-        #             f.write(f"{index} {norm}\n")
     return errs
 
 

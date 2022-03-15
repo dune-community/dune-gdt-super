@@ -27,6 +27,7 @@ from rich import pretty, traceback
 traceback.install()
 pretty.install()
 
+
 class SolverChunkGenerator:
     def __init__(
         self,
@@ -101,7 +102,7 @@ class SolverChunkGenerator:
         return self.chunk_index() == (self.num_chunks - 1)
 
 
-# exemplary call: mpiexec -n 2 python3 cellmodel_hapod_deim.py single_cell 1e-2 1e-3 30 30 True True True True True False 1e-3 1e-3 1e-3 1e-10 1e-10 1e-10
+# exemplary call: mpiexec -n 2 python3 cellmodel_hapod_deim.py cell_isolation_experiment 1e-2 1e-3 40 40 False False True True True False 1e-4 1e-4 1e-4 1e-11 1e-11 1e-11 log_and_log_inverted
 if __name__ == "__main__":
     mpi = MPIWrapper()
     ##### read command line arguments, additional settings #####
@@ -123,7 +124,7 @@ if __name__ == "__main__":
     pfield_deim_atol = 1e-10 if argc < 16 else float(sys.argv[15])
     ofield_deim_atol = 1e-10 if argc < 17 else float(sys.argv[16])
     stokes_deim_atol = 1e-10 if argc < 18 else float(sys.argv[17])
-    parameter_sampling_type = "uniform_reciprocal" if argc < 20 else sys.argv[19]
+    parameter_sampling_type = "log_and_log_inverted" if argc < 20 else sys.argv[19]
     pod_method = "method_of_snapshots" if argc < 21 else sys.argv[20]
     assert pod_method in ("qr_svd", "method_of_snapshots")
     incremental_gramian = False
@@ -148,12 +149,12 @@ if __name__ == "__main__":
     product_type = "l2"
     train_params_per_rank = 1
     test_params_per_rank = 1
-    # omega=0.5
     omega = 0.95
     random.seed(123)  # create_parameters choose some parameters randomly in some cases
 
     ###### Choose filename #########
     logfile_dir = "logs"
+    visualization_dir = "visualizations"
     if mpi.rank_world == 0:
         if not os.path.exists(logfile_dir):
             os.mkdir(logfile_dir)
@@ -180,6 +181,7 @@ if __name__ == "__main__":
         logfile_prefix += "_" + excluded_param
     logfile_prefix += f"_omega{omega}"
     logfile_name = os.path.join(logfile_dir, logfile_prefix + ".txt")
+    visualization_postfix = os.path.join(visualization_dir, logfile_prefix)
 
     ####### Collect some settings in lists for simpler handling #####
     hapod_tols = [pfield_atol, ofield_atol, stokes_atol, pfield_deim_atol, ofield_deim_atol, stokes_deim_atol]
@@ -220,9 +222,7 @@ if __name__ == "__main__":
 
     ################### Start HAPOD #####################
     # create solver
-    solver = CellModelSolver(
-        testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0],
-    )
+    solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mus[0])
     if product_type == "L2":
         products = [
             CellModelPfieldL2ProductOperator(solver),
@@ -264,9 +264,13 @@ if __name__ == "__main__":
         r = results[k]
         if k == 3:
             for i in range(3):
-                r.pfield_modes[i], r.pfield_win[i] = mpi.shared_memory_bcast_modes(r.pfield_modes[i], returnlistvectorarray=False, proc_rank=k % mpi.size_proc)
+                r.pfield_modes[i], r.pfield_win[i] = mpi.shared_memory_bcast_modes(
+                    r.pfield_modes[i], returnlistvectorarray=True, proc_rank=k % mpi.size_proc
+                )
         else:
-            r.modes, r.win = mpi.shared_memory_bcast_modes(r.modes, returnlistvectorarray=True, proc_rank=k % mpi.size_proc)
+            r.modes, r.win = mpi.shared_memory_bcast_modes(
+                r.modes, returnlistvectorarray=True, proc_rank=k % mpi.size_proc
+            )
 
     pfield_basis = results[0].modes if pod_pfield else None
     ofield_basis = results[1].modes if pod_ofield else None
@@ -274,17 +278,6 @@ if __name__ == "__main__":
     pfield_deim_basis = results[3].pfield_modes if deim_pfield else None
     ofield_deim_basis = results[4].modes if deim_ofield else None
     stokes_deim_basis = results[5].modes if deim_stokes else None
-
-    reduced_prefix = "without{}_{}_pfield_{}_ofield_{}_stokes_{}".format(
-        excluded_params,
-        "snapsandstages" if include_newton_stages else "snaps",
-        (f"pod{pfield_atol:.0e}" if pod_pfield else "pod0")
-        + (f"deim{pfield_deim_atol:.0e}" if deim_pfield else "deim0"),
-        (f"pod{ofield_atol:.0e}" if pod_ofield else "pod0")
-        + (f"deim{ofield_deim_atol:.0e}" if deim_ofield else "deim0"),
-        (f"pod{stokes_atol:.0e}" if pod_stokes else "pod0")
-        + (f"deim{stokes_deim_atol:.0e}" if deim_stokes else "deim0"),
-    )
 
     reductor = CellModelReductor(
         m,
@@ -301,7 +294,6 @@ if __name__ == "__main__":
         check_tol=1e-10,
         products={"pfield": products[0], "ofield": products[1], "stokes": products[2]},
     )
-    del solver, m
     rom = reductor.reduce()
 
     ################## solve reduced model for trained parameters ####################
@@ -312,21 +304,22 @@ if __name__ == "__main__":
         u, _ = rom.solve(mu, return_stages=False)
         us.append(u)
 
-    # U_rom = reductor.reconstruct(us)
-    # Be, Ca, Pa = (float(mus[0]["Be"]), float(mus[0]["Ca"]), float(mus[0]["Pa"]))
-    # m.visualize(
-    #     U_rom,
-    #     prefix=f"{filename[:-4]}_Be{Be}_Ca{Ca}_Pa{Pa}",
-    #     subsampling=subsampling,
-    #     every_nth=visualize_step,
-    # )
-    # del m
-    # del solver
+    # if visualize:
+    #     for u, mu in zip(us, mus):
+    #         U_rom = reductor.reconstruct(u)
+    #         Be, Ca, Pa = (float(mu["Be"]), float(mu["Ca"]), float(mu["Pa"]))
+    #         m.visualize(
+    #             U_rom,
+    #             prefix=f"reduced_{visualization_prefix}_Be{Be}_Ca{Ca}_Pa{Pa}",
+    #             subsampling=subsampling,
+    #             every_nth=visualize_step,
+    #         )
+    #     del U_rom
 
     mpi.comm_world.Barrier()
     calculate_cellmodel_errors(
         modes=[pfield_basis, ofield_basis, stokes_basis],
-        deim_modes=[None, ofield_deim_basis, stokes_deim_basis],
+        deim_modes=[pfield_deim_basis, ofield_deim_basis, stokes_deim_basis],
         testcase=testcase,
         t_end=t_end,
         dt=dt,
@@ -339,55 +332,62 @@ if __name__ == "__main__":
         mpi_wrapper=mpi,
         logfile_name=logfile_name,
         products=products,
-        num_chunks=chunk_generator.num_chunks,
     )
 
     ################## test new parameters #######################
     # solve full-order model for new param
-    # start = timer()
-    # U_new_mu = m.solve(mu=new_mus[0], return_stages=False)
-    # for p in range(1, len(new_mus)):
-    # U_new_mu.append(m.solve(mu=new_mus[p], return_stages=False))
-    # mean_fom_time = (timer() - start) / len(new_mus)
-    # Be, Ca, Pa = (float(new_mu['Be']), float(new_mu['Ca']), float(new_mu['Pa']))
-    # m.visualize(U_new_mu, prefix=f"fullorder_Be{Be}_Ca{Ca}_Pa{Pa}", subsampling=subsampling, every_nth=visualize_step)
+    start = timer()
+    for mu in new_mus:
+        U_new_mu = m.solve(mu=mu, return_stages=False)
+        if visualize:
+            Be, Ca, Pa = (float(mu["Be"]), float(mu["Ca"]), float(mu["Pa"]))
+            m.visualize(
+                U_new_mu, prefix=f"fullorder_Be{Be}_Ca{Ca}_Pa{Pa}", subsampling=subsampling, every_nth=visualize_step
+            )
+    mean_fom_time = (timer() - start) / len(new_mus)
+    del U_new_mu
 
     # solve reduced model for new params
-    # start = timer()
-    # # cProfile.run(
-    # #     "u_new_mu = rom.solve(new_mus[0], return_stages=False)", f"rom{mpi.rank_world}.cprof"
-    # # )
-    # # us_new_mu = []
-    # for new_mu in new_mus:
-    #     u, _ = rom.solve(new_mu, return_stages=False)
-    #     us_new_mu.append(u)
-    # mean_rom_time = (timer() - start) / len(new_mus)
+    start = timer()
+    us_new_mu = []
+    for mu in new_mus:
+        u, _ = rom.solve(mu, return_stages=False)
+        # cProfile.run(
+        #     "u = rom.solve(mu, return_stages=False)", f"rom{mpi.rank_world}.cprof"
+        # )
+        us_new_mu.append(u)
+        if visualize:
+            U_rom_new_mu = reductor.reconstruct(u)
+            Be, Ca, Pa = (float(mu["Be"]), float(mu["Ca"]), float(mu["Pa"]))
+            m.visualize(
+                U_rom_new_mu,
+                prefix=f"reduced_Be{Be}_Ca{Ca}_Pa{Pa}_{visualization_postfix}_",
+                subsampling=subsampling,
+                every_nth=visualize_step,
+            )
+            del U_rom_new_mu
+    mean_rom_time = (timer() - start) / len(new_mus)
+    del solver, m
 
-    # Be, Ca, Pa = (float(new_mu['Be']), float(new_mu['Ca']), float(new_mu['Pa']))
-    # m.visualize(
-    #     U_rom_new_mu,
-    #     prefix=f"{reduced_prefix}_Be{Be}_Ca{Ca}_Pa{Pa}",
-    #     subsampling=subsampling,
-    #     every_nth=visualize_step)
-
-    # calculate_cellmodel_errors(
-    #     modes=[pfield_basis, ofield_basis, stokes_basis],
-    #     deim_modes=[pfield_deim_basis, ofield_deim_basis, stokes_deim_basis],
-    #     testcase=testcase,
-    #     t_end=t_end,
-    #     dt=dt,
-    #     grid_size_x=grid_size_x,
-    #     grid_size_y=grid_size_y,
-    #     pol_order=pol_order,
-    #     mus=new_mus,
-    #     reduced_us=us_new_mu,
-    #     reductor=reductor,
-    #     mpi_wrapper=mpi,
-    #     logfile_name=logfile_name,
-    #     prefix="new ",
-    #     products=products,
-    #     rom_time=mean_rom_time,
-    # )
+    calculate_cellmodel_errors(
+        modes=[pfield_basis, ofield_basis, stokes_basis],
+        deim_modes=[pfield_deim_basis, ofield_deim_basis, stokes_deim_basis],
+        testcase=testcase,
+        t_end=t_end,
+        dt=dt,
+        grid_size_x=grid_size_x,
+        grid_size_y=grid_size_y,
+        pol_order=pol_order,
+        mus=new_mus,
+        reduced_us=us_new_mu,
+        reductor=reductor,
+        mpi_wrapper=mpi,
+        logfile_name=logfile_name,
+        prefix="new ",
+        products=products,
+        rom_time=mean_rom_time,
+        fom_time=mean_fom_time,
+    )
 
     sys.stdout.flush()
     mpi.comm_world.Barrier()
