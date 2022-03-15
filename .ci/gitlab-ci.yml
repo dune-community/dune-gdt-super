@@ -387,8 +387,11 @@ test wheels 3.10:
     - cd ${MOD_DIR}
     - pwd
     - git describe --tags HEAD
+    - git tag --list
     # upload only if a tag points to checked out commit
     - (git describe --exact-match --tags HEAD && python3 -m twine upload ${WHEEL_DIR}/final/${MOD_WHEEL_PREFIX}*whl) || echo "not uploading untagged wheels"
+    - git checkout 2021.1.9
+    - (git describe --exact-match --tags HEAD ) || echo "still not a tag"
   artifacts:
     paths:
       - ${WHEEL_DIR}/final/${MOD_WHEEL_PREFIX}*whl
