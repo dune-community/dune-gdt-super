@@ -158,6 +158,8 @@ if __name__ == "__main__":
     if mpi.rank_world == 0:
         if not os.path.exists(logfile_dir):
             os.mkdir(logfile_dir)
+        if not os.path.exists(visualization_dir):
+            os.mkdir(visualization_dir)
     logfile_prefix = "results_{}_{}_{}_{}procs_{}_grid{}x{}_tend{}_dt{}_{}_{}tppr_pfield{}_ofield{}_stokes{}_without".format(
         "mos" if pod_method == "method_of_snapshots" else "qr_svd",
         parameter_sampling_type,
@@ -181,7 +183,7 @@ if __name__ == "__main__":
         logfile_prefix += "_" + excluded_param
     logfile_prefix += f"_omega{omega}"
     logfile_name = os.path.join(logfile_dir, logfile_prefix + ".txt")
-    visualization_postfix = os.path.join(visualization_dir, logfile_prefix)
+    visualization_prefix = os.path.join(visualization_dir, logfile_prefix)
 
     ####### Collect some settings in lists for simpler handling #####
     hapod_tols = [pfield_atol, ofield_atol, stokes_atol, pfield_deim_atol, ofield_deim_atol, stokes_deim_atol]
@@ -338,11 +340,12 @@ if __name__ == "__main__":
     # solve full-order model for new param
     start = timer()
     for mu in new_mus:
-        U_new_mu = m.solve(mu=mu, return_stages=False)
+        U_new_mu, _ = m.solve(mu=mu, return_stages=False)
         if visualize:
+            print(U_new_mu, type(U_new_mu), m.solution_space, type(m.solution_space), flush=True)
             Be, Ca, Pa = (float(mu["Be"]), float(mu["Ca"]), float(mu["Pa"]))
             m.visualize(
-                U_new_mu, prefix=f"fullorder_Be{Be}_Ca{Ca}_Pa{Pa}", subsampling=subsampling, every_nth=visualize_step
+                U_new_mu, prefix=f"{visualization_dir}/fullorder_Be{Be}_Ca{Ca}_Pa{Pa}", subsampling=subsampling, every_nth=visualize_step
             )
     mean_fom_time = (timer() - start) / len(new_mus)
     del U_new_mu
@@ -361,7 +364,7 @@ if __name__ == "__main__":
             Be, Ca, Pa = (float(mu["Be"]), float(mu["Ca"]), float(mu["Pa"]))
             m.visualize(
                 U_rom_new_mu,
-                prefix=f"reduced_Be{Be}_Ca{Ca}_Pa{Pa}_{visualization_postfix}_",
+                prefix=f"{visualization_dir}/reduced_Be{Be}_Ca{Ca}_Pa{Pa}",
                 subsampling=subsampling,
                 every_nth=visualize_step,
             )
