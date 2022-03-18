@@ -21,7 +21,6 @@ from hapod.cellmodel.wrapper import (
     solver_statistics,
 )
 from hapod.mpi import MPIWrapper
-import numpy as np
 from rich import pretty, traceback
 
 traceback.install()

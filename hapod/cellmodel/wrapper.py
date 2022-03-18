@@ -542,6 +542,7 @@ class CellModelRestrictedPfieldOperator(MutableStateComponentJacobianOperator):
     def _change_state(self, pfield_dofs=None, ofield_dofs=None, stokes_dofs=None, mu=None):
         if mu is not None:
             self.solver.update_pfield_parameters(mu, restricted=True)
+            self.solver.update_ofield_parameters(mu, restricted=True)
         if pfield_dofs is not None:
             self.solver.set_pfield_vec_dofs(pfield_dofs._data[0], self.source_dofs[1])
         if ofield_dofs is not None:
@@ -592,6 +593,7 @@ class CellModelPfieldOperator(MutableStateComponentJacobianOperator):
     def _change_state(self, pfield_dofs=None, ofield_dofs=None, stokes_dofs=None, mu=None):
         if mu is not None:
             self.solver.update_pfield_parameters(mu, restricted=False)
+            self.solver.update_ofield_parameters(mu, restricted=False)
         if pfield_dofs is not None:
             self.solver.set_pfield_vec(pfield_dofs._list[0])
         if ofield_dofs is not None:
