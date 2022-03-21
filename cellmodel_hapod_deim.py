@@ -123,6 +123,7 @@ if __name__ == "__main__":
     pfield_deim_atol = 1e-10 if argc < 16 else float(sys.argv[15])
     ofield_deim_atol = 1e-10 if argc < 17 else float(sys.argv[16])
     stokes_deim_atol = 1e-10 if argc < 18 else float(sys.argv[17])
+    compute_errors = True if argc < 19 else (False if sys.argv[18] == "False" else True)
     parameter_sampling_type = "log_and_log_inverted" if argc < 20 else sys.argv[19]
     pod_method = "method_of_snapshots" if argc < 21 else sys.argv[20]
     assert pod_method in ("qr_svd", "method_of_snapshots")
@@ -261,136 +262,140 @@ if __name__ == "__main__":
         logfile=logfile_name,
         products=products,
     )
-    for k in indices:
-        r = results[k]
-        if k == 3:
-            for i in range(3):
-                r.pfield_modes[i], r.pfield_win[i] = mpi.shared_memory_bcast_modes(
-                    r.pfield_modes[i], returnlistvectorarray=True, proc_rank=k % mpi.size_proc
+    if compute_errors:
+        for k in indices:
+            r = results[k]
+            if k == 3:
+                for i in range(3):
+                    r.pfield_modes[i], r.pfield_win[i] = mpi.shared_memory_bcast_modes(
+                        r.pfield_modes[i], returnlistvectorarray=True, proc_rank=k % mpi.size_proc
+                    )
+            else:
+                r.modes, r.win = mpi.shared_memory_bcast_modes(
+                    r.modes, returnlistvectorarray=True, proc_rank=k % mpi.size_proc
                 )
-        else:
-            r.modes, r.win = mpi.shared_memory_bcast_modes(
-                r.modes, returnlistvectorarray=True, proc_rank=k % mpi.size_proc
-            )
 
-    pfield_basis = results[0].modes if pod_pfield else None
-    ofield_basis = results[1].modes if pod_ofield else None
-    stokes_basis = results[2].modes if pod_stokes else None
-    pfield_deim_basis = results[3].pfield_modes if deim_pfield else None
-    ofield_deim_basis = results[4].modes if deim_ofield else None
-    stokes_deim_basis = results[5].modes if deim_stokes else None
+        pfield_basis = results[0].modes if pod_pfield else None
+        ofield_basis = results[1].modes if pod_ofield else None
+        stokes_basis = results[2].modes if pod_stokes else None
+        pfield_deim_basis = results[3].pfield_modes if deim_pfield else None
+        ofield_deim_basis = results[4].modes if deim_ofield else None
+        stokes_deim_basis = results[5].modes if deim_stokes else None
 
-    reductor = CellModelReductor(
-        m,
-        pfield_basis,
-        ofield_basis,
-        stokes_basis,
-        least_squares_pfield=least_squares_pfield,
-        least_squares_ofield=least_squares_ofield,
-        least_squares_stokes=least_squares_stokes,
-        pfield_deim_basis=pfield_deim_basis,
-        ofield_deim_basis=ofield_deim_basis,
-        stokes_deim_basis=stokes_deim_basis,
-        check_orthonormality=True,
-        check_tol=1e-10,
-        products={"pfield": products[0], "ofield": products[1], "stokes": products[2]},
-    )
-    rom = reductor.reduce()
+        reductor = CellModelReductor(
+            m,
+            pfield_basis,
+            ofield_basis,
+            stokes_basis,
+            least_squares_pfield=least_squares_pfield,
+            least_squares_ofield=least_squares_ofield,
+            least_squares_stokes=least_squares_stokes,
+            pfield_deim_basis=pfield_deim_basis,
+            ofield_deim_basis=ofield_deim_basis,
+            stokes_deim_basis=stokes_deim_basis,
+            check_orthonormality=True,
+            check_tol=1e-10,
+            products={"pfield": products[0], "ofield": products[1], "stokes": products[2]},
+        )
+        rom = reductor.reduce()
 
-    ################## solve reduced model for trained parameters ####################
-    mpi.comm_world.Barrier()
-    # time.sleep(10)
-    us = []
-    for mu in mus:
-        u, _ = rom.solve(mu, return_stages=False)
-        us.append(u)
+        ################## solve reduced model for trained parameters ####################
+        mpi.comm_world.Barrier()
+        # time.sleep(10)
+        us = []
+        for mu in mus:
+            u, _ = rom.solve(mu, return_stages=False)
+            us.append(u)
 
-    # if visualize:
-    #     for u, mu in zip(us, mus):
-    #         U_rom = reductor.reconstruct(u)
-    #         Be, Ca, Pa = (float(mu["Be"]), float(mu["Ca"]), float(mu["Pa"]))
-    #         m.visualize(
-    #             U_rom,
-    #             prefix=f"reduced_{visualization_prefix}_Be{Be}_Ca{Ca}_Pa{Pa}",
-    #             subsampling=subsampling,
-    #             every_nth=visualize_step,
-    #         )
-    #     del U_rom
+        # if visualize:
+        #     for u, mu in zip(us, mus):
+        #         U_rom = reductor.reconstruct(u)
+        #         Be, Ca, Pa = (float(mu["Be"]), float(mu["Ca"]), float(mu["Pa"]))
+        #         m.visualize(
+        #             U_rom,
+        #             prefix=f"reduced_{visualization_prefix}_Be{Be}_Ca{Ca}_Pa{Pa}",
+        #             subsampling=subsampling,
+        #             every_nth=visualize_step,
+        #         )
+        #     del U_rom
 
-    mpi.comm_world.Barrier()
-    calculate_cellmodel_errors(
-        m,
-        modes=[pfield_basis, ofield_basis, stokes_basis],
-        deim_modes=[pfield_deim_basis, ofield_deim_basis, stokes_deim_basis],
-        testcase=testcase,
-        t_end=t_end,
-        dt=dt,
-        grid_size_x=grid_size_x,
-        grid_size_y=grid_size_y,
-        pol_order=pol_order,
-        mus=mus,
-        reduced_us=us,
-        reductor=reductor,
-        mpi_wrapper=mpi,
-        logfile_name=logfile_name,
-        products=products,
-    )
+        mpi.comm_world.Barrier()
+        calculate_cellmodel_errors(
+            m,
+            modes=[pfield_basis, ofield_basis, stokes_basis],
+            deim_modes=[pfield_deim_basis, ofield_deim_basis, stokes_deim_basis],
+            testcase=testcase,
+            t_end=t_end,
+            dt=dt,
+            grid_size_x=grid_size_x,
+            grid_size_y=grid_size_y,
+            pol_order=pol_order,
+            mus=mus,
+            reduced_us=us,
+            reductor=reductor,
+            mpi_wrapper=mpi,
+            logfile_name=logfile_name,
+            products=products,
+        )
 
-    ################## test new parameters #######################
-    # solve full-order model for new param
-    start = timer()
-    for mu in new_mus:
-        U_new_mu, _ = m.solve(mu=mu, return_stages=False)
-        if visualize:
-            print(U_new_mu, type(U_new_mu), m.solution_space, type(m.solution_space), flush=True)
-            Be, Ca, Pa = (float(mu["Be"]), float(mu["Ca"]), float(mu["Pa"]))
-            m.visualize(
-                U_new_mu, prefix=f"{visualization_dir}/fullorder_Be{Be}_Ca{Ca}_Pa{Pa}", subsampling=subsampling, every_nth=visualize_step
-            )
-    mean_fom_time = (timer() - start) / len(new_mus)
-    del U_new_mu
+        ################## test new parameters #######################
+        # solve full-order model for new param
+        start = timer()
+        for mu in new_mus:
+            U_new_mu, _ = m.solve(mu=mu, return_stages=False)
+            if visualize:
+                print(U_new_mu, type(U_new_mu), m.solution_space, type(m.solution_space), flush=True)
+                Be, Ca, Pa = (float(mu["Be"]), float(mu["Ca"]), float(mu["Pa"]))
+                m.visualize(
+                    U_new_mu,
+                    prefix=f"{visualization_dir}/fullorder_Be{Be}_Ca{Ca}_Pa{Pa}",
+                    subsampling=subsampling,
+                    every_nth=visualize_step,
+                )
+        mean_fom_time = (timer() - start) / len(new_mus)
+        del U_new_mu
 
-    # solve reduced model for new params
-    start = timer()
-    us_new_mu = []
-    for mu in new_mus:
-        u, _ = rom.solve(mu, return_stages=False)
-        # cProfile.run(
-        #     "u = rom.solve(mu, return_stages=False)", f"rom{mpi.rank_world}.cprof"
-        # )
-        us_new_mu.append(u)
-        if visualize:
-            U_rom_new_mu = reductor.reconstruct(u)
-            Be, Ca, Pa = (float(mu["Be"]), float(mu["Ca"]), float(mu["Pa"]))
-            m.visualize(
-                U_rom_new_mu,
-                prefix=f"{visualization_dir}/reduced_Be{Be}_Ca{Ca}_Pa{Pa}",
-                subsampling=subsampling,
-                every_nth=visualize_step,
-            )
-            del U_rom_new_mu
-    mean_rom_time = (timer() - start) / len(new_mus)
+        # solve reduced model for new params
+        start = timer()
+        us_new_mu = []
+        for mu in new_mus:
+            u, _ = rom.solve(mu, return_stages=False)
+            # cProfile.run(
+            #     "u = rom.solve(mu, return_stages=False)", f"rom{mpi.rank_world}.cprof"
+            # )
+            us_new_mu.append(u)
+            if visualize:
+                U_rom_new_mu = reductor.reconstruct(u)
+                Be, Ca, Pa = (float(mu["Be"]), float(mu["Ca"]), float(mu["Pa"]))
+                m.visualize(
+                    U_rom_new_mu,
+                    prefix=f"{visualization_dir}/reduced_Be{Be}_Ca{Ca}_Pa{Pa}",
+                    subsampling=subsampling,
+                    every_nth=visualize_step,
+                )
+                del U_rom_new_mu
+        mean_rom_time = (timer() - start) / len(new_mus)
 
-    calculate_cellmodel_errors(
-        m,
-        modes=[pfield_basis, ofield_basis, stokes_basis],
-        deim_modes=[pfield_deim_basis, ofield_deim_basis, stokes_deim_basis],
-        testcase=testcase,
-        t_end=t_end,
-        dt=dt,
-        grid_size_x=grid_size_x,
-        grid_size_y=grid_size_y,
-        pol_order=pol_order,
-        mus=new_mus,
-        reduced_us=us_new_mu,
-        reductor=reductor,
-        mpi_wrapper=mpi,
-        logfile_name=logfile_name,
-        prefix="new ",
-        products=products,
-        rom_time=mean_rom_time,
-        fom_time=mean_fom_time,
-    )
+        calculate_cellmodel_errors(
+            m,
+            modes=[pfield_basis, ofield_basis, stokes_basis],
+            deim_modes=[pfield_deim_basis, ofield_deim_basis, stokes_deim_basis],
+            testcase=testcase,
+            t_end=t_end,
+            dt=dt,
+            grid_size_x=grid_size_x,
+            grid_size_y=grid_size_y,
+            pol_order=pol_order,
+            mus=new_mus,
+            reduced_us=us_new_mu,
+            reductor=reductor,
+            mpi_wrapper=mpi,
+            logfile_name=logfile_name,
+            prefix="new ",
+            products=products,
+            rom_time=mean_rom_time,
+            fom_time=mean_fom_time,
+        )
 
-    sys.stdout.flush()
-    mpi.comm_world.Barrier()
+        sys.stdout.flush()
+        mpi.comm_world.Barrier()

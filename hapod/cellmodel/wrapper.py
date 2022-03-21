@@ -1454,7 +1454,19 @@ class CellModelReductor(ProjectionBasedReductor):
 
 
 def calculate_cellmodel_trajectory_errors(
-    cellmodel, modes, deim_modes, testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu, u_rom, reductor, products
+    cellmodel,
+    modes,
+    deim_modes,
+    testcase,
+    t_end,
+    dt,
+    grid_size_x,
+    grid_size_y,
+    pol_order,
+    mu,
+    u_rom,
+    reductor,
+    products,
 ):
     proj_errs = [0.0] * 3
     red_errs = [0.0] * 3
@@ -1561,7 +1573,7 @@ def calculate_mean_cellmodel_projection_errors(
             n,
             n_deim,
         ) = calculate_cellmodel_trajectory_errors(
-                cellmodel,
+            cellmodel,
             modes=modes,
             deim_modes=deim_modes,
             testcase=testcase,
@@ -1643,7 +1655,7 @@ def calculate_mean_cellmodel_projection_errors(
 
 
 def calculate_cellmodel_errors(
-        cellmodel,
+    cellmodel,
     modes,
     deim_modes,
     testcase,
@@ -1675,7 +1687,7 @@ def calculate_cellmodel_errors(
         mean_rom_time,
         mus_to_red_errs,
     ) = calculate_mean_cellmodel_projection_errors(
-            cellmodel,
+        cellmodel,
         modes=modes,
         deim_modes=deim_modes,
         testcase=testcase,
@@ -1704,11 +1716,15 @@ def calculate_cellmodel_errors(
             logfile.write("{}{} projection error for pfield is: {:.2e}\n".format(prefix, error_type, errs[0]))
             logfile.write("{}{} projection error for ofield is: {:.2e}\n".format(prefix, error_type, errs[1]))
             logfile.write("{}{} projection error for stokes is: {:.2e}\n".format(prefix, error_type, errs[2]))
-            logfile.write("{}{} projection DEIM error for phi is: {:.2e}\n".format(prefix, error_type, pfield_deim_errs[0]))
             logfile.write(
-                    "{}{} projection DEIM error for phinat is: {:.2e}\n".format(prefix, error_type, pfield_deim_errs[1])
+                "{}{} projection DEIM error for phi is: {:.2e}\n".format(prefix, error_type, pfield_deim_errs[0])
             )
-            logfile.write("{}{} projection DEIM error for mu is: {:.2e}\n".format(prefix, error_type, pfield_deim_errs[2]))
+            logfile.write(
+                "{}{} projection DEIM error for phinat is: {:.2e}\n".format(prefix, error_type, pfield_deim_errs[1])
+            )
+            logfile.write(
+                "{}{} projection DEIM error for mu is: {:.2e}\n".format(prefix, error_type, pfield_deim_errs[2])
+            )
             logfile.write("{}{} projection DEIM error for pfield is: {:.2e}\n".format(prefix, error_type, deim_errs[0]))
             logfile.write("{}{} projection DEIM error for ofield is: {:.2e}\n".format(prefix, error_type, deim_errs[1]))
             logfile.write("{}{} projection DEIM error for stokes is: {:.2e}\n".format(prefix, error_type, deim_errs[2]))
@@ -1716,13 +1732,13 @@ def calculate_cellmodel_errors(
             logfile.write("{}{} reduction error for ofield is: {:.2e}\n".format(prefix, error_type, red_errs[1]))
             logfile.write("{}{} reduction error for stokes is: {:.2e}\n".format(prefix, error_type, red_errs[2]))
             logfile.write(
-                    "{}{} relative reduction error for pfield is: {:.2e}\n".format(prefix, error_type, rel_red_errs[0])
+                "{}{} relative reduction error for pfield is: {:.2e}\n".format(prefix, error_type, rel_red_errs[0])
             )
             logfile.write(
-                    "{}{} relative reduction error for ofield is: {:.2e}\n".format(prefix, error_type, rel_red_errs[1])
+                "{}{} relative reduction error for ofield is: {:.2e}\n".format(prefix, error_type, rel_red_errs[1])
             )
             logfile.write(
-                    "{}{} relative reduction error for stokes is: {:.2e}\n".format(prefix, error_type, rel_red_errs[2])
+                "{}{} relative reduction error for stokes is: {:.2e}\n".format(prefix, error_type, rel_red_errs[2])
             )
             if mean_fom_time is not None and mean_rom_time is not None:
                 logfile.write(
@@ -2176,7 +2192,6 @@ def binary_tree_hapod(
     logfile: Union[None, str] = None,
     products: "list[Any]" = [None] * 6,
     pod_method: str = "method_of_snapshots",
-    perform_chunk_pod = True,
 ):
     assert len(tolerances) == 6
 
@@ -2257,7 +2272,9 @@ def binary_tree_hapod(
         if mpi.rank_proc == root_rank:
             t1 = timer()
             if k == 3:
-                pfield_timings = final_hapod_in_binary_tree_hapod_pfield(r, mpi, root=root_rank, product=products[k], method=pod_method)
+                pfield_timings = final_hapod_in_binary_tree_hapod_pfield(
+                    r, mpi, root=root_rank, product=products[k], method=pod_method
+                )
                 for i in range(3):
                     timings[f"Pfield POD{i}"] += pfield_timings[i]
             else:
@@ -2297,25 +2314,33 @@ def binary_tree_hapod(
     # write statistics to file
     if logfile is not None and mpi.rank_world == 0:
         with open(logfile, "a") as ff:
-            names = ("Pfield HAPOD", "Ofield HAPOD", "Stokes HAPOD", "Pfield DEIM HAPOD", "Ofield DEIM HAPOD", "Stokes DEIM HAPOD")
+            ff.write(f"Computing snapshots took {timings['data_gen']:.2f} s\n")
+            names = (
+                "Pfield HAPOD",
+                "Ofield HAPOD",
+                "Stokes HAPOD",
+                "Pfield DEIM HAPOD",
+                "Ofield DEIM HAPOD",
+                "Stokes DEIM HAPOD",
+            )
             for k in indices:
                 r = results[k]
                 if k == 3:
                     ff.write(
-                            f"Phi (first phasefield variable) HAPOD took {r.timings['Pfield POD0']:.2f} s and resulted in {r.pfield_num_modes[0]} modes from {r.total_num_snapshots} snapshots!\n"
+                        f"Phi (first phasefield variable) HAPOD took {r.timings['Pfield POD0']:.2f} s and resulted in {r.pfield_num_modes[0]} modes from {r.total_num_snapshots} snapshots!\n"
                     )
                     ff.write(
-                            f"Phinat (second phasefield variable) HAPOD took {r.timings['Pfield POD1']:.2f} s and resulted in {r.pfield_num_modes[1]} modes from {r.total_num_snapshots} snapshots!\n"
+                        f"Phinat (second phasefield variable) HAPOD took {r.timings['Pfield POD1']:.2f} s and resulted in {r.pfield_num_modes[1]} modes from {r.total_num_snapshots} snapshots!\n"
                     )
                     ff.write(
-                            f"Mu (third phasefield variable) HAPOD took {r.timings['Pfield POD2']:.2f} s and resulted in {r.pfield_num_modes[2]} modes from {r.total_num_snapshots} snapshots!\n"
+                        f"Mu (third phasefield variable) HAPOD took {r.timings['Pfield POD2']:.2f} s and resulted in {r.pfield_num_modes[2]} modes from {r.total_num_snapshots} snapshots!\n"
                     )
                     # ff.write(f"The maximal number of local modes was {r.max_local_modes}\n")
                     # ff.write(f"The maximal number of input vectors to a local POD was: {r.max_vectors_before_pod}\n")
                     ff.write(f"All Pfield DEIM HAPODs took {r.timings[f'POD{k}']:.2f} s.\n")
                 else:
                     ff.write(
-                            f"{names[k]} took {r.timings[f'POD{k}']:.2f} s and resulted in {r.num_modes} final modes taken from a total of {r.total_num_snapshots} snapshots!\n"
+                        f"{names[k]} took {r.timings[f'POD{k}']:.2f} s and resulted in {r.num_modes} final modes taken from a total of {r.total_num_snapshots} snapshots!\n"
                     )
                     ff.write(f"The maximal number of local modes was {r.max_local_modes}\n")
                     ff.write(f"The maximal number of input vectors to a local POD was: {r.max_vectors_before_pod}\n")
