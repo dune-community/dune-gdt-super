@@ -224,7 +224,7 @@ class BoltzmannMPICommunicator(MPI.Intracomm):
         self, vectorarray, num_snapshots_on_rank, svals=None, num_modes_equal=False, merge=True
     ):
         return self.gather_on_root_rank(
-            vectorarray, num_snapshots_on_rank, svals, num_modes_equal, merge, root=0
+            vectorarray=vectorarray, num_snapshots_on_rank=num_snapshots_on_rank, svals=svals, num_modes_equal=num_modes_equal, merge=merge, root=0
         )
 
     def __getattr__(self, item):

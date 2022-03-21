@@ -865,9 +865,9 @@ class CellModel(Model):
         pfield_stages = [pfield_vecarray.empty()]
         ofield_stages = [ofield_vecarray.empty()]
         stokes_stages = [stokes_vecarray.empty()]
-        pfield_residuals = [pfield_vecarray.empty()]
-        ofield_residuals = [ofield_vecarray.empty()]
-        stokes_residuals = [stokes_vecarray.empty()]
+        pfield_residuals = pfield_vecarray.empty()
+        ofield_residuals = ofield_vecarray.empty()
+        stokes_residuals = stokes_vecarray.empty()
 
         i = 0
         t = 0.0
@@ -1454,7 +1454,7 @@ class CellModelReductor(ProjectionBasedReductor):
 
 
 def calculate_cellmodel_trajectory_errors(
-    modes, deim_modes, testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu, u_rom, reductor, products
+    cellmodel, modes, deim_modes, testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu, u_rom, reductor, products
 ):
     proj_errs = [0.0] * 3
     red_errs = [0.0] * 3
@@ -1465,8 +1465,8 @@ def calculate_cellmodel_trajectory_errors(
     n_deim = [0] * 3
     t = 0.0
     timestep_residuals = None
-    solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu)
-    cellmodel = DuneCellModel(solver, products={"pfield": products[0], "ofield": products[1], "stokes": products[2]})
+    # solver = CellModelSolver(testcase, t_end, dt, grid_size_x, grid_size_y, pol_order, mu)
+    # cellmodel = DuneCellModel(solver, products={"pfield": products[0], "ofield": products[1], "stokes": products[2]})
     current_values = cellmodel.initial_values.copy()
     while True:
         # POD basis errors
@@ -1525,6 +1525,7 @@ def calculate_cellmodel_trajectory_errors(
 
 
 def calculate_mean_cellmodel_projection_errors(
+    cellmodel,
     modes,
     deim_modes,
     testcase,
@@ -1560,6 +1561,7 @@ def calculate_mean_cellmodel_projection_errors(
             n,
             n_deim,
         ) = calculate_cellmodel_trajectory_errors(
+                cellmodel,
             modes=modes,
             deim_modes=deim_modes,
             testcase=testcase,
@@ -1641,6 +1643,7 @@ def calculate_mean_cellmodel_projection_errors(
 
 
 def calculate_cellmodel_errors(
+        cellmodel,
     modes,
     deim_modes,
     testcase,
@@ -1672,6 +1675,7 @@ def calculate_cellmodel_errors(
         mean_rom_time,
         mus_to_red_errs,
     ) = calculate_mean_cellmodel_projection_errors(
+            cellmodel,
         modes=modes,
         deim_modes=deim_modes,
         testcase=testcase,
@@ -1697,28 +1701,28 @@ def calculate_cellmodel_errors(
                 error_type = "H1"
             elif isinstance(products[0], CellModelPfieldL2ProductOperator):
                 error_type = "L2"
-            logfile.write("{}{} projection error for pfield is: {}\n".format(prefix, error_type, errs[0]))
-            logfile.write("{}{} projection error for ofield is: {}\n".format(prefix, error_type, errs[1]))
-            logfile.write("{}{} projection error for stokes is: {}\n".format(prefix, error_type, errs[2]))
-            logfile.write("{}{} projection DEIM error for phi is: {}\n".format(prefix, error_type, pfield_deim_errs[0]))
+            logfile.write("{}{} projection error for pfield is: {:.2e}\n".format(prefix, error_type, errs[0]))
+            logfile.write("{}{} projection error for ofield is: {:.2e}\n".format(prefix, error_type, errs[1]))
+            logfile.write("{}{} projection error for stokes is: {:.2e}\n".format(prefix, error_type, errs[2]))
+            logfile.write("{}{} projection DEIM error for phi is: {:.2e}\n".format(prefix, error_type, pfield_deim_errs[0]))
             logfile.write(
-                "{}{} projection DEIM error for phinat is: {}\n".format(prefix, error_type, pfield_deim_errs[1])
+                    "{}{} projection DEIM error for phinat is: {:.2e}\n".format(prefix, error_type, pfield_deim_errs[1])
             )
-            logfile.write("{}{} projection DEIM error for mu is: {}\n".format(prefix, error_type, pfield_deim_errs[2]))
-            logfile.write("{}{} projection DEIM error for pfield is: {}\n".format(prefix, error_type, deim_errs[0]))
-            logfile.write("{}{} projection DEIM error for ofield is: {}\n".format(prefix, error_type, deim_errs[1]))
-            logfile.write("{}{} projection DEIM error for stokes is: {}\n".format(prefix, error_type, deim_errs[2]))
-            logfile.write("{}{} reduction error for pfield is: {}\n".format(prefix, error_type, red_errs[0]))
-            logfile.write("{}{} reduction error for ofield is: {}\n".format(prefix, error_type, red_errs[1]))
-            logfile.write("{}{} reduction error for stokes is: {}\n".format(prefix, error_type, red_errs[2]))
+            logfile.write("{}{} projection DEIM error for mu is: {:.2e}\n".format(prefix, error_type, pfield_deim_errs[2]))
+            logfile.write("{}{} projection DEIM error for pfield is: {:.2e}\n".format(prefix, error_type, deim_errs[0]))
+            logfile.write("{}{} projection DEIM error for ofield is: {:.2e}\n".format(prefix, error_type, deim_errs[1]))
+            logfile.write("{}{} projection DEIM error for stokes is: {:.2e}\n".format(prefix, error_type, deim_errs[2]))
+            logfile.write("{}{} reduction error for pfield is: {:.2e}\n".format(prefix, error_type, red_errs[0]))
+            logfile.write("{}{} reduction error for ofield is: {:.2e}\n".format(prefix, error_type, red_errs[1]))
+            logfile.write("{}{} reduction error for stokes is: {:.2e}\n".format(prefix, error_type, red_errs[2]))
             logfile.write(
-                "{}{} relative reduction error for pfield is: {}\n".format(prefix, error_type, rel_red_errs[0])
-            )
-            logfile.write(
-                "{}{} relative reduction error for ofield is: {}\n".format(prefix, error_type, rel_red_errs[1])
+                    "{}{} relative reduction error for pfield is: {:.2e}\n".format(prefix, error_type, rel_red_errs[0])
             )
             logfile.write(
-                "{}{} relative reduction error for stokes is: {}\n".format(prefix, error_type, rel_red_errs[2])
+                    "{}{} relative reduction error for ofield is: {:.2e}\n".format(prefix, error_type, rel_red_errs[1])
+            )
+            logfile.write(
+                    "{}{} relative reduction error for stokes is: {:.2e}\n".format(prefix, error_type, rel_red_errs[2])
             )
             if mean_fom_time is not None and mean_rom_time is not None:
                 logfile.write(
@@ -1994,8 +1998,11 @@ def pods_on_processor_cores_in_binary_tree_hapod_pfield(r, vecs, mpi, root, prod
     vecs_field = [vecs.empty()] * 3
     svals_field = [0] * 3
     size_phi = vecs.dim // 3
+    vecs = vecs.to_numpy()
+    timings = [0.0] * 3
     for i in range(3):
-        vecs_field[i] = NumpyVectorSpace.make_array(vecs.to_numpy()[:, i * size_phi : (i + 1) * size_phi])
+        start = timer()
+        vecs_field[i] = NumpyVectorSpace.make_array(vecs[:, i * size_phi : (i + 1) * size_phi])
         vecs_field[i], svals_field[i] = local_pod(
             [vecs_field[i]],
             snaps_on_rank,
@@ -2006,12 +2013,16 @@ def pods_on_processor_cores_in_binary_tree_hapod_pfield(r, vecs, mpi, root, prod
             method=method,
         )
         vecs_field[i].scal(svals_field[i])
+        timings[i] += timer() - start
     # r.max_local_modes = max(r.max_local_modes, len(vecs))
     idle_wait(mpi.comm_proc, root=root)
     for i in range(3):
+        start = timer()
         r.gathered_pfield_modes[i], _, r.num_snaps, _ = mpi.comm_proc.gather_on_root_rank(
             vecs_field[i], num_snapshots_on_rank=snaps_on_rank, num_modes_equal=False, root=root
         )
+        timings[i] += timer() - start
+    return timings
 
 
 def pods_on_processor_cores_in_binary_tree_hapod(r, vecs, mpi, root, product, method="method_of_snapshots"):
@@ -2036,9 +2047,11 @@ def pod_on_node_in_binary_tree_hapod_pfield(
 ):
     print("start node pod: ", mpi.rank_world)
     r.total_num_snapshots += r.num_snaps
+    timings = [0.0] * 3
     if is_first_chunk:
         # r.max_vectors_before_pod = max(r.max_vectors_before_pod, len(r.gathered_pfield_modes))
         for i in range(3):
+            start = timer()
             r.pfield_modes[i], r.pfield_svals[i] = local_pod(
                 inputs=[r.gathered_pfield_modes[i]],
                 num_snaps_in_leafs=r.num_snaps,
@@ -2048,8 +2061,11 @@ def pod_on_node_in_binary_tree_hapod_pfield(
                 incremental_gramian=False,
                 method=method,
             )
+            timings[i] += timer() - start
+
     else:
         for i in range(3):
+            start = timer()
             # r.max_vectors_before_pod = max(r.max_vectors_before_pod, len(r.modes) + len(r.gathered_modes))
             root_of_tree = is_last_chunk and mpi.size_rank_group[root] == 1
             r.pfield_modes[i], r.pfield_svals[i] = local_pod(
@@ -2062,7 +2078,9 @@ def pod_on_node_in_binary_tree_hapod_pfield(
                 root_of_tree=root_of_tree,
                 method=method,
             )
+            timings[i] += timer() - start
     # r.max_local_modes = max(r.max_local_modes, len(r.modes))
+    return timings
 
 
 # perform a POD with gathered modes on rank 0 on each processor/node
@@ -2100,7 +2118,9 @@ def pod_on_node_in_binary_tree_hapod(
 
 def final_hapod_in_binary_tree_hapod_pfield(r, mpi, root, product, method="method_of_snapshots"):
     print("start final pod: ", mpi.rank_world)
+    timings = [0.0] * 3
     for i in range(3):
+        start = timer()
         (
             r.pfield_modes[i],
             r.pfield_svals[i],
@@ -2119,8 +2139,10 @@ def final_hapod_in_binary_tree_hapod_pfield(r, mpi, root, product, method="metho
             orth_tol=r.final_orth_tol,
             method=method,
         )
+        timings[i] += timer() - start
     # r.max_vectors_before_pod = max(r.max_vectors_before_pod, max_num_input_vecs)
     # r.max_local_modes = max(r.max_local_modes, max_num_local_modes)
+    return timings
 
 
 def final_hapod_in_binary_tree_hapod(r, mpi, root, product, method="method_of_snapshots"):
@@ -2154,13 +2176,17 @@ def binary_tree_hapod(
     logfile: Union[None, str] = None,
     products: "list[Any]" = [None] * 6,
     pod_method: str = "method_of_snapshots",
+    perform_chunk_pod = True,
 ):
     assert len(tolerances) == 6
 
     # setup timings
-    timings = {}
+    timings = {"data_gen": 0.0}
     for k in indices:
         timings[f"POD{k}"] = 0.0
+        if k == 3:
+            for i in range(3):
+                timings[f"Pfield POD{i}"] = 0.0
 
     # calculate rooted tree depth
     node_binary_tree_depth = binary_tree_depth(mpi.comm_rank_group[0])  # assumes same tree for all fields
@@ -2176,15 +2202,19 @@ def binary_tree_hapod(
         r.incremental_gramian = incremental_gramian
 
     # walk over time chunks
-    for chunk in chunk_generator:
+    pod_start_time = timer()
+    for chunk, chunk_time in chunk_generator:
+        timings["data_gen"] += chunk_time
         # calculate POD of timestep vectors on each core
         for k in indices:
             t1 = timer()
             root_rank = k % mpi.size_proc
             if k == 3:
-                pods_on_processor_cores_in_binary_tree_hapod_pfield(
+                pfield_timings = pods_on_processor_cores_in_binary_tree_hapod_pfield(
                     results[k], chunk[k], mpi, root=root_rank, product=products[k], method=pod_method
                 )
+                for i in range(3):
+                    timings[f"Pfield POD{i}"] += pfield_timings[i]
             else:
                 pods_on_processor_cores_in_binary_tree_hapod(
                     results[k], chunk[k], mpi, root=root_rank, product=products[k], method=pod_method
@@ -2197,7 +2227,7 @@ def binary_tree_hapod(
             if mpi.rank_proc == root_rank:
                 # perform pod on rank root_rank with gathered modes and modes from the last chunk
                 if k == 3:
-                    pod_on_node_in_binary_tree_hapod_pfield(
+                    pfield_timings = pod_on_node_in_binary_tree_hapod_pfield(
                         results[k],
                         is_first_chunk=chunk_generator.chunk_index() == 0,
                         is_last_chunk=chunk_generator.done(),
@@ -2206,6 +2236,8 @@ def binary_tree_hapod(
                         product=products[k],
                         method=pod_method,
                     )
+                    for i in range(3):
+                        timings[f"Pfield POD{i}"] += pfield_timings[i]
                 else:
                     pod_on_node_in_binary_tree_hapod(
                         results[k],
@@ -2225,7 +2257,9 @@ def binary_tree_hapod(
         if mpi.rank_proc == root_rank:
             t1 = timer()
             if k == 3:
-                final_hapod_in_binary_tree_hapod_pfield(r, mpi, root=root_rank, product=products[k], method=pod_method)
+                pfield_timings = final_hapod_in_binary_tree_hapod_pfield(r, mpi, root=root_rank, product=products[k], method=pod_method)
+                for i in range(3):
+                    timings[f"Pfield POD{i}"] += pfield_timings[i]
             else:
                 final_hapod_in_binary_tree_hapod(r, mpi, root=root_rank, product=products[k], method=pod_method)
             timings[f"POD{k}"] += timer() - t1
@@ -2238,7 +2272,6 @@ def binary_tree_hapod(
                 pfield_num_modes = mpi.comm_world.gather(
                     len(r.pfield_modes[i]) if r.pfield_modes[i] is not None else 0, root=0
                 ) or [0]
-                print(r.pfield_modes[i])
                 if mpi.rank_world == 0:
                     r.pfield_num_modes[i] = max(pfield_num_modes)
             if mpi.rank_world == 0:
@@ -2253,30 +2286,40 @@ def binary_tree_hapod(
                 r.num_modes = max(r.num_modes)
                 r.total_num_snapshots = max(r.total_num_snapshots)
                 r.timings = {}
-                for key in timings.keys():
-                    r.timings[key] = max([timing[key] for timing in gathered_timings])
+        if mpi.rank_world == 0:
+            for key in timings.keys():
+                r.timings[key] = max([timing[key] for timing in gathered_timings])
+    overall_time = timer() - pod_start_time
+    overall_time = mpi.comm_world.gather(overall_time, root=0) or [0]
+    if mpi.rank_world == 0:
+        overall_time = max([time for time in overall_time])
 
     # write statistics to file
     if logfile is not None and mpi.rank_world == 0:
         with open(logfile, "a") as ff:
+            names = ("Pfield HAPOD", "Ofield HAPOD", "Stokes HAPOD", "Pfield DEIM HAPOD", "Ofield DEIM HAPOD", "Stokes DEIM HAPOD")
             for k in indices:
-                ff.write(f"Hapod for index {k}\n")
                 r = results[k]
                 if k == 3:
-                    for i in range(3):
-                        ff.write(
-                            f"The Pfield HAPOD {i} resulted in {r.pfield_num_modes[i]} final modes taken from a total of {r.total_num_snapshots} snapshots!\n"
-                        )
+                    ff.write(
+                            f"Phi (first phasefield variable) HAPOD took {r.timings['Pfield POD0']:.2f} s and resulted in {r.pfield_num_modes[0]} modes from {r.total_num_snapshots} snapshots!\n"
+                    )
+                    ff.write(
+                            f"Phinat (second phasefield variable) HAPOD took {r.timings['Pfield POD1']:.2f} s and resulted in {r.pfield_num_modes[1]} modes from {r.total_num_snapshots} snapshots!\n"
+                    )
+                    ff.write(
+                            f"Mu (third phasefield variable) HAPOD took {r.timings['Pfield POD2']:.2f} s and resulted in {r.pfield_num_modes[2]} modes from {r.total_num_snapshots} snapshots!\n"
+                    )
                     # ff.write(f"The maximal number of local modes was {r.max_local_modes}\n")
                     # ff.write(f"The maximal number of input vectors to a local POD was: {r.max_vectors_before_pod}\n")
-                    # ff.write("PODs took {} s.\n".format(r.timings[f"POD{k}"]))
+                    ff.write(f"All Pfield DEIM HAPODs took {r.timings[f'POD{k}']:.2f} s.\n")
                 else:
                     ff.write(
-                        f"The HAPOD resulted in {r.num_modes} final modes taken from a total of {r.total_num_snapshots} snapshots!\n"
+                            f"{names[k]} took {r.timings[f'POD{k}']:.2f} s and resulted in {r.num_modes} final modes taken from a total of {r.total_num_snapshots} snapshots!\n"
                     )
                     ff.write(f"The maximal number of local modes was {r.max_local_modes}\n")
                     ff.write(f"The maximal number of input vectors to a local POD was: {r.max_vectors_before_pod}\n")
-                    ff.write("PODs took {} s.\n".format(r.timings[f"POD{k}"]))
+            ff.write(f"Overall time: {overall_time:.2f} s.\n")
             ff.write(
                 f"The maximum amount of memory used on rank 0 was: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1000.0 ** 2} GB\n"
             )

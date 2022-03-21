@@ -15,7 +15,6 @@ from hapod.cellmodel.wrapper import (
     CellModelStokesL2ProductOperator,
     DuneCellModel,
     binary_tree_hapod,
-    binary_tree_hapod,
     calculate_cellmodel_errors,
     create_parameters,
     solver_statistics,
@@ -58,6 +57,7 @@ class SolverChunkGenerator:
             self.current_chunk_index = chunk_index
             new_vecs = [self.cellmodel.solution_space.subspaces[i % 3].empty() for i in range(6)]
             # walk over parameters
+            time_data_gen = 0
             for p, mu in enumerate(self.mus):
                 t = old_t
                 # If this is the first time step, add initial values ...
@@ -67,11 +67,11 @@ class SolverChunkGenerator:
                             new_vecs[k].append(current_values[p]._blocks[k])
                 # ... and do one timestep less to ensure that chunk has size chunk_size
                 for time_index in range(self.chunk_size - 1 if chunk_index == 0 else self.chunk_size):
-                    # t1 = timer()
+                    t1 = timer()
                     current_values[p], data = self.cellmodel.next_time_step(
                         current_values[p], t, mu=mu, return_stages=self.include_newton_stages, return_residuals=True
                     )
-                    # timings["data"] += timer() - t1
+                    time_data_gen += timer() - t1
                     t = data["t"]
                     # check if we are finished (if time == t_end, cellmodel.next_time_step returns None)
                     if current_values[p] is None:
@@ -92,7 +92,7 @@ class SolverChunkGenerator:
 
             old_t = t
 
-            yield new_vecs
+            yield new_vecs, time_data_gen
 
     def chunk_index(self):
         return self.current_chunk_index
@@ -319,6 +319,7 @@ if __name__ == "__main__":
 
     mpi.comm_world.Barrier()
     calculate_cellmodel_errors(
+        m,
         modes=[pfield_basis, ofield_basis, stokes_basis],
         deim_modes=[pfield_deim_basis, ofield_deim_basis, stokes_deim_basis],
         testcase=testcase,
@@ -369,9 +370,9 @@ if __name__ == "__main__":
             )
             del U_rom_new_mu
     mean_rom_time = (timer() - start) / len(new_mus)
-    del solver, m
 
     calculate_cellmodel_errors(
+        m,
         modes=[pfield_basis, ofield_basis, stokes_basis],
         deim_modes=[pfield_deim_basis, ofield_deim_basis, stokes_deim_basis],
         testcase=testcase,
