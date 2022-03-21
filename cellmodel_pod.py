@@ -155,11 +155,11 @@ if __name__ == "__main__":
     ofield_deim_atol = 1e-10 if argc < 11 else float(sys.argv[10])
     stokes_deim_atol = 1e-10 if argc < 12 else float(sys.argv[11])
     compute_errors = True if argc < 13 else (False if sys.argv[12] == "False" else True)
-    parameter_sampling_type = "log_and_log_inverted" if argc < 13 else sys.argv[12]
-    pod_method = "method_of_snapshots" if argc < 14 else sys.argv[13]
+    parameter_sampling_type = "log_and_log_inverted" if argc < 14 else sys.argv[13]
+    pod_method = "method_of_snapshots" if argc < 15 else sys.argv[14]
     assert pod_method in ("qr_svd", "method_of_snapshots")
     pol_order = 2
-    excluded_params = ("Be", "Ca")
+    excluded_params = ("Be",)
     # product_type = "L2"
     # product_type = "H1"
     product_type = "l2"

@@ -143,7 +143,7 @@ if __name__ == "__main__":
         least_squares_ofield = False
     if not pod_stokes:
         least_squares_stokes = False
-    excluded_params = ("Be", "Ca")
+    excluded_params = ("Be",)
     # product_type = "L2"
     # product_type = "H1"
     product_type = "l2"
