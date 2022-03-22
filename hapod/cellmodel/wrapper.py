@@ -2016,8 +2016,9 @@ def pods_on_processor_cores_in_binary_tree_hapod_pfield(r, vecs, mpi, root, prod
     size_phi = vecs.dim // 3
     vecs = vecs.to_numpy()
     timings = [0.0] * 3
+    start = timer()
     for i in range(3):
-        start = timer()
+        start_i = timer()
         vecs_field[i] = NumpyVectorSpace.make_array(vecs[:, i * size_phi : (i + 1) * size_phi])
         vecs_field[i], svals_field[i] = local_pod(
             [vecs_field[i]],
@@ -2029,16 +2030,15 @@ def pods_on_processor_cores_in_binary_tree_hapod_pfield(r, vecs, mpi, root, prod
             method=method,
         )
         vecs_field[i].scal(svals_field[i])
-        timings[i] += timer() - start
+        timings[i] = timer() - start_i
+    time = timer() - start
     # r.max_local_modes = max(r.max_local_modes, len(vecs))
     idle_wait(mpi.comm_proc, root=root)
     for i in range(3):
-        start = timer()
         r.gathered_pfield_modes[i], _, r.num_snaps, _ = mpi.comm_proc.gather_on_root_rank(
             vecs_field[i], num_snapshots_on_rank=snaps_on_rank, num_modes_equal=False, root=root
         )
-        timings[i] += timer() - start
-    return timings
+    return time, timings
 
 
 def pods_on_processor_cores_in_binary_tree_hapod(r, vecs, mpi, root, product, method="method_of_snapshots"):
@@ -2046,15 +2046,18 @@ def pods_on_processor_cores_in_binary_tree_hapod(r, vecs, mpi, root, product, me
     print("start processor pod: ", mpi.rank_world)
     snaps_on_rank = len(vecs)
     r.max_vectors_before_pod = max(r.max_vectors_before_pod, snaps_on_rank)
+    start = timer()
     vecs, svals = local_pod(
         [vecs], snaps_on_rank, r.params, product=product, incremental_gramian=False, orth_tol=r.orth_tol, method=method
     )
     r.max_local_modes = max(r.max_local_modes, len(vecs))
     vecs.scal(svals)
+    time = timer() - start
     idle_wait(mpi.comm_proc, root=root)
     r.gathered_modes, _, r.num_snaps, _ = mpi.comm_proc.gather_on_root_rank(
         vecs, num_snapshots_on_rank=snaps_on_rank, num_modes_equal=False, root=root
     )
+    return time
 
 
 # perform a POD with gathered modes on rank 0 on each processor/node
@@ -2077,7 +2080,7 @@ def pod_on_node_in_binary_tree_hapod_pfield(
                 incremental_gramian=False,
                 method=method,
             )
-            timings[i] += timer() - start
+            timings[i] = timer() - start
 
     else:
         for i in range(3):
@@ -2094,7 +2097,7 @@ def pod_on_node_in_binary_tree_hapod_pfield(
                 root_of_tree=root_of_tree,
                 method=method,
             )
-            timings[i] += timer() - start
+            timings[i] = timer() - start
     # r.max_local_modes = max(r.max_local_modes, len(r.modes))
     return timings
 
@@ -2155,7 +2158,7 @@ def final_hapod_in_binary_tree_hapod_pfield(r, mpi, root, product, method="metho
             orth_tol=r.final_orth_tol,
             method=method,
         )
-        timings[i] += timer() - start
+        timings[i] = timer() - start
     # r.max_vectors_before_pod = max(r.max_vectors_before_pod, max_num_input_vecs)
     # r.max_local_modes = max(r.max_local_modes, max_num_local_modes)
     return timings
@@ -2222,19 +2225,19 @@ def binary_tree_hapod(
         timings["data_gen"] += chunk_time
         # calculate POD of timestep vectors on each core
         for k in indices:
-            t1 = timer()
             root_rank = k % mpi.size_proc
             if k == 3:
-                pfield_timings = pods_on_processor_cores_in_binary_tree_hapod_pfield(
+                time, pfield_timings = pods_on_processor_cores_in_binary_tree_hapod_pfield(
                     results[k], chunk[k], mpi, root=root_rank, product=products[k], method=pod_method
                 )
                 for i in range(3):
                     timings[f"Pfield POD{i}"] += pfield_timings[i]
+                timings[f"POD{k}"] += time
             else:
-                pods_on_processor_cores_in_binary_tree_hapod(
+                time = pods_on_processor_cores_in_binary_tree_hapod(
                     results[k], chunk[k], mpi, root=root_rank, product=products[k], method=pod_method
                 )
-            timings[f"POD{k}"] += timer() - t1
+                timings[f"POD{k}"] += time
         for k in indices:
             t1 = timer()
             # perform PODs in parallel for each field
@@ -2270,6 +2273,7 @@ def binary_tree_hapod(
         root_rank = k % mpi.size_proc
         r = results[k]
         if mpi.rank_proc == root_rank:
+            mpi.comm_rank_group[root_rank].Barrier() # to avoid wrong timings if one rank is waiting for the others
             t1 = timer()
             if k == 3:
                 pfield_timings = final_hapod_in_binary_tree_hapod_pfield(
@@ -2302,10 +2306,9 @@ def binary_tree_hapod(
                 r.max_local_modes = max(r.max_local_modes)
                 r.num_modes = max(r.num_modes)
                 r.total_num_snapshots = max(r.total_num_snapshots)
-                r.timings = {}
-        if mpi.rank_world == 0:
-            for key in timings.keys():
-                r.timings[key] = max([timing[key] for timing in gathered_timings])
+    if mpi.rank_world == 0:
+        for key in timings.keys():
+            timings[key] = max([timing[key] for timing in gathered_timings])
     overall_time = timer() - pod_start_time
     overall_time = mpi.comm_world.gather(overall_time, root=0) or [0]
     if mpi.rank_world == 0:
@@ -2314,6 +2317,7 @@ def binary_tree_hapod(
     # write statistics to file
     if logfile is not None and mpi.rank_world == 0:
         with open(logfile, "a") as ff:
+            ff.write(f"Overall time: {overall_time:.2f} s.\n")
             ff.write(f"Computing snapshots took {timings['data_gen']:.2f} s\n")
             names = (
                 "Pfield HAPOD",
@@ -2327,24 +2331,23 @@ def binary_tree_hapod(
                 r = results[k]
                 if k == 3:
                     ff.write(
-                        f"Phi (first phasefield variable) HAPOD took {r.timings['Pfield POD0']:.2f} s and resulted in {r.pfield_num_modes[0]} modes from {r.total_num_snapshots} snapshots!\n"
+                        f"Phi (first phasefield variable) HAPOD took {timings['Pfield POD0']:.2f} s and resulted in {r.pfield_num_modes[0]} modes from {r.total_num_snapshots} snapshots!\n"
                     )
                     ff.write(
-                        f"Phinat (second phasefield variable) HAPOD took {r.timings['Pfield POD1']:.2f} s and resulted in {r.pfield_num_modes[1]} modes from {r.total_num_snapshots} snapshots!\n"
+                        f"Phinat (second phasefield variable) HAPOD took {timings['Pfield POD1']:.2f} s and resulted in {r.pfield_num_modes[1]} modes from {r.total_num_snapshots} snapshots!\n"
                     )
                     ff.write(
-                        f"Mu (third phasefield variable) HAPOD took {r.timings['Pfield POD2']:.2f} s and resulted in {r.pfield_num_modes[2]} modes from {r.total_num_snapshots} snapshots!\n"
+                        f"Mu (third phasefield variable) HAPOD took {timings['Pfield POD2']:.2f} s and resulted in {r.pfield_num_modes[2]} modes from {r.total_num_snapshots} snapshots!\n"
                     )
                     # ff.write(f"The maximal number of local modes was {r.max_local_modes}\n")
                     # ff.write(f"The maximal number of input vectors to a local POD was: {r.max_vectors_before_pod}\n")
-                    ff.write(f"All Pfield DEIM HAPODs took {r.timings[f'POD{k}']:.2f} s.\n")
+                    ff.write(f"All Pfield DEIM HAPODs took {timings[f'POD{k}']:.2f} s.\n")
                 else:
                     ff.write(
-                        f"{names[k]} took {r.timings[f'POD{k}']:.2f} s and resulted in {r.num_modes} final modes taken from a total of {r.total_num_snapshots} snapshots!\n"
+                        f"{names[k]} took {timings[f'POD{k}']:.2f} s and resulted in {r.num_modes} final modes taken from a total of {r.total_num_snapshots} snapshots!\n"
                     )
                     ff.write(f"The maximal number of local modes was {r.max_local_modes}\n")
                     ff.write(f"The maximal number of input vectors to a local POD was: {r.max_vectors_before_pod}\n")
-            ff.write(f"Overall time: {overall_time:.2f} s.\n")
             ff.write(
                 f"The maximum amount of memory used on rank 0 was: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1000.0 ** 2} GB\n"
             )

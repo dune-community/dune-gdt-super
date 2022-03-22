@@ -57,7 +57,7 @@ class SolverChunkGenerator:
             self.current_chunk_index = chunk_index
             new_vecs = [self.cellmodel.solution_space.subspaces[i % 3].empty() for i in range(6)]
             # walk over parameters
-            time_data_gen = 0
+            time_data_gen = 0.
             for p, mu in enumerate(self.mus):
                 t = old_t
                 # If this is the first time step, add initial values ...

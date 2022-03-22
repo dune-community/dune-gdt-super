@@ -41,9 +41,9 @@ def calculate_pod(result, product, mpi, tol, num_modes_equal):
 
     # perform a POD
     elapsed_pod = 0
-    start = timer()
     svals = None
     if mpi.rank_world == 0:
+        start = timer()
         result, svals = pod(result, product=product, atol=0.0, rtol=0.0, l2_err=tol * math.sqrt(len(result)))
         elapsed_pod = timer() - start
     return result, svals, elapsed_pod, total_num_snapshots
@@ -87,6 +87,8 @@ def cellmodel_pod(m, mu, tols, logfile=None):
     # write statistics to file
     if logfile is not None and mpi.rank_world == 0:
         with open(logfile, "a") as ff:
+            elapsed = timer() - start
+            ff.write("Overall time elapsed: " + str(elapsed) + "\n")
             ff.write(f"Computing snapshots took {elapsed_data_gen:.2f} s\n")
             ff.write(
                 "Pfield POD took {:.2f} s and resulted in {} modes from {} snapshots!\n".format(
@@ -133,8 +135,6 @@ def cellmodel_pod(m, mu, tols, logfile=None):
                 + str(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1000.0 ** 2)
                 + " GB\n"
             )
-            elapsed = timer() - start
-            ff.write("Time elapsed: " + str(elapsed) + "\n")
 
     return [modes, svals, total_num_snaps, mu, mpi, solver]
 
@@ -235,6 +235,7 @@ if __name__ == "__main__":
 
     # perform POD
     modes, _, total_num_snaps, mu, mpi, solver = cellmodel_pod(m, mus[0], tols, logfile=logfile_name)
+    mpi.comm_world.Barrier()
 
     if compute_errors:
         wins = [None] * 6
