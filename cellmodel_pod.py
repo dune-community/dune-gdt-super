@@ -31,7 +31,7 @@ traceback.install()
 pretty.install()
 
 
-def calculate_pod(result, product, mpi, tol, num_modes_equal):
+def calculate_pod(result, product, mpi, tol, num_modes_equal, pod_method):
     num_snapshots = len(result)
 
     # gather snapshots on rank 0
@@ -44,12 +44,12 @@ def calculate_pod(result, product, mpi, tol, num_modes_equal):
     svals = None
     if mpi.rank_world == 0:
         start = timer()
-        result, svals = pod(result, product=product, atol=0.0, rtol=0.0, l2_err=tol * math.sqrt(len(result)))
+        result, svals = pod(result, product=product, atol=0.0, rtol=0.0, l2_err=tol * math.sqrt(len(result)), method=pod_method)
         elapsed_pod = timer() - start
     return result, svals, elapsed_pod, total_num_snapshots
 
 
-def cellmodel_pod(m, mu, tols, logfile=None):
+def cellmodel_pod(m, mu, tols, logfile=None, pod_method="method_of_snapshots"):
     # get MPI communicators
     mpi = MPIWrapper()
 
@@ -66,7 +66,7 @@ def cellmodel_pod(m, mu, tols, logfile=None):
     # Compute POD bases
     for k in range(3):
         modes[k], svals[k], elapsed_pod[k], total_num_snaps[k] = calculate_pod(
-            snapshots._blocks[k], None, mpi, tols[k], True
+            snapshots._blocks[k], None, mpi, tols[k], True, pod_method
         )
     # Compute phase field DEIM bases
     # vecs_field = [vecs.empty()] * 3
@@ -76,12 +76,12 @@ def cellmodel_pod(m, mu, tols, logfile=None):
             np.ascontiguousarray(data["residuals"][0].to_numpy()[:, i * size_phi : (i + 1) * size_phi])
         )
         modes[3][i], svals[3][i], elapsed_pod[3][i], total_num_snaps[3] = calculate_pod(
-            modes[3][i], None, mpi, tols[3], False
+            modes[3][i], None, mpi, tols[3], False, pod_method
         )
     # Compute orientation field and Stokes DEIM bases
     for k in range(4, 6):
         modes[k], svals[k], elapsed_pod[k], total_num_snaps[k] = calculate_pod(
-            data["residuals"][k - 3], None, mpi, tols[k], False
+            data["residuals"][k - 3], None, mpi, tols[k], False, pod_method
         )
 
     # write statistics to file
@@ -234,7 +234,7 @@ if __name__ == "__main__":
     m = DuneCellModel(solver, products={"pfield": products[0], "ofield": products[1], "stokes": products[2]})
 
     # perform POD
-    modes, _, total_num_snaps, mu, mpi, solver = cellmodel_pod(m, mus[0], tols, logfile=logfile_name)
+    modes, _, total_num_snaps, mu, mpi, solver = cellmodel_pod(m, mus[0], tols, logfile=logfile_name, pod_method=pod_method)
     mpi.comm_world.Barrier()
 
     if compute_errors:
