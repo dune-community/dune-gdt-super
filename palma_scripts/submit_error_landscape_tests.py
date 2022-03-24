@@ -37,12 +37,15 @@ pfield_deim_tol = 0
 ofield_deim_tol = 0
 stokes_deim_tol = 0
 ############ Choose one of the following values for landscape ################
-landscape = "pfield"
+# landscape = "pfield"
 # landscape = "ofield"
 # landscape = "stokes"
-# landscape = "all_same_tol"
+landscape = "all_same_tol"
 # landscape = "all_stokes_higher_tol"
 #############################################################################
+tmp_dir = "generated_submit_files"
+if not os.path.exists(tmp_dir):
+   os.mkdir(tmp_dir)
 for tol in (1e-01, 1e-02, 1e-03, 1e-04, 1e-05):
     for deim_tol in (1e-06, 1e-07, 1e-08, 1e-09, 1e-10):
         if landscape == "pfield":
@@ -66,7 +69,7 @@ for tol in (1e-01, 1e-02, 1e-03, 1e-04, 1e-05):
             raise NotImplementedError("Unknown value for landscape")
         job_name = f"hapod2_grid{grid_size}_1tppr_tend0.5_dt0.001_{pfield_tol}_{ofield_tol}_{stokes_tol}_{pfield_deim_tol}_{ofield_deim_tol}_{stokes_deim_tol}"
         output_filename = f"{job_name}_output"
-        submit_filename = f"generated_submit_files/{job_name}.submit"
+        submit_filename = f"{tmp_dir}/{job_name}.submit"
         filecontents = (
             filetemplate.replace("JOB_TIME", job_time)
             .replace("JOB_NAME", job_name)
