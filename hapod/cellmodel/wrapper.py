@@ -1588,7 +1588,8 @@ def calculate_mean_cellmodel_projection_errors(
             products=products,
         )
         mu_as_str = f"Be: {mu['Be']:.3f}, Ca: {mu['Ca']:.3f}, Pa: {mu['Pa']:.3f}"
-        mu_to_red_errs[mu_as_str] = red_errs
+        if mu_as_str not in mu_to_red_errs:
+            mu_to_red_errs[mu_as_str] = [0.0, 0.0, 0.0]
         for i in range(3):
             proj_errs_sum[i] += proj_errs[i]
             proj_deim_errs_sum[i] += proj_deim_errs[i]
@@ -1596,6 +1597,7 @@ def calculate_mean_cellmodel_projection_errors(
             red_errs_sum[i] += red_errs[i]
             rel_red_errs_sum[i] += rel_red_errs[i]
             num_residuals[i] += n_deim[i]
+            mu_to_red_errs[mu_as_str][i] += np.sqrt(np.sum(red_errs[i]) / n)
         num_snapshots += n
     proj_errs = [0.0] * len(modes)
     proj_deim_errs = proj_errs.copy()
@@ -2273,7 +2275,7 @@ def binary_tree_hapod(
         root_rank = k % mpi.size_proc
         r = results[k]
         if mpi.rank_proc == root_rank:
-            mpi.comm_rank_group[root_rank].Barrier() # to avoid wrong timings if one rank is waiting for the others
+            mpi.comm_rank_group[root_rank].Barrier()  # to avoid wrong timings if one rank is waiting for the others
             t1 = timer()
             if k == 3:
                 pfield_timings = final_hapod_in_binary_tree_hapod_pfield(
