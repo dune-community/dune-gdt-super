@@ -50,7 +50,7 @@
 	url = https://github.com/dune-mirrors/dune-grid-glue.git
 [submodule "pymor"]
 	path = pymor
-	url = https://zivgitlab.uni-muenster.de/srave_01/pymor.git
+	url = git@zivgitlab.uni-muenster.de:srave_01/pymor.git
 [submodule ".ci/shared"]
 	path = .ci/shared
 	url = https://zivgitlab.uni-muenster.de/ag-ohlberger/dune-community/dune-xt-ci.git
