@@ -104,7 +104,7 @@ class SolverChunkGenerator:
         return self.chunk_index() == (self.num_chunks - 1)
 
 
-# exemplary call: mpiexec -n 2 python3 cellmodel_hapod_deim.py cell_isolation_experiment 1e-2 1e-3 40 40 1e-4 1e-4 1e-4 1e-11 1e-11 1e-11 log_and_log_inverted method_of_snapshots False False False
+# exemplary call: mpiexec -n 2 python3 cellmodel_hapod_deim.py cell_isolation_experiment 1e-2 1e-3 40 40 1e-4 1e-4 1e-4 1e-11 1e-11 1e-11 True log_and_log_inverted method_of_snapshots False False False
 if __name__ == "__main__":
     mpi = MPIWrapper()
     ##### read command line arguments, additional settings #####
