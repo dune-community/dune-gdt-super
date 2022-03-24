@@ -26,6 +26,9 @@ traceback.install()
 pretty.install()
 
 
+# Computes chunk_size time steps and returns the solution vectors and the residuals.
+# Only written as a generator for historical reasons (there used to be a PickleChunkGenerator which read the vectors and residuals from pickled data).
+# However, data generation is not really the expensive part in our computations, so we dropped the pickling mechanism.
 class SolverChunkGenerator:
     def __init__(
         self,
