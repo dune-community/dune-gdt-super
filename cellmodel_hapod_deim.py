@@ -57,7 +57,7 @@ class SolverChunkGenerator:
             self.current_chunk_index = chunk_index
             new_vecs = [self.cellmodel.solution_space.subspaces[i % 3].empty() for i in range(6)]
             # walk over parameters
-            time_data_gen = 0.
+            time_data_gen = 0.0
             for p, mu in enumerate(self.mus):
                 t = old_t
                 # If this is the first time step, add initial values ...
@@ -101,7 +101,7 @@ class SolverChunkGenerator:
         return self.chunk_index() == (self.num_chunks - 1)
 
 
-# exemplary call: mpiexec -n 2 python3 cellmodel_hapod_deim.py cell_isolation_experiment 1e-2 1e-3 40 40 False False True True True False 1e-4 1e-4 1e-4 1e-11 1e-11 1e-11 log_and_log_inverted
+# exemplary call: mpiexec -n 2 python3 cellmodel_hapod_deim.py cell_isolation_experiment 1e-2 1e-3 40 40 1e-4 1e-4 1e-4 1e-11 1e-11 1e-11 log_and_log_inverted method_of_snapshots False False False
 if __name__ == "__main__":
     mpi = MPIWrapper()
     ##### read command line arguments, additional settings #####
@@ -111,29 +111,29 @@ if __name__ == "__main__":
     dt = 1e-3 if argc < 4 else float(sys.argv[3])
     grid_size_x = 30 if argc < 5 else int(sys.argv[4])
     grid_size_y = 30 if argc < 6 else int(sys.argv[5])
-    visualize = True if argc < 7 else (False if sys.argv[6] == "False" else True)
-    subsampling = True if argc < 8 else (False if sys.argv[7] == "False" else True)
-    deim_pfield = True if argc < 9 else (False if sys.argv[8] == "False" else True)
-    deim_ofield = True if argc < 10 else (False if sys.argv[9] == "False" else True)
-    deim_stokes = True if argc < 11 else (False if sys.argv[10] == "False" else True)
-    include_newton_stages = False if argc < 12 else (False if sys.argv[11] == "False" else True)
-    pfield_atol = 1e-3 if argc < 13 else float(sys.argv[12])
-    ofield_atol = 1e-3 if argc < 14 else float(sys.argv[13])
-    stokes_atol = 1e-3 if argc < 15 else float(sys.argv[14])
-    pfield_deim_atol = 1e-10 if argc < 16 else float(sys.argv[15])
-    ofield_deim_atol = 1e-10 if argc < 17 else float(sys.argv[16])
-    stokes_deim_atol = 1e-10 if argc < 18 else float(sys.argv[17])
-    compute_errors = True if argc < 19 else (False if sys.argv[18] == "False" else True)
-    parameter_sampling_type = "log_and_log_inverted" if argc < 20 else sys.argv[19]
-    pod_method = "method_of_snapshots" if argc < 21 else sys.argv[20]
+    pfield_atol = 1e-3 if argc < 7 else float(sys.argv[6])
+    ofield_atol = 1e-3 if argc < 8 else float(sys.argv[7])
+    stokes_atol = 1e-3 if argc < 9 else float(sys.argv[8])
+    pfield_deim_atol = 1e-10 if argc < 10 else float(sys.argv[9])
+    ofield_deim_atol = 1e-10 if argc < 11 else float(sys.argv[10])
+    stokes_deim_atol = 1e-10 if argc < 12 else float(sys.argv[11])
+    compute_errors = True if argc < 13 else (False if sys.argv[12] == "False" else True)
+    parameter_sampling_type = "log_and_log_inverted" if argc < 14 else sys.argv[13]
+    pod_method = "method_of_snapshots" if argc < 15 else sys.argv[14]
+    visualize = True if argc < 16 else (False if sys.argv[15] == "False" else True)
+    subsampling = True if argc < 17 else (False if sys.argv[16] == "False" else True)
+    include_newton_stages = False if argc < 18 else (False if sys.argv[17] == "False" else True)
     assert pod_method in ("qr_svd", "method_of_snapshots")
     incremental_gramian = False
     pol_order = 2
     chunk_size = 10
     visualize_step = 50
-    pod_pfield = True
-    pod_ofield = True
-    pod_stokes = True
+    pod_pfield = bool(pfield_atol)
+    pod_ofield = bool(ofield_atol)
+    pod_stokes = bool(stokes_atol)
+    deim_pfield = bool(pfield_deim_atol)
+    deim_ofield = bool(ofield_deim_atol)
+    deim_stokes = bool(stokes_deim_atol)
     least_squares_pfield = True
     least_squares_ofield = True
     least_squares_stokes = True
