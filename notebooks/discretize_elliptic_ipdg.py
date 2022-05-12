@@ -109,9 +109,9 @@ def discretize_elliptic_ipdg_dirichlet_zero(grid, diffusion, source,
                     LocalLaplaceIPDGInnerCouplingIntegrand(symmetry_factor, diffusion, weight)
                     + LocalIPDGInnerPenaltyIntegrand(penalty_parameter, weight)),
                 ApplyOnInnerIntersectionsOnce(grid))
-#     a_form += (LocalIntersectionIntegralBilinearForm(
-#                     LocalIPDGBoundaryPenaltyIntegrand(penalty_parameter, weight)
-#                 ApplyOnCustomBoundaryIntersections(grid, boundary_info, DirichletBoundary()))
+    a_form += (LocalIntersectionIntegralBilinearForm(
+                    LocalIPDGBoundaryPenaltyIntegrand(penalty_parameter, weight)),
+                ApplyOnCustomBoundaryIntersections(grid, boundary_info, DirichletBoundary()))
     a_h.append(a_form)
     
     walker = Walker(grid)

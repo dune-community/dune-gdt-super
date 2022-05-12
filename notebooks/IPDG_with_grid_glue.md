@@ -62,7 +62,7 @@ from pymor.analyticalproblems.elliptic import StationaryProblem
 
 problem = StationaryProblem(pymor_omega, pymor_f, pymor_kappa)
 
-h = 1.
+h = 0.25
 pymor_fem_cg, data = discretize_stationary_cg(problem, diameter=h)
 pymor_fem_fv, data_ = discretize_stationary_fv(problem, diameter=h)
 ```
@@ -101,7 +101,7 @@ pymor_fem_cg.visualize(u_pymor)
 ```python
 from dune.xt.grid import Simplex, make_cube_grid, AllDirichletBoundaryInfo, visualize_grid
 
-grid = make_cube_grid(Dim(d), Simplex(), lower_left=omega[0], upper_right=omega[1], num_elements=[2, 2])
+grid = make_cube_grid(Dim(d), Cube(), lower_left=omega[0], upper_right=omega[1], num_elements=[16, 16])
 grid.global_refine(1) # we need to refine once to obtain a symmetric grid
 
 print(f'grid has {grid.size(0)} elements, {grid.size(d - 1)} edges and {grid.size(d)} vertices')
@@ -128,7 +128,8 @@ from discretize_elliptic_ipdg import discretize_elliptic_ipdg_dirichlet_zero
 ```python
 try:
     u_h = discretize_elliptic_ipdg_dirichlet_zero(grid, kappa, f,
-                                                  symmetry_factor=1, penalty_parameter=16, weight=1)
+                                                  symmetry_factor=1,
+                                                  penalty_parameter=16, weight=1)
     _ = visualize_function(u_h)
 except:
     print('something is NOT working !!')
@@ -144,10 +145,10 @@ from dune.xt.grid import AllDirichletBoundaryInfo
 from dune.xt.functions import ConstantFunction, ExpressionFunction, GridFunction as GF
 
 d = 2
-omega = ([0, 0], [1, 1])
+omega = ([-1, -1], [1, 1])
 macro_grid = make_cube_grid(Dim(d), Simplex(), lower_left=omega[0],
-                            upper_right=omega[1], num_elements=[1, 1])
-macro_grid.global_refine(1)
+                            upper_right=omega[1], num_elements=[2, 2])
+# macro_grid.global_refine(1)
 
 macro_boundary_info = AllDirichletBoundaryInfo(macro_grid)
 
@@ -217,21 +218,23 @@ def assemble_local_op(grid, space, boundary_info, d):
     a_form = BilinearForm(grid)
     a_form += LocalElementIntegralBilinearForm(
         LocalLaplaceIntegrand(GridFunction(grid, kappa, dim_range=(Dim(d), Dim(d)))))
+#     a_h = a_form.with(source_space=space, range_space=space)
+    
     a_h.append(a_form)
     
-    dirichlet_constraints = DirichletConstraints(boundary_info, space)
+#     dirichlet_constraints = DirichletConstraints(boundary_info, space)
     
     #walker on local grid
-    walker = Walker(grid)
-    walker.append(a_h)
-    walker.append(dirichlet_constraints)
-    walker.walk()
+#     walker = Walker(grid)
+#     walker.append(a_h)
+#     walker.append(dirichlet_constraints)
+#     walker.walk()
     
 #     print('centers: ', grid.centers())
 #     print(dirichlet_constraints.dirichlet_DoFs)
 #     print(a_h.matrix)
     a_h.assemble()
-    dirichlet_constraints.apply(a_h.matrix)
+#     dirichlet_constraints.apply(a_h.matrix)
     # TODO: first dirichlets constraints, then assemble does not work !! 
 #     print(a_h.matrix.__repr__())
     op = DuneXTMatrixOperator(a_h.matrix)
@@ -245,9 +248,14 @@ ops = np.empty((S, S), dtype=object)
 ```python
 for ss in range(S):
     space = spaces[ss]
-    grid = dd_grid.local_grid(ss)
+    local_grid = dd_grid.local_grid(ss)
     boundary_info = dd_grid.macro_based_boundary_info(ss, macro_boundary_info)
-    ops[ss, ss] = assemble_local_op(grid, space, boundary_info, d)
+    ops[ss, ss] = assemble_local_op(local_grid, space, boundary_info, d)
+```
+
+```python
+# this is not working for negative coordinates
+coupling_grid = dd_grid.coupling_grid(0, 1)
 ```
 
 ```python
@@ -257,31 +265,30 @@ from dune.gdt import estimate_combined_inverse_trace_inequality_constant
 from dune.gdt import estimate_element_to_intersection_equivalence_constant
 from dune.gdt import make_coupling_sparsity_pattern
 
-from dune.xt.grid import ApplyOnInnerIntersectionsOnce
-
-from dune.xt.grid import LeafIntersection, CouplingIntersection
-coupling = CouplingIntersection(dd_grid)
-print(coupling)
+from dune.xt.grid import ApplyOnInnerIntersectionsOnce, ApplyOnCustomBoundaryIntersections
 
 def assemble_coupling_ops(spaces, ss, nn):
-    coupling_grid = dd_grid.coupling_grid(ss, nn) # CouplingGridProvider
-    inside_space = spaces[ss]
-    outside_space = spaces[nn]
+    coupling_grid_ss_nn = dd_grid.coupling_grid(ss, nn)
+    coupling_grid_nn_ss = dd_grid.coupling_grid(nn, ss)
+    
+    ss_space = spaces[ss]
+    nn_space = spaces[nn]
     
     # ***** TODO! find the correct sparsity pattern ******
-    sparsity_pattern = make_coupling_sparsity_pattern(inside_space, outside_space, 
-                                                      coupling_grid)
-    
-    coupling_op = MatrixOperator(
-        coupling_grid,
-        inside_space,
-        outside_space,
-        sparsity_pattern
-      )
+    sparsity_pattern_ss_nn = make_coupling_sparsity_pattern(ss_space, nn_space, 
+                                                            coupling_grid_ss_nn)
+    sparsity_pattern_nn_ss = make_coupling_sparsity_pattern(nn_space, ss_space, 
+                                                            coupling_grid_nn_ss)
 
+    
+    coupling_op_ss_nn = MatrixOperator(coupling_grid_ss_nn, ss_space, nn_space,
+                                       sparsity_pattern_ss_nn)
+    
+    coupling_op_nn_ss = MatrixOperator(coupling_grid_nn_ss, nn_space, ss_space,
+                                       sparsity_pattern_nn_ss)
+    
     coupling_form = BilinearForm(coupling_grid)
     
-#     # **** find the correct bilinear form, integrands and filter.  !!! 
     symmetry_factor = 1
     weight = 1
     penalty_parameter= 16
@@ -301,24 +308,17 @@ def assemble_coupling_ops(spaces, ss, nn):
     diffusion = GridFunction(grid, kappa, dim_range=(Dim(d), Dim(d)))
     weight = GridFunction(grid, weight, dim_range=(Dim(d), Dim(d)))
     
-    coupling_integrand = LocalLaplaceIPDGInnerCouplingIntegrand(symmetry_factor, diffusion, weight,
-                                                                intersection_type=coupling)
-    penalty_integrand = LocalIPDGInnerPenaltyIntegrand(penalty_parameter, weight,
-                                                      intersection_type=coupling)
-    integrand = coupling_integrand + penalty_integrand
-    local_bilinear_form = LocalCouplingIntersectionIntegralBilinearForm(integrand) 
+    coupling_integrand = LocalLaplaceIPDGInnerCouplingIntegrand(
+                symmetry_factor, diffusion, weight, intersection_type=coupling)
+    penalty_integrand = LocalIPDGInnerPenaltyIntegrand(
+                penalty_parameter, weight, intersection_type=coupling)
     
-    filter_ = ApplyOnInnerIntersectionsOnce(coupling_grid) # <--- implement this next !!
-#     coupling_form += (local_bilinear_form, filter_)
-    coupling_form += local_bilinear_form
+    coupling_form += LocalCouplingIntersectionIntegralBilinearForm(coupling_integrand)
+    coupling_form += LocalIntersectionIntegralBilinearForm(penalty_integrand)
+#     coupling_form += local_bilinear_form
     
     coupling_op.append(coupling_form)
     
-    #walker on coupling grid
-#     walker = Walker(coupling_grid)
-#     walker.append(coupling_op)
-    # TODO: DIRICHLET Constraints
-#     walker.walk()
     coupling_op.assemble()
     op = DuneXTMatrixOperator(coupling_op.matrix)
     return op
@@ -335,6 +335,9 @@ for ss in range(S):
             ops[ss][nn] = coupling_ops
         except:
             print("failed")
+        
+#         coupling_ops = assemble_coupling_ops(spaces, ss, nn)
+
 #         print(coupling_ops)
 #         # additional terms to diagonal
 #         ops[ss][ss] += coupling_ops[0]
