@@ -14,7 +14,7 @@ jupyter:
 
 ```python
 # wurlitzer: display dune's output in the notebook
-# %load_ext wurlitzer
+%load_ext wurlitzer
 
 %matplotlib inline
 
@@ -43,28 +43,30 @@ from pymor.analyticalproblems.domaindescriptions import RectDomain
 
 pymor_omega = RectDomain([[0., 0.], [1., 1.]])
 pymor_kappa = pymorConstantFunction(1., d, name='kappa')
-pymor_f = pymorExpressionFunction('exp(x[0]*x[1])', d, name='f')
+# pymor_f = pymorExpressionFunction('exp(x[0]*x[1])', d, name='f')
+pymor_f = pymorExpressionFunction('1', d, name='f')
 
 # the dune way
 from dune.xt.functions import ConstantFunction, ExpressionFunction, GridFunction as GF
 from dune.xt.grid import Dim, Cube, Simplex, make_cube_grid, make_cube_dd_grid
 
 kappa = ConstantFunction(dim_domain=Dim(d), dim_range=Dim(1), value=[1.], name='kappa')
-f = ExpressionFunction(dim_domain=Dim(d), variable='x', expression='exp(x[0]*x[1])', order=3, name='f')
+# f = ExpressionFunction(dim_domain=Dim(d), variable='x', expression='exp(x[0]*x[1])', order=3, name='f')
+f = ExpressionFunction(dim_domain=Dim(d), variable='x', expression='1', order=3, name='f')
 ```
 
 ```python
 # the standard pymor way
-
+from pymor.discretizers.builtin.grids.rect import RectGrid
 from pymor.discretizers.builtin.cg import discretize_stationary_cg
 from pymor.discretizers.builtin.fv import discretize_stationary_fv
 from pymor.analyticalproblems.elliptic import StationaryProblem
 
 problem = StationaryProblem(pymor_omega, pymor_f, pymor_kappa)
 
-h = 0.25
-pymor_fem_cg, data = discretize_stationary_cg(problem, diameter=h)
-pymor_fem_fv, data_ = discretize_stationary_fv(problem, diameter=h)
+h = 0.2
+pymor_fem_cg, data = discretize_stationary_cg(problem, diameter=h, grid_type=RectGrid)
+pymor_fem_fv, data_ = discretize_stationary_fv(problem, diameter=h, grid_type=RectGrid)
 ```
 
 ```python
@@ -101,14 +103,18 @@ pymor_fem_cg.visualize(u_pymor)
 ```python
 from dune.xt.grid import Simplex, make_cube_grid, AllDirichletBoundaryInfo, visualize_grid
 
-grid = make_cube_grid(Dim(d), Cube(), lower_left=omega[0], upper_right=omega[1], num_elements=[16, 16])
-grid.global_refine(1) # we need to refine once to obtain a symmetric grid
+grid = make_cube_grid(Dim(d), Cube(), lower_left=omega[0], upper_right=omega[1], num_elements=[8, 8])
+# grid.global_refine() # we need to refine once to obtain a symmetric grid
 
 print(f'grid has {grid.size(0)} elements, {grid.size(d - 1)} edges and {grid.size(d)} vertices')
 
 boundary_info = AllDirichletBoundaryInfo(grid)
 
 _ = visualize_grid(grid)
+```
+
+```python
+import dune.gdt
 ```
 
 ```python
@@ -126,13 +132,10 @@ from discretize_elliptic_ipdg import discretize_elliptic_ipdg_dirichlet_zero
 ```
 
 ```python
-try:
-    u_h = discretize_elliptic_ipdg_dirichlet_zero(grid, kappa, f,
-                                                  symmetry_factor=1,
-                                                  penalty_parameter=16, weight=1)
-    _ = visualize_function(u_h)
-except:
-    print('something is NOT working !!')
+u_h = discretize_elliptic_ipdg_dirichlet_zero(grid, kappa, f,
+                                              symmetry_factor=1,
+                                              penalty_parameter=16, weight=1)
+_ = visualize_function(u_h)
 ```
 
 ## 1. Creating a DD grid
@@ -145,9 +148,9 @@ from dune.xt.grid import AllDirichletBoundaryInfo
 from dune.xt.functions import ConstantFunction, ExpressionFunction, GridFunction as GF
 
 d = 2
-omega = ([-1, -1], [1, 1])
-macro_grid = make_cube_grid(Dim(d), Simplex(), lower_left=omega[0],
-                            upper_right=omega[1], num_elements=[2, 2])
+omega = ([0, 0], [1, 1])
+macro_grid = make_cube_grid(Dim(d), Cube(), lower_left=omega[0],
+                            upper_right=omega[1], num_elements=[8, 8])
 # macro_grid.global_refine(1)
 
 macro_boundary_info = AllDirichletBoundaryInfo(macro_grid)
@@ -160,7 +163,10 @@ Now we can use this grid as a macro grid for a dd grid.
 
 ```python
 # start with no refinement on the subdomains
-dd_grid = make_cube_dd_grid(macro_grid, 2)
+dd_grid = make_cube_dd_grid(macro_grid, Cube(), 2)
+
+# TODO: adjust bindings to also allow for simplices !
+#      Note: For this, only the correct gridprovider as return value is missing ! 
 ```
 
 ```python
@@ -186,8 +192,8 @@ We can define cg spaces for every local grid
 from dune.gdt import ContinuousLagrangeSpace
 
 S = dd_grid.num_subdomains
-spaces = [ContinuousLagrangeSpace(dd_grid.local_grid(ss), order=1) for ss in range(S)]
-grids = [dd_grid.local_grid(ss) for ss in range(S)]
+local_spaces = [ContinuousLagrangeSpace(dd_grid.local_grid(ss), order=1) for ss in range(S)]
+local_grids = [dd_grid.local_grid(ss) for ss in range(S)]
 neighbors = [dd_grid.neighbors(ss) for ss in range(S)]
 ```
 
@@ -212,7 +218,7 @@ from dune.xt.grid import Walker
 from pymor.bindings.dunegdt import DuneXTMatrixOperator
 
 
-def assemble_local_op(grid, space, boundary_info, d):
+def assemble_local_ops(grid, space, boundary_info, d):
     a_h = MatrixOperator(grid, source_space=space, range_space=space,
                          sparsity_pattern=make_element_sparsity_pattern(space))
     a_form = BilinearForm(grid)
@@ -246,16 +252,11 @@ ops = np.empty((S, S), dtype=object)
 ```
 
 ```python
-for ss in range(S):
-    space = spaces[ss]
-    local_grid = dd_grid.local_grid(ss)
-    boundary_info = dd_grid.macro_based_boundary_info(ss, macro_boundary_info)
-    ops[ss, ss] = assemble_local_op(local_grid, space, boundary_info, d)
-```
-
-```python
-# this is not working for negative coordinates
-coupling_grid = dd_grid.coupling_grid(0, 1)
+# for ss in range(S):
+#     space = spaces[ss]
+#     local_grid = dd_grid.local_grid(ss)
+#     boundary_info = dd_grid.macro_based_boundary_info(ss, macro_boundary_info)
+#     ops[ss, ss] = assemble_local_op(local_grid, space, boundary_info, d)
 ```
 
 ```python
@@ -274,7 +275,6 @@ def assemble_coupling_ops(spaces, ss, nn):
     ss_space = spaces[ss]
     nn_space = spaces[nn]
     
-    # ***** TODO! find the correct sparsity pattern ******
     sparsity_pattern_ss_nn = make_coupling_sparsity_pattern(ss_space, nn_space, 
                                                             coupling_grid_ss_nn)
     sparsity_pattern_nn_ss = make_coupling_sparsity_pattern(nn_space, ss_space, 
@@ -289,8 +289,8 @@ def assemble_coupling_ops(spaces, ss, nn):
     
     coupling_form = BilinearForm(coupling_grid)
     
-    symmetry_factor = 1
-    weight = 1
+    symmetry_factor = 1.
+    weight = kappa
     penalty_parameter= 16
     
 #     if not penalty_parameter:
@@ -325,16 +325,93 @@ def assemble_coupling_ops(spaces, ss, nn):
 ```
 
 ```python
+def assemble_local_ops(spaces, ss, nn):
+    coupling_grid_ss_nn = dd_grid.coupling_grid(ss, nn)
+    coupling_grid_nn_ss = dd_grid.coupling_grid(nn, ss)
+    
+    ss_space = spaces[ss]
+    nn_space = spaces[nn]
+    
+    sparsity_pattern_ss_nn = make_coupling_sparsity_pattern(ss_space, nn_space, 
+                                                            coupling_grid_ss_nn)
+    sparsity_pattern_nn_ss = make_coupling_sparsity_pattern(nn_space, ss_space, 
+                                                            coupling_grid_nn_ss)
+```
+
+## NEW CODE !! 
+
+```python
+from dune.gdt import (BilinearForm,
+                      MatrixOperator,
+                      make_element_sparsity_pattern,
+                      LocalLaplaceIntegrand,
+                      LocalElementIntegralBilinearForm)
+from dune.xt.grid import Walker
+
+from pymor.bindings.dunegdt import DuneXTMatrixOperator
+
+def assemble_subdomain_contribution(grid, space, d):
+    a_h = MatrixOperator(grid, source_space=space, range_space=space,
+                         sparsity_pattern=make_element_sparsity_pattern(space))
+    a_form = BilinearForm(grid)
+    a_form += LocalElementIntegralBilinearForm(
+        LocalLaplaceIntegrand(GridFunction(grid, kappa, dim_range=(Dim(d), Dim(d)))))
+    
+    if space.continuous:
+        pass
+    else:
+        assert 0, "add DG contributions"
+            
+    ## WRITE BINDINGS FOR "WITH" METHOD
+    # a_h = a_form.with(source_space=space, range_space=space)
+    
+    a_h.append(a_form)
+    
+    ## TODO: ADD RIGHT HAND SIDE
+    
+    #walker on local grid
+    walker = Walker(grid)
+    walker.append(a_h)
+#     walker.append(rhs)
+    walker.walk()
+    
+    op = DuneXTMatrixOperator(a_h.matrix)
+    return op
+```
+
+```python
+from dune.gdt import make_element_sparsity_pattern
+
 for ss in range(S):
-    print(f"index: {ss}, with neigbors {dd_grid.neighbors(ss)}")
+    print(f"macro element: {ss}...")
+    # print(f"index: {ss}, with neigbors {dd_grid.neighbors(ss)}")
+    local_space = local_spaces[ss]
+    local_grid = local_grids[ss]
+    local_op = assemble_subdomain_contribution(local_grid, local_space, d)
+    
     for nn in dd_grid.neighbors(ss):
-        print(f"neighbor: {nn}...", end='')
-        try:
-            coupling_ops = assemble_coupling_ops(spaces, ss, nn)
-            print("succeeded")
-            ops[ss][nn] = coupling_ops
-        except:
-            print("failed")
+        # Due to the nature of the coupling intersections, we don't have the hanging node problem. We can thus
+        # treat each intersection only once.
+        # if (macro_grid_view.indexSet().index(macro_element) < macro_grid_view.indexSet().index(macro_neighbor)) {
+        if ss < nn:
+            # print(f"neighbor: {nn}...")
+            pass
+
+#         local_ops = assemble_coupling_ops(spaces, ss, nn)
+        
+```
+
+```python
+# for ss in range(S):
+#     print(f"index: {ss}, with neigbors {dd_grid.neighbors(ss)}")
+#     for nn in dd_grid.neighbors(ss):
+#         print(f"neighbor: {nn}...", end='')
+#         try:
+#             coupling_ops = assemble_coupling_ops(spaces, ss, nn)
+#             print("succeeded")
+#             ops[ss][nn] = coupling_ops
+#         except:
+#             print("failed")
         
 #         coupling_ops = assemble_coupling_ops(spaces, ss, nn)
 
