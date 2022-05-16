@@ -118,6 +118,14 @@ import dune.gdt
 ```
 
 ```python
+# %pdb
+# import dune.gdt._operators_interfaces_istl_1d
+# import dune.gdt._ope
+
+
+```
+
+```python
 from discretize_elliptic_cg import discretize_elliptic_cg_dirichlet_zero
 from dune.gdt import DiscreteFunction, visualize_function
 
@@ -150,7 +158,7 @@ from dune.xt.functions import ConstantFunction, ExpressionFunction, GridFunction
 d = 2
 omega = ([0, 0], [1, 1])
 macro_grid = make_cube_grid(Dim(d), Cube(), lower_left=omega[0],
-                            upper_right=omega[1], num_elements=[8, 8])
+                            upper_right=omega[1], num_elements=[2, 2])
 # macro_grid.global_refine(1)
 
 macro_boundary_info = AllDirichletBoundaryInfo(macro_grid)
@@ -163,10 +171,14 @@ Now we can use this grid as a macro grid for a dd grid.
 
 ```python
 # start with no refinement on the subdomains
-dd_grid = make_cube_dd_grid(macro_grid, Cube(), 2)
+dd_grid = make_cube_dd_grid(macro_grid, Cube(), 1)
 
 # TODO: adjust bindings to also allow for simplices !
 #      Note: For this, only the correct gridprovider as return value is missing ! 
+
+from dune.xt.grid import CouplingIntersection
+
+coupling_intersection_type = CouplingIntersection(dd_grid)
 ```
 
 ```python
@@ -344,8 +356,13 @@ def assemble_local_ops(spaces, ss, nn):
 from dune.gdt import (BilinearForm,
                       MatrixOperator,
                       make_element_sparsity_pattern,
+                      make_coupling_sparsity_pattern,
                       LocalLaplaceIntegrand,
-                      LocalElementIntegralBilinearForm)
+                      LocalElementIntegralBilinearForm,
+                      LocalLaplaceIPDGInnerCouplingIntegrand,
+                      LocalIPDGInnerPenaltyIntegrand,
+                      LocalCouplingIntersectionIntegralBilinearForm,
+                      LocalIntersectionIntegralBilinearForm)
 from dune.xt.grid import Walker
 
 from pymor.bindings.dunegdt import DuneXTMatrixOperator
@@ -372,33 +389,96 @@ def assemble_subdomain_contribution(grid, space, d):
     #walker on local grid
     walker = Walker(grid)
     walker.append(a_h)
-#     walker.append(rhs)
+    # walker.append(rhs)
     walker.walk()
-    
+        
     op = DuneXTMatrixOperator(a_h.matrix)
     return op
+
+def assemble_coupling_contribution(ss, nn, ss_space, nn_space):
+    coupling_grid = dd_grid.coupling_grid(ss, nn)
+    
+    coupling_sparsity_pattern = make_coupling_sparsity_pattern(ss_space, nn_space, coupling_grid)
+        
+    coupling_form = BilinearForm(coupling_grid)
+    
+    # TODO: FIND THE CORRECT NUMBERS HERE ! 
+    symmetry_factor = 1.
+    weight = kappa
+    penalty_parameter= 16
+    
+    grid = local_grids[ss]
+    diffusion = GridFunction(grid, kappa, dim_range=(Dim(d), Dim(d)))
+    weight = GridFunction(grid, weight, dim_range=(Dim(d), Dim(d)))
+    
+    coupling_integrand = LocalLaplaceIPDGInnerCouplingIntegrand(
+        symmetry_factor, diffusion, weight, intersection_type=coupling_intersection_type)
+    penalty_integrand = LocalIPDGInnerPenaltyIntegrand(
+        penalty_parameter, weight, intersection_type=coupling_intersection_type)
+    
+    coupling_form += LocalCouplingIntersectionIntegralBilinearForm(coupling_integrand)
+#     coupling_form += LocalIntersectionIntegralBilinearForm(penalty_integrand)
+    
+    coupling_op_ss_ss = MatrixOperator(coupling_grid, ss_space, ss_space, coupling_sparsity_pattern)
+    coupling_op_ss_nn = MatrixOperator(coupling_grid, ss_space, nn_space, coupling_sparsity_pattern)
+    coupling_op_nn_ss = MatrixOperator(coupling_grid, nn_space, ss_space, coupling_sparsity_pattern)
+    coupling_op_nn_nn = MatrixOperator(coupling_grid, nn_space, nn_space, coupling_sparsity_pattern)
+    
+    coupling_op_ss_ss.append(coupling_form, {}, (False, True , False, False, False, False))
+    coupling_op_ss_nn.append(coupling_form, {}, (False, False, True , False, False, False))
+    coupling_op_nn_ss.append(coupling_form, {}, (False, False, False, True , False, False))
+    coupling_op_nn_nn.append(coupling_form, {}, (False, False, False, False, True , False))
+
+    #walker on local grid
+    walker = Walker(coupling_grid)
+    walker.append(coupling_op_ss_ss)
+    walker.append(coupling_op_ss_nn)
+    walker.append(coupling_op_nn_ss)
+    walker.append(coupling_op_nn_nn)
+    walker.walk()
+    
+    coupling_op_ss_ss = DuneXTMatrixOperator(coupling_op_ss_ss.matrix)
+    coupling_op_ss_nn = DuneXTMatrixOperator(coupling_op_ss_nn.matrix)
+    coupling_op_nn_ss = DuneXTMatrixOperator(coupling_op_nn_ss.matrix)
+    coupling_op_nn_nn = DuneXTMatrixOperator(coupling_op_nn_nn.matrix)
+    
+    return coupling_op_ss_ss, coupling_op_ss_nn, coupling_op_nn_ss, coupling_op_nn_nn
 ```
 
 ```python
 from dune.gdt import make_element_sparsity_pattern
 
+# %pdb
+
 for ss in range(S):
-    print(f"macro element: {ss}...")
+    # print(f"macro element: {ss}...")
     # print(f"index: {ss}, with neigbors {dd_grid.neighbors(ss)}")
     local_space = local_spaces[ss]
     local_grid = local_grids[ss]
-    local_op = assemble_subdomain_contribution(local_grid, local_space, d)
+    local_op =  assemble_subdomain_contribution(local_grid, local_space, d)
+    ops[ss, ss] = local_op
     
+    print(local_op.matrix)
     for nn in dd_grid.neighbors(ss):
         # Due to the nature of the coupling intersections, we don't have the hanging node problem. We can thus
         # treat each intersection only once.
         # if (macro_grid_view.indexSet().index(macro_element) < macro_grid_view.indexSet().index(macro_neighbor)) {
         if ss < nn:
-            # print(f"neighbor: {nn}...")
-            pass
-
+            neighboring_space = local_spaces[nn]
+            coupling_ops = assemble_coupling_contribution(ss, nn, local_space, neighboring_space)
+            
+#             print(coupling_ops[0].matrix)
+            a = b
 #         local_ops = assemble_coupling_ops(spaces, ss, nn)
         
+```
+
+```python
+coupling_ops
+```
+
+```python
+
 ```
 
 ```python
