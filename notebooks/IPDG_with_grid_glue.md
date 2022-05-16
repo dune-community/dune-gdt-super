@@ -327,7 +327,6 @@ def assemble_coupling_ops(spaces, ss, nn):
     
     coupling_form += LocalCouplingIntersectionIntegralBilinearForm(coupling_integrand)
     coupling_form += LocalIntersectionIntegralBilinearForm(penalty_integrand)
-#     coupling_form += local_bilinear_form
     
     coupling_op.append(coupling_form)
     
@@ -417,7 +416,7 @@ def assemble_coupling_contribution(ss, nn, ss_space, nn_space):
         penalty_parameter, weight, intersection_type=coupling_intersection_type)
     
     coupling_form += LocalCouplingIntersectionIntegralBilinearForm(coupling_integrand)
-#     coupling_form += LocalIntersectionIntegralBilinearForm(penalty_integrand)
+    coupling_form += LocalCouplingIntersectionIntegralBilinearForm(penalty_integrand)
     
     coupling_op_ss_ss = MatrixOperator(coupling_grid, ss_space, ss_space, coupling_sparsity_pattern)
     coupling_op_ss_nn = MatrixOperator(coupling_grid, ss_space, nn_space, coupling_sparsity_pattern)
@@ -448,28 +447,37 @@ def assemble_coupling_contribution(ss, nn, ss_space, nn_space):
 ```python
 from dune.gdt import make_element_sparsity_pattern
 
-# %pdb
+for ss in range(S):
+    # print(f"macro element: {ss}...")
+    local_space = local_spaces[ss]
+    local_grid = local_grids[ss]
+    local_op =  assemble_subdomain_contribution(local_grid, local_space, d)
+    ops[ss, ss] = local_op
 
 for ss in range(S):
     # print(f"macro element: {ss}...")
     # print(f"index: {ss}, with neigbors {dd_grid.neighbors(ss)}")
     local_space = local_spaces[ss]
-    local_grid = local_grids[ss]
-    local_op =  assemble_subdomain_contribution(local_grid, local_space, d)
-    ops[ss, ss] = local_op
-    
-    print(local_op.matrix)
     for nn in dd_grid.neighbors(ss):
         # Due to the nature of the coupling intersections, we don't have the hanging node problem. We can thus
         # treat each intersection only once.
-        # if (macro_grid_view.indexSet().index(macro_element) < macro_grid_view.indexSet().index(macro_neighbor)) {
         if ss < nn:
             neighboring_space = local_spaces[nn]
             coupling_ops = assemble_coupling_contribution(ss, nn, local_space, neighboring_space)
             
-#             print(coupling_ops[0].matrix)
-            a = b
-#         local_ops = assemble_coupling_ops(spaces, ss, nn)
+            # additional terms to diagonal
+            ops[ss][ss] += coupling_ops[0]
+            ops[nn][nn] += coupling_ops[3]
+
+            # coupling terms
+            if ops[ss][nn] is None:
+                ops[ss][nn] = coupling_ops[1]
+            else:
+                ops[ss][nn] += coupling_ops[1]
+            if ops[nn][ss] is None:
+                ops[nn][ss] = coupling_ops[2]
+            else:
+                ops[nn][ss] += coupling_ops[2]
         
 ```
 
@@ -478,43 +486,15 @@ coupling_ops
 ```
 
 ```python
-
-```
-
-```python
-# for ss in range(S):
-#     print(f"index: {ss}, with neigbors {dd_grid.neighbors(ss)}")
-#     for nn in dd_grid.neighbors(ss):
-#         print(f"neighbor: {nn}...", end='')
-#         try:
-#             coupling_ops = assemble_coupling_ops(spaces, ss, nn)
-#             print("succeeded")
-#             ops[ss][nn] = coupling_ops
-#         except:
-#             print("failed")
-        
-#         coupling_ops = assemble_coupling_ops(spaces, ss, nn)
-
-#         print(coupling_ops)
-#         # additional terms to diagonal
-#         ops[ss][ss] += coupling_ops[0]
-#         ops[nn][nn] += coupling_ops[3]
-        
-#         # coupling terms
-#         if ops[ss][nn] is None:
-#             ops[ss][nn] = [coupling_ops[1]]
-#         else:
-#             ops[ss][nn] += coupling_ops[1]
-#         if ops[nn][ss] is None:
-#             ops[nn][ss] = [coupling_ops[2]]
-#         else:
-#             ops[nn][ss] += coupling_ops[2]
-```
-
-```python
 binary_ops = [[True if op is not None else False for op in ops_] for ops_ in ops] 
 for ops_ in binary_ops:
     print(ops_)
+```
+
+```python
+for op in ops:
+    for op_ in op:
+        print(op_)
 ```
 
 ```python
