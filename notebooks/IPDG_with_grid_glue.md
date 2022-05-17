@@ -261,6 +261,7 @@ def assemble_local_ops(grid, space, boundary_info, d):
 
 ```python
 ops = np.empty((S, S), dtype=object)
+rhs = np.empty(S, dtype=object)
 ```
 
 ```python
@@ -352,6 +353,25 @@ def assemble_local_ops(spaces, ss, nn):
 ## NEW CODE !! 
 
 ```python
+localized_dirichlet_constraints = []
+
+for ss in range(S):
+    boundary_info = dd_grid.macro_based_boundary_info(ss, macro_boundary_info)
+    
+    local_grid = local_grids[ss]
+    local_space = local_spaces[ss]
+    
+    dirichlet_constraints = DirichletConstraints(boundary_info, local_space)
+    
+    walker = Walker(local_grid)
+    walker.append(dirichlet_constraints)
+    walker.walk()
+    
+    localized_dirichlet_constraints.append(dirichlet_constraints)
+#     print(dirichlet_constraints.dirichlet_DoFs)
+```
+
+```python
 from dune.gdt import (BilinearForm,
                       MatrixOperator,
                       make_element_sparsity_pattern,
@@ -361,21 +381,23 @@ from dune.gdt import (BilinearForm,
                       LocalLaplaceIPDGInnerCouplingIntegrand,
                       LocalIPDGInnerPenaltyIntegrand,
                       LocalCouplingIntersectionIntegralBilinearForm,
-                      LocalIntersectionIntegralBilinearForm)
+                      LocalIntersectionIntegralBilinearForm,
+                      VectorFunctional,
+                      LocalElementIntegralFunctional,
+                      LocalElementProductIntegrand)
 from dune.xt.grid import Walker
 
 from pymor.bindings.dunegdt import DuneXTMatrixOperator
+from pymor.operators.constructions import VectorArrayOperator
 
-def assemble_subdomain_contribution(grid, space, d):
+def assemble_subdomain_contribution(grid, space, d, dirichlet_constraints):
     a_h = MatrixOperator(grid, source_space=space, range_space=space,
                          sparsity_pattern=make_element_sparsity_pattern(space))
     a_form = BilinearForm(grid)
     a_form += LocalElementIntegralBilinearForm(
         LocalLaplaceIntegrand(GridFunction(grid, kappa, dim_range=(Dim(d), Dim(d)))))
     
-    if space.continuous:
-        pass
-    else:
+    if not space.continuous:
         assert 0, "add DG contributions"
             
     ## WRITE BINDINGS FOR "WITH" METHOD
@@ -383,16 +405,27 @@ def assemble_subdomain_contribution(grid, space, d):
     
     a_h.append(a_form)
     
-    ## TODO: ADD RIGHT HAND SIDE
-    
+    source = GF(grid, f)
+    rhs = VectorFunctional(grid, source_space=space)
+    rhs += LocalElementIntegralFunctional(LocalElementProductIntegrand(GF(grid, 1)).with_ansatz(source))
+
     #walker on local grid
     walker = Walker(grid)
     walker.append(a_h)
-    # walker.append(rhs)
+    walker.append(rhs)
     walker.walk()
-        
+    
+#     print(a_h.matrix.__repr__())
+    dirichlet_constraints.apply(a_h.matrix)
+#     print(a_h.matrix.__repr__())
+    dirichlet_constraints.apply(rhs.vector)
+#     print(rhs.vector.__repr__())
+    
+#     a = b
     op = DuneXTMatrixOperator(a_h.matrix)
-    return op
+#     rhs = VectorArrayOperator(op.range.make_array([rhs.vector,]))
+    rhs = op.range.make_array([rhs.vector,])
+    return op, rhs
 
 def assemble_coupling_contribution(ss, nn, ss_space, nn_space):
     coupling_grid = dd_grid.coupling_grid(ss, nn)
@@ -451,9 +484,12 @@ for ss in range(S):
     # print(f"macro element: {ss}...")
     local_space = local_spaces[ss]
     local_grid = local_grids[ss]
-    local_op =  assemble_subdomain_contribution(local_grid, local_space, d)
+    dirichlet_constraints = localized_dirichlet_constraints[ss]
+    local_op, local_rhs =  assemble_subdomain_contribution(local_grid, local_space, d,
+                                                           dirichlet_constraints)
     ops[ss, ss] = local_op
-
+    rhs[ss] = local_rhs
+    
 for ss in range(S):
     # print(f"macro element: {ss}...")
     # print(f"index: {ss}, with neigbors {dd_grid.neighbors(ss)}")
@@ -466,8 +502,8 @@ for ss in range(S):
             coupling_ops = assemble_coupling_contribution(ss, nn, local_space, neighboring_space)
             
             # additional terms to diagonal
-            ops[ss][ss] += coupling_ops[0]
-            ops[nn][nn] += coupling_ops[3]
+#             ops[ss][ss] += coupling_ops[0]
+#             ops[nn][nn] += coupling_ops[3]
 
             # coupling terms
             if ops[ss][nn] is None:
@@ -486,6 +522,14 @@ coupling_ops
 ```
 
 ```python
+coupling_ops[0].assemble()
+```
+
+```python
+rhs
+```
+
+```python
 binary_ops = [[True if op is not None else False for op in ops_] for ops_ in ops] 
 for ops_ in binary_ops:
     print(ops_)
@@ -499,11 +543,62 @@ for op in ops:
 
 ```python
 from pymor.operators.block import BlockOperator
+from pymor.operators.constructions import VectorOperator
 
-# TODO: use dune BINDINGS for the gdt - operator !  See PR from Felix
 block_op = BlockOperator(ops)
+block_rhs = VectorOperator(block_op.range.make_array(rhs))
+```
+
+```python
+block_rhs
 ```
 
 ```python
 block_op.assemble()
+```
+
+```python
+from pymor.models.basic import StationaryModel
+
+ipdg = StationaryModel(block_op, block_rhs)
+
+u_ipdg = ipdg.solve()
+```
+
+```python
+from dune.gdt import DiscreteFunction
+
+from dune.xt.la import IstlVector
+
+## visualization
+
+for ss in range(S):
+    u_list_vector_array = u_ipdg.block(ss)
+    u_numpy = u_list_vector_array.to_numpy()[0]
+    u_ss_istl = IstlVector(9)
+    for i, u_ in enumerate(u_numpy):
+        u_ss_istl[i] = u_
+#     print(u_ss_istl)
+    u_ss = DiscreteFunction(local_spaces[ss], u_ss_istl, name='u_ipdg')
+    
+    _ = visualize_function(u_ss)
+#     a = b
+
+
+```
+
+```python
+u = u_list_vector_array.space.real_make_vector(u_list_vector_array)
+u_list_vector_array.space
+u
+```
+
+```python
+
+
+_ = visualize_function(DiscreteFunction(u_ipdg.vector))
+```
+
+```python
+ops[0][0]
 ```
