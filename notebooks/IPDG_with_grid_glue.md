@@ -376,6 +376,7 @@ from dune.gdt import (BilinearForm,
                       MatrixOperator,
                       make_element_sparsity_pattern,
                       make_coupling_sparsity_pattern,
+                      make_element_and_intersection_sparsity_pattern,
                       LocalLaplaceIntegrand,
                       LocalElementIntegralBilinearForm,
                       LocalLaplaceIPDGInnerCouplingIntegrand,
@@ -392,7 +393,7 @@ from pymor.operators.constructions import VectorArrayOperator
 
 def assemble_subdomain_contribution(grid, space, d, dirichlet_constraints):
     a_h = MatrixOperator(grid, source_space=space, range_space=space,
-                         sparsity_pattern=make_element_sparsity_pattern(space))
+                         sparsity_pattern=make_element_and_intersection_sparsity_pattern(space))
     a_form = BilinearForm(grid)
     a_form += LocalElementIntegralBilinearForm(
         LocalLaplaceIntegrand(GridFunction(grid, kappa, dim_range=(Dim(d), Dim(d)))))
@@ -502,8 +503,8 @@ for ss in range(S):
             coupling_ops = assemble_coupling_contribution(ss, nn, local_space, neighboring_space)
             
             # additional terms to diagonal
-#             ops[ss][ss] += coupling_ops[0]
-#             ops[nn][nn] += coupling_ops[3]
+            ops[ss][ss] += coupling_ops[0]
+            ops[nn][nn] += coupling_ops[3]
 
             # coupling terms
             if ops[ss][nn] is None:
