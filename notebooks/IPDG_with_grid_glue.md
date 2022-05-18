@@ -14,7 +14,7 @@ jupyter:
 
 ```python
 # wurlitzer: display dune's output in the notebook
-%load_ext wurlitzer
+# %load_ext wurlitzer
 
 %matplotlib inline
 
@@ -567,39 +567,21 @@ u_ipdg = ipdg.solve()
 ```
 
 ```python
-from dune.gdt import DiscreteFunction
+# visualization
 
-from dune.xt.la import IstlVector
-
-## visualization
+discrete_functions = []
 
 for ss in range(S):
     u_list_vector_array = u_ipdg.block(ss)
-    u_numpy = u_list_vector_array.to_numpy()[0]
-    u_ss_istl = IstlVector(9)
-    for i, u_ in enumerate(u_numpy):
-        u_ss_istl[i] = u_
-#     print(u_ss_istl)
+    u_ss_istl = u_list_vector_array._list[0].real_part.impl
     u_ss = DiscreteFunction(local_spaces[ss], u_ss_istl, name='u_ipdg')
+    discrete_functions.append(u_ss)
     
-    _ = visualize_function(u_ss)
-#     a = b
-
-
+#     _ = visualize_function(u_ss)
 ```
 
 ```python
-u = u_list_vector_array.space.real_make_vector(u_list_vector_array)
-u_list_vector_array.space
-u
-```
+from dune.gdt import visualize_discrete_functions_on_dd_grid
 
-```python
-
-
-_ = visualize_function(DiscreteFunction(u_ipdg.vector))
-```
-
-```python
-ops[0][0]
+_ = visualize_discrete_functions_on_dd_grid(discrete_functions, dd_grid)
 ```
