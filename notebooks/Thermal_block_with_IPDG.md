@@ -97,18 +97,9 @@ print(f'grid has {macro_grid.size(0)} elements, '
 ```
 
 ```python
-lhs = problem.diffusion
-rhs = problem.rhs
-rhs
-```
-
-```python
-lhs
-```
-
-```python
 # the dune way
 from dune.xt.functions import ConstantFunction, ExpressionFunction, GridFunction as GF
+from dune.xt.functions import IndicatorFunction__2d_to_1x1 as IndicatorFunction
 from dune.xt.grid import Dim
 
 from pymor.parameters.functionals import ProjectionParameterFunctional
@@ -149,25 +140,10 @@ def thermal_block_problem_for_dune(num_blocks=(3, 3), parameter_range=(0.1, 1)):
     def diffusion_function_factory(ix, iy):
         dx = 1. / num_blocks[0]
         dy = 1. / num_blocks[1]
-
-        if ix + 1 < num_blocks[0]:
-            X = lambda x: (x[0] >= ix * dx) * (x[0] < (ix + 1) * dx)
-        else:
-            X = lambda x: (x[0] >= ix * dx)
-        if iy + 1 < num_blocks[1]:
-            Y = lambda x: (x[1] >= iy * dy) * (x[1] < (iy + 1) * dy)
-        else:
-            Y = lambda x: (x[1] >= iy * dy)
-        expression = lambda x: Y(x) * X(x)
-#         return expression
-        expr_grid = GF(macro_grid, order=1, evaluate_lambda=lambda x, _: [expression(x)],
-                       dim_range=Dim(1))
-        return expr_grid
-#         return ExpressionFunction(dim_domain=Dim(d), variable='x',
-#                                   expression=f'(x[0] < 0.5)', order=3,   # <---- INSERT THE CORRECT EXPRESSION HERE !!!
-# #                                   expression=f'{X} * {Y} * 1.', order=3,   # <---- INSERT THE CORRECT EXPRESSION HERE !!!
-#                                   name=f'diffusion_{ix}_{iy}')
-        
+        X = [ix * dx, iy * dy]
+        Y = [(ix+1) * dx, (iy+1) * dy]
+        function = IndicatorFunction([(X, Y, [1.])])
+        return function        
     
     rhs= ConstantFunction(dim_domain=Dim(d), dim_range=Dim(1), value=[1.], name='f')
 
@@ -185,19 +161,12 @@ diffusion_expr, diffusion_funcs, f = thermal_block_problem_for_dune(blocks)
 ```
 
 ```python
-#### PLOT THESE EXPRESSION FUNCTIONS ! 
+#### PLOT EXPRESSION FUNCTIONS ! 
 from dune.xt.functions import GridFunction
 
-f = ExpressionFunction(dim_domain=Dim(d), variable='x', expression='exp(x[0]*x[1])', order=3, name='f')
-f_grid = GridFunction(macro_grid, f)
-h_grid_lambda = GF(macro_grid,
-                   order=10, evaluate_lambda=lambda x, _: [np.exp(x[0]*x[1])],
-                   dim_range=Dim(1), name='h')
-h_grid_lambda.visualize(macro_grid, 'h')
-f_grid.visualize(macro_grid, 'f')
-
 for i, expr in enumerate(diffusion_expr):
-    expr.visualize(macro_grid, f'{i}')
+    expr_grid = GridFunction(macro_grid, expr)
+    expr_grid.visualize(macro_grid, f'{i}')
 ```
 
 Now we can use this grid as a macro grid for a dd grid.
@@ -464,6 +433,201 @@ for ss in range(S):
 
 ```python
 from dune.gdt import visualize_discrete_functions_on_dd_grid
+
+_ = visualize_discrete_functions_on_dd_grid(discrete_functions, dd_grid)
+```
+
+## First reduction globally
+
+```python
+from pymor.reductors.coercive import CoerciveRBReductor
+
+us = ipdg.solution_space.empty()
+
+for mu_ in problem.parameter_space.sample_randomly(10):
+    us.append(ipdg.solve(mu_))
+```
+
+```python
+from pymor.algorithms.gram_schmidt import gram_schmidt
+
+us_orth = gram_schmidt(us)
+
+reductor = CoerciveRBReductor(ipdg, us_orth)
+
+rom = reductor.reduce()
+```
+
+```python
+u_rom_reconstructed = reductor.reconstruct(rom.solve(mu))
+```
+
+```python
+discrete_functions = []
+
+for ss in range(S):
+    u_list_vector_array = u_rom_reconstructed.block(ss)
+    u_ss_istl = u_list_vector_array._list[0].real_part.impl
+    u_ss = DiscreteFunction(local_spaces[ss], u_ss_istl, name='u_ipdg')
+    discrete_functions.append(u_ss)
+
+_ = visualize_discrete_functions_on_dd_grid(discrete_functions, dd_grid)
+```
+
+## Reduction locally
+
+```python
+from pymor.operators.constructions import ZeroOperator
+from pymor.algorithms.projection import project
+
+class EllipticIPDGReductor(CoerciveRBReductor):
+    def __init__(self, fom):
+        self.S = fom.solution_space.empty().num_blocks
+        self.fom = fom
+        
+        # pull out respective operator pairs from LincombOperator        
+        self.ops_blocks = []
+        if isinstance(self.fom.operator, LincombOperator):
+            for ops in self.fom.operator.operators:
+                self.ops_blocks.append(ops.blocks)
+        else:
+            self.ops_blocks.append(self.fom.operator.blocks)
+        
+        self.rhs_blocks = []
+        if isinstance(self.fom.rhs, LincombOperator):
+            for ops in self.fom.rhs.operators:
+                self.rhs_blocks.append(ops)
+        else:
+            self.rhs_blocks.append(self.fom.rhs)
+
+        # add product blocks
+    
+        self.local_bases = [fom.solution_space.empty().block(ss).empty()
+                            for ss in range(self.S)]
+    
+    def initialize_with_global_solutions(self, us):
+        assert us in self.fom.solution_space
+        assert len(self.local_bases[0]) == 0
+        for ss in range(self.S):
+            us_block = us.block(ss)
+            us_block_orth = gram_schmidt(us_block)
+            self.local_bases[ss].append(us_block_orth)
+            
+    def add_global_solutions(self, us):
+        assert us in self.fom.solution_space
+        for ss in range(self.S):
+            us_block = us.block(ss)
+            self.local_bases[ss].append(us_block)
+            # TODO: add offset
+            self.local_bases[ss] = gram_schmidt(self.local_bases[ss])
+    
+    def add_local_solutions(self, ss, u):
+        self.local_bases[ss].append(u)
+        # TODO: add offset
+        self.local_bases[ss] = gram_schmidt(self.local_bases[ss])
+    
+    def basis_length(self):
+        return [len(self.local_bases[ss]) for ss in range(self.S)]
+    
+    def reduce(self):
+        return self._reduce()
+        
+    def project_operators(self):
+        projected_ops_blocks = []
+        for op_blocks in self.ops_blocks:
+            ops = np.empty((S, S), dtype=object)
+            for ss in range(self.S):
+                for nn in range(self.S):
+                    local_basis_ss = self.local_bases[ss]
+                    local_basis_nn = self.local_bases[nn]
+                    ops[ss][nn] = project(op_blocks[ss][nn], local_basis_ss, local_basis_nn)
+            projected_ops_blocks.append(BlockOperator(ops))
+        for rhs_blocks in self.rhs_blocks:
+            rhs = np.empty(S, dtype=object)
+            for ss in range(self.S):
+                local_basis_ss = self.local_bases[ss]
+                rhs_vector = VectorOperator(rhs_blocks.array.block(ss))
+                rhs_int = project(rhs_vector, local_basis_ss, None).matrix[:,0]
+                rhs[ss] = ops[ss][ss].range.make_array(rhs_int)
+                
+        projected_operator = LincombOperator(projected_ops_blocks, self.fom.operator.coefficients)
+        projected_rhs = VectorOperator(projected_operator.range.make_array(rhs))
+        projected_operators = {
+            'operator':          projected_operator,
+            'rhs':               projected_rhs,
+            'products':          None,
+            'output_functional': None
+        }
+        return projected_operators
+    
+    def assemble_error_estimator(self):
+        return None
+    
+    def reconstruct(self, u_rom):
+        u_ = []
+        for ss in range(self.S):
+            basis = self.local_bases[ss]
+            u_ss = u_rom.block(ss)
+            u_.append(basis.lincomb(u_ss.to_numpy()))
+        return self.fom.solution_space.make_array(u_)
+
+localized_reductor = EllipticIPDGReductor(ipdg)
+```
+
+```python
+localized_reductor.S
+```
+
+```python
+localized_reductor.basis_length()
+```
+
+```python
+localized_reductor.initialize_with_global_solutions(us[:3])
+```
+
+```python
+localized_reductor.basis_length()
+```
+
+```python
+localized_reductor.add_global_solutions(us[3:7])
+```
+
+```python
+localized_reductor.basis_length()
+```
+
+```python
+for i in range(0, localized_reductor.S, 2):
+    u = us[7:].block(i)
+    localized_reductor.add_local_solutions(i, u)
+```
+
+```python
+localized_reductor.basis_length()
+```
+
+```python
+# %pdb
+```
+
+```python
+localized_rom = localized_reductor.reduce()
+
+u_rom_loc = localized_rom.solve(mu)
+
+u_rom_loc_reconstructed = localized_reductor.reconstruct(u_rom_loc)
+```
+
+```python
+discrete_functions = []
+
+for ss in range(S):
+    u_list_vector_array = u_rom_loc_reconstructed.block(ss)
+    u_ss_istl = u_list_vector_array._list[0].real_part.impl
+    u_ss = DiscreteFunction(local_spaces[ss], u_ss_istl, name='u_ipdg')
+    discrete_functions.append(u_ss)
 
 _ = visualize_discrete_functions_on_dd_grid(discrete_functions, dd_grid)
 ```
