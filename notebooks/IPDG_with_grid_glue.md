@@ -41,8 +41,11 @@ from pymor.analyticalproblems.functions import ConstantFunction as pymorConstant
 from pymor.analyticalproblems.functions import ExpressionFunction as pymorExpressionFunction
 from pymor.analyticalproblems.domaindescriptions import RectDomain
 
-pymor_omega = RectDomain([[0., 0.], [1., 1.]])
-pymor_kappa = pymorConstantFunction(1., d, name='kappa')
+from pymor.parameters.functionals import ProjectionParameterFunctional
+
+pymor_omega = RectDomain([omega[0], omega[1]])
+param_functional = ProjectionParameterFunctional('mu', 1, 0)
+pymor_kappa = pymorConstantFunction(1., d, name='kappa') * param_functional 
 # pymor_f = pymorExpressionFunction('exp(x[0]*x[1])', d, name='f')
 pymor_f = pymorExpressionFunction('1', d, name='f')
 
@@ -70,6 +73,10 @@ pymor_fem_fv, data_ = discretize_stationary_fv(problem, diameter=h, grid_type=Re
 ```
 
 ```python
+param = 1.
+```
+
+```python
 # from pymor.discretizers.builtin.cg import InterpolationOperator
 
 # pymor_grid = data['grid']
@@ -94,7 +101,7 @@ pymor_fem_fv.visualize(pymor_fem_fv.solution_space.from_numpy(grid_enumerated))
 ```python
 # solving the problem
 
-u_pymor = pymor_fem_cg.solve()
+u_pymor = pymor_fem_cg.solve(param)
 pymor_fem_cg.visualize(u_pymor)
 ```
 
@@ -405,7 +412,7 @@ for ss in range(S):
 from pymor.operators.block import BlockOperator
 from pymor.operators.constructions import VectorOperator
 
-block_op = BlockOperator(ops)
+block_op = param_functional * BlockOperator(ops)
 block_rhs = VectorOperator(block_op.range.make_array(rhs))
 ```
 
@@ -422,7 +429,7 @@ from pymor.models.basic import StationaryModel
 
 ipdg = StationaryModel(block_op, block_rhs)
 
-u_ipdg = ipdg.solve()
+u_ipdg = ipdg.solve(param)
 ```
 
 ```python
