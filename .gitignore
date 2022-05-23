@@ -7,3 +7,6 @@ build/*
 .vscode
 tags
 *.code-workspace
+
+.ipynb_checkpoints/
+__pycache__/
