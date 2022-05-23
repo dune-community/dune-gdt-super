@@ -379,7 +379,7 @@ def assemble_dirichlet_coupling_for_patches(ss, nn, ss_space, nn_space):
         
     dirichlet_coupling_op = MatrixOperator(coupling_grid, source_space=ss_space, range_space=ss_space,
                                            sparsity_pattern=make_element_and_intersection_sparsity_pattern(ss_space))
-    dirichlet_coupling_op.append(dirichlet_form, {}) #, (False, True , False, False, False, False))
+    dirichlet_coupling_op.append(coupling_form, {} , (False, False, False, False, False, True))
     
     walker = Walker(coupling_grid)
     walker.append(dirichlet_coupling_op)
@@ -389,6 +389,8 @@ def assemble_dirichlet_coupling_for_patches(ss, nn, ss_space, nn_space):
 ```
 
 ```python
+ops_dirichlet = np.empty((S, S), dtype=object)
+
 for ss in range(S):
     # print(f"macro element: {ss}...")
     # print(f"index: {ss}, with neigbors {dd_grid.neighbors(ss)}")
@@ -396,10 +398,13 @@ for ss in range(S):
     for nn in dd_grid.neighbors(ss):
         # Due to the nature of the coupling intersections, we don't have the hanging node problem. We can thus
         # treat each intersection only once.
-        if ss < nn:
-            neighboring_space = local_spaces[nn]
-            coupling_ops = assemble_dirichlet_coupling_for_patches(ss, nn, local_space, neighboring_space)
+        neighboring_space = local_spaces[nn]
+        coupling_ops = assemble_dirichlet_coupling_for_patches(ss, nn, local_space, neighboring_space)
+        ops_dirichlet[ss][nn] = coupling_ops
+```
 
+```python
+ops[0]
 ```
 
 ```python
