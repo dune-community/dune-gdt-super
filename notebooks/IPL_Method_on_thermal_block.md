@@ -52,7 +52,7 @@ pymor_fem_fv, data_ = discretize_stationary_fv(problem, diameter=h, grid_type=Re
 ```
 
 ```python
-mu = [0.1,1.,1.,1.]
+mu = [0.1, 1., 1., 1.]
 ```
 
 ```python
@@ -179,22 +179,23 @@ class EllipticIPDGReductor(CoerciveRBReductor):
         self.S = fom.solution_space.empty().num_blocks
         self.fom = fom
         
-        # pull out respective operator pairs from LincombOperator        
-        self.ops_blocks = []
-        if isinstance(self.fom.operator, LincombOperator):
-            for ops in self.fom.operator.operators:
-                self.ops_blocks.append(ops.blocks)
-        else:
-            self.ops_blocks.append(self.fom.operator.blocks)
-        
-        self.rhs_blocks = []
-        if isinstance(self.fom.rhs, LincombOperator):
-            for ops in self.fom.rhs.operators:
-                self.rhs_blocks.append(ops)
-        else:
-            self.rhs_blocks.append(self.fom.rhs)
+        if 0:
+            # this is for LincombOperator(BlockOperators)
+            # pull out respective operator pairs from LincombOperator        
+            self.ops_blocks = []
+            if isinstance(self.fom.operator, LincombOperator):
+                for ops in self.fom.operator.operators:
+                    self.ops_blocks.append(ops.blocks)
+            else:
+                self.ops_blocks.append(self.fom.operator.blocks)
 
-        # add product blocks
+            self.rhs_blocks = []
+            if isinstance(self.fom.rhs, LincombOperator):
+                for ops in self.fom.rhs.operators:
+                    self.rhs_blocks.append(ops)
+            else:
+                self.rhs_blocks.append(self.fom.rhs)
+
     
         self.local_bases = [fom.solution_space.empty().block(ss).empty()
                             for ss in range(self.S)]
@@ -228,24 +229,45 @@ class EllipticIPDGReductor(CoerciveRBReductor):
         
     def project_operators(self):
         projected_ops_blocks = []
-        for op_blocks in self.ops_blocks:
-            ops = np.empty((self.S, self.S), dtype=object)
+        if 0:
+            # this is for LincombOperator(BlockOperators)
+            for op_blocks in self.ops_blocks:
+                ops = np.empty((self.S, self.S), dtype=object)
+                for ss in range(self.S):
+                    for nn in range(self.S):
+                        local_basis_ss = self.local_bases[ss]
+                        local_basis_nn = self.local_bases[nn]
+                        ops[ss][nn] = project(op_blocks[ss][nn], local_basis_ss, local_basis_nn)
+                projected_ops_blocks.append(BlockOperator(ops))
+            for rhs_blocks in self.rhs_blocks:
+                rhs = np.empty(self.S, dtype=object)
+                for ss in range(self.S):
+                    local_basis_ss = self.local_bases[ss]
+                    rhs_vector = VectorOperator(rhs_blocks.array.block(ss))
+                    rhs_int = project(rhs_vector, local_basis_ss, None).matrix[:,0]
+                    rhs[ss] = ops[ss][ss].range.make_array(rhs_int)
+            projected_operator = LincombOperator(projected_ops_blocks, self.fom.operator.coefficients)
+            projected_rhs = VectorOperator(projected_operator.range.make_array(rhs))
+        else:
+            # this is for BlockOperator(LincombOperators)
+            projected_ops = np.empty((self.S, self.S), dtype=object)
             for ss in range(self.S):
                 for nn in range(self.S):
                     local_basis_ss = self.local_bases[ss]
                     local_basis_nn = self.local_bases[nn]
-                    ops[ss][nn] = project(op_blocks[ss][nn], local_basis_ss, local_basis_nn)
-            projected_ops_blocks.append(BlockOperator(ops))
-        for rhs_blocks in self.rhs_blocks:
+                    if self.fom.operator.blocks[ss][nn]:
+                        projected_ops[ss][nn] = project(self.fom.operator.blocks[ss][nn],
+                                                        local_basis_ss, local_basis_nn)
+            projected_operator = BlockOperator(projected_ops)
+            
             rhs = np.empty(self.S, dtype=object)
             for ss in range(self.S):
                 local_basis_ss = self.local_bases[ss]
-                rhs_vector = VectorOperator(rhs_blocks.array.block(ss))
+                rhs_vector = VectorOperator(self.fom.rhs.array.block(ss))
                 rhs_int = project(rhs_vector, local_basis_ss, None).matrix[:,0]
-                rhs[ss] = ops[ss][ss].range.make_array(rhs_int)
-                
-        projected_operator = LincombOperator(projected_ops_blocks, self.fom.operator.coefficients)
-        projected_rhs = VectorOperator(projected_operator.range.make_array(rhs))
+                rhs[ss] = projected_ops[ss][ss].range.make_array(rhs_int)
+            projected_rhs = VectorOperator(projected_operator.range.make_array(rhs))
+            
         projected_operators = {
             'operator':          projected_operator,
             'rhs':               projected_rhs,
