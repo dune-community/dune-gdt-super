@@ -138,7 +138,7 @@ from dd_glued_visualizer import visualize_dd_functions
 visualize_dd_functions(dd_grid, local_spaces, u_ipdg)
 ```
 
-## First reduction globally
+## Reduction globally
 
 ```python
 from pymor.reductors.coercive import CoerciveRBReductor
@@ -167,165 +167,24 @@ u_rom_reconstructed = reductor.reconstruct(rom.solve(mu))
 visualize_dd_functions(dd_grid, local_spaces, u_rom_reconstructed)
 ```
 
-## Reduction locally
+## Reduction locally with global solutions
 
 ```python
-from pymor.operators.constructions import ZeroOperator, LincombOperator, VectorOperator
-from pymor.algorithms.projection import project
-from pymor.operators.block import BlockOperator
-
-class EllipticIPDGReductor(CoerciveRBReductor):
-    def __init__(self, fom):
-        self.S = fom.solution_space.empty().num_blocks
-        self.fom = fom
-        
-        if 0:
-            # this is for LincombOperator(BlockOperators)
-            # pull out respective operator pairs from LincombOperator        
-            self.ops_blocks = []
-            if isinstance(self.fom.operator, LincombOperator):
-                for ops in self.fom.operator.operators:
-                    self.ops_blocks.append(ops.blocks)
-            else:
-                self.ops_blocks.append(self.fom.operator.blocks)
-
-            self.rhs_blocks = []
-            if isinstance(self.fom.rhs, LincombOperator):
-                for ops in self.fom.rhs.operators:
-                    self.rhs_blocks.append(ops)
-            else:
-                self.rhs_blocks.append(self.fom.rhs)
-
-    
-        self.local_bases = [fom.solution_space.empty().block(ss).empty()
-                            for ss in range(self.S)]
-    
-    def initialize_with_global_solutions(self, us):
-        assert us in self.fom.solution_space
-        assert len(self.local_bases[0]) == 0
-        for ss in range(self.S):
-            us_block = us.block(ss)
-            us_block_orth = gram_schmidt(us_block)
-            self.local_bases[ss].append(us_block_orth)
-            
-    def add_global_solutions(self, us):
-        assert us in self.fom.solution_space
-        for ss in range(self.S):
-            us_block = us.block(ss)
-            self.local_bases[ss].append(us_block)
-            # TODO: add offset
-            self.local_bases[ss] = gram_schmidt(self.local_bases[ss])
-    
-    def add_local_solutions(self, ss, u):
-        self.local_bases[ss].append(u)
-        # TODO: add offset
-        self.local_bases[ss] = gram_schmidt(self.local_bases[ss])
-    
-    def basis_length(self):
-        return [len(self.local_bases[ss]) for ss in range(self.S)]
-    
-    def reduce(self):
-        return self._reduce()
-        
-    def project_operators(self):
-        projected_ops_blocks = []
-        if 0:
-            # this is for LincombOperator(BlockOperators)
-            for op_blocks in self.ops_blocks:
-                ops = np.empty((self.S, self.S), dtype=object)
-                for ss in range(self.S):
-                    for nn in range(self.S):
-                        local_basis_ss = self.local_bases[ss]
-                        local_basis_nn = self.local_bases[nn]
-                        ops[ss][nn] = project(op_blocks[ss][nn], local_basis_ss, local_basis_nn)
-                projected_ops_blocks.append(BlockOperator(ops))
-            for rhs_blocks in self.rhs_blocks:
-                rhs = np.empty(self.S, dtype=object)
-                for ss in range(self.S):
-                    local_basis_ss = self.local_bases[ss]
-                    rhs_vector = VectorOperator(rhs_blocks.array.block(ss))
-                    rhs_int = project(rhs_vector, local_basis_ss, None).matrix[:,0]
-                    rhs[ss] = ops[ss][ss].range.make_array(rhs_int)
-            projected_operator = LincombOperator(projected_ops_blocks, self.fom.operator.coefficients)
-            projected_rhs = VectorOperator(projected_operator.range.make_array(rhs))
-        else:
-            # this is for BlockOperator(LincombOperators)
-            projected_ops = np.empty((self.S, self.S), dtype=object)
-            for ss in range(self.S):
-                for nn in range(self.S):
-                    local_basis_ss = self.local_bases[ss]
-                    local_basis_nn = self.local_bases[nn]
-                    if self.fom.operator.blocks[ss][nn]:
-                        projected_ops[ss][nn] = project(self.fom.operator.blocks[ss][nn],
-                                                        local_basis_ss, local_basis_nn)
-            projected_operator = BlockOperator(projected_ops)
-            
-            rhs = np.empty(self.S, dtype=object)
-            for ss in range(self.S):
-                local_basis_ss = self.local_bases[ss]
-                rhs_vector = VectorOperator(self.fom.rhs.array.block(ss))
-                rhs_int = project(rhs_vector, local_basis_ss, None).matrix[:,0]
-                rhs[ss] = projected_ops[ss][ss].range.make_array(rhs_int)
-            projected_rhs = VectorOperator(projected_operator.range.make_array(rhs))
-            
-        projected_operators = {
-            'operator':          projected_operator,
-            'rhs':               projected_rhs,
-            'products':          None,
-            'output_functional': None
-        }
-        return projected_operators
-    
-    def assemble_error_estimator(self):
-        return None
-    
-    def reconstruct(self, u_rom):
-        u_ = []
-        for ss in range(self.S):
-            basis = self.local_bases[ss]
-            u_ss = u_rom.block(ss)
-            u_.append(basis.lincomb(u_ss.to_numpy()))
-        return self.fom.solution_space.make_array(u_)
+from iplrb_reductor import EllipticIPDGReductor
 
 localized_reductor = EllipticIPDGReductor(ipl_model)
 ```
 
 ```python
-localized_reductor.S
-```
+print(localized_reductor.basis_length())
+localized_reductor.add_global_solutions(us[:5])
+print(localized_reductor.basis_length())
 
-```python
-localized_reductor.basis_length()
-```
-
-```python
-localized_reductor.initialize_with_global_solutions(us[:3])
-```
-
-```python
-localized_reductor.basis_length()
-```
-
-```python
-localized_reductor.add_global_solutions(us[3:7])
-```
-
-```python
-localized_reductor.basis_length()
-```
-
-```python
 for i in range(0, localized_reductor.S, 2):
-    u = us[7:].block(i)
+    u = us[5:].block(i)
     localized_reductor.add_local_solutions(i, u)
-```
 
-```python
-localized_reductor.basis_length()
-```
-
-```python
-# %pdb
+print(localized_reductor.basis_length())
 ```
 
 ```python
