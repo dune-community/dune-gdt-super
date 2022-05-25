@@ -257,19 +257,6 @@ u_global_patch.block(0)
 ```
 
 ```python
-from dune.gdt import DiscreteFunction
-from dune.gdt import visualize_function
-
-for ss in range(8,16):
-    u_list_vector_array = u_global_patch.block(ss)
-    u_ss_istl = u_list_vector_array._list[0].real_part.impl
-    u_ss = DiscreteFunction(local_spaces[ss], u_ss_istl, name='u_ipdg')
-#     discrete_functions.append(u_ss)
-    _ = visualize_function(u_ss)
-    a = b
-```
-
-```python
 patch_model.operator.blocks[0,0]
 ```
 
@@ -282,10 +269,24 @@ return_data.keys()
 ```
 
 ```python
+from dune.gdt import DiscreteFunction
+# from dune.gdt import visualize_function
+
+# for ss in range(8,16):
+#     u_list_vector_array = u_global_patch.block(ss)
+#     u_ss_istl = u_list_vector_array._list[0].real_part.impl
+#     u_ss = DiscreteFunction(local_spaces[ss], u_ss_istl, name='u_ipdg')
+#     discrete_functions.append(u_ss)
+#     _ = visualize_function(u_ss)
+#     a = b
+```
+
+```python
 # visualization
 from dd_glued_visualizer import visualize_dd_functions
 
-visualize_dd_functions(dd_grid, local_spaces, u_global_patch)
+print(neighborhood)
+visualize_dd_functions(dd_grid, local_spaces, u_global_patch, subdomains=neighborhood)
 ```
 
 Now we can use this grid as a macro grid for a dd grid.
