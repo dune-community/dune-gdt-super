@@ -218,17 +218,39 @@ def discretize_ipl(problem,
                     coupling_intersection_type)
         fake_dirichlet_ops.append(ops)
 
+    diffusion_coefs = problem['diffusion_coefs']
+    if diffusion_coefs:
+        final_dirichlet_ops = fake_dirichlet_ops[0]
+        # multiply the first block
+        for ss in range(S):
+            for nn in range(S):
+                if final_dirichlet_ops[ss][nn]:
+                    final_dirichlet_ops[ss][nn] *= diffusion_coefs[0]
+        # add the rest
+        for ss in range(S):
+            for nn in range(S):
+                for block_op, coef in zip(fake_dirichlet_ops[1:], diffusion_coefs[1:]):
+                    if final_dirichlet_ops[ss][nn]:
+                        final_dirichlet_ops[ss][nn] += block_op[ss][nn] * coef
+    else:
+        final_dirichlet_ops = fake_dirichlet_ops
+
     neighborhoods = construct_neighborhoods(dd_grid)
 
     patch_models = []
+    patch_mappings_to_global = []
+    patch_mappings_to_local = []
     for neighborhood in neighborhoods:
-        pass
-        # patch_model = construct_patch_model(neighborhood, final_op, final_rhs,
-        #                                     fake_dirichlet_ops, dd_grid.neighbors)
-        # patch_models.append(patch_model)
+        patch_model, local_to_global_mapping, global_to_local_mapping = construct_patch_model(
+            neighborhood, final_op, final_rhs, final_dirichlet_ops, dd_grid.neighbors)
+        patch_models.append(patch_model)
+        patch_mappings_to_global.append(local_to_global_mapping)
+        patch_mappings_to_local.append(global_to_local_mapping)
 
     return_data = {'macro_grid': macro_grid, 'dd_grid': dd_grid,
-                   'local_spaces': local_spaces}
+                   'local_spaces': local_spaces, 'patch_models': patch_models,
+                   'patch_mappings_to_global': patch_mappings_to_global,
+                   'patch_mappings_to_local': patch_mappings_to_local}
 
     return ipl_model, return_data
 
@@ -240,7 +262,7 @@ def construct_patch_model(neighborhood, block_op, block_rhs, ops_dirichlet, neig
         for i_, j in enumerate(neighborhood):
             if j == i:
                 return i_
-        return False
+        return -1
 
     S_patch = len(neighborhood)
     patch_op = np.empty((S_patch, S_patch), dtype=object)
@@ -253,15 +275,19 @@ def construct_patch_model(neighborhood, block_op, block_rhs, ops_dirichlet, neig
         patch_rhs[ii] = blocks_rhs.block(ss)
         for nn in neighbors(ss):
             jj = global_to_local_mapping(nn)
-            if jj:
+            if jj >= 0:
                 # coupling contribution because nn is inside the patch
                 patch_op[ii][jj] = blocks_op[ss][nn]
             else:
                 # fake dirichlet contribution because nn is outside the patch
-                patch_op[ii][ii] += ops_dirichlet[ss][nn]
+                # patch_op[ii][ii] += ops_dirichlet[ss][nn]
+                pass
 
-    patch_model = StationaryModel(patch_op, patch_rhs)
-    return patch_model
+    final_patch_op = BlockOperator(patch_op)
+    final_patch_rhs = VectorOperator(final_patch_op.range.make_array(patch_rhs))
+
+    patch_model = StationaryModel(final_patch_op, final_patch_rhs)
+    return patch_model, local_to_global_mapping, global_to_local_mapping
 
 
 def assemble_rhs(grid, space, d, f, rhs_range):
@@ -298,7 +324,7 @@ def assemble_subdomain_contribution(grid, space, d, kappa):
     walker.append(a_h)
     walker.walk()
 
-    op = DuneXTMatrixOperator(a_h.matrix)
+    op = DuneXTMatrixOperator(a_h.matrix, name="volume")
     return op
 
 
@@ -343,10 +369,10 @@ def assemble_coupling_contribution(coupling_grid, grid, ss, nn, ss_space, nn_spa
     walker.append(coupling_op_nn_nn)
     walker.walk()
 
-    coupling_op_ss_ss = DuneXTMatrixOperator(coupling_op_ss_ss.matrix)
-    coupling_op_ss_nn = DuneXTMatrixOperator(coupling_op_ss_nn.matrix)
-    coupling_op_nn_ss = DuneXTMatrixOperator(coupling_op_nn_ss.matrix)
-    coupling_op_nn_nn = DuneXTMatrixOperator(coupling_op_nn_nn.matrix)
+    coupling_op_ss_ss = DuneXTMatrixOperator(coupling_op_ss_ss.matrix, name=f"{ss}_{nn}_in_in")
+    coupling_op_ss_nn = DuneXTMatrixOperator(coupling_op_ss_nn.matrix, name=f"{ss}_{nn}_in_out")
+    coupling_op_nn_ss = DuneXTMatrixOperator(coupling_op_nn_ss.matrix, name=f"{ss}_{nn}_out_in")
+    coupling_op_nn_nn = DuneXTMatrixOperator(coupling_op_nn_nn.matrix, name=f"{ss}_{nn}_out_out")
 
     return coupling_op_ss_ss, coupling_op_ss_nn, coupling_op_nn_ss, coupling_op_nn_nn
 
@@ -372,7 +398,7 @@ def assemble_boundary_contributions(grid, space, d, boundary_info, kappa):
     walker.append(a_h)
     walker.walk()
 
-    boundaryOp = DuneXTMatrixOperator(a_h.matrix)
+    boundaryOp = DuneXTMatrixOperator(a_h.matrix, name="boundary")
     return boundaryOp
 
 
@@ -407,7 +433,7 @@ def assemble_fake_dirichlet_coupling_for_patches(local_grid, coupling_grid,
     walker.append(dirichlet_coupling_op)
     walker.walk()
 
-    return DuneXTMatrixOperator(dirichlet_coupling_op.matrix)
+    return DuneXTMatrixOperator(dirichlet_coupling_op.matrix, name='fake_dirichlet')
 
 
 def construct_neighborhoods(dd_grid):
