@@ -201,10 +201,68 @@ def discretize_ipl(problem,
 
     ipl_model = StationaryModel(final_op, final_rhs)
 
+
+    ## PREPARE PATCHES FOR LOCAL ENRICHMENT
+    fake_dirichlet_ops = []
+    for kappa in diffusion_expr:
+        ops = np.empty((S, S), dtype=object)
+
+        for ss in range(S):
+            local_space = local_spaces[ss]
+            local_grid = local_grids[ss]
+            for nn in dd_grid.neighbors(ss):
+                nn_space = local_spaces[nn]
+                coupling_grid = dd_grid.coupling_grid(ss, nn)
+                ops[ss][nn] = assemble_fake_dirichlet_coupling_for_patches(
+                    local_grid, coupling_grid, ss, nn, local_space, nn_space, d, kappa,
+                    coupling_intersection_type)
+        fake_dirichlet_ops.append(ops)
+
+    neighborhoods = construct_neighborhoods(dd_grid)
+
+    patch_models = []
+    for neighborhood in neighborhoods:
+        pass
+        # patch_model = construct_patch_model(neighborhood, final_op, final_rhs,
+        #                                     fake_dirichlet_ops, dd_grid.neighbors)
+        # patch_models.append(patch_model)
+
     return_data = {'macro_grid': macro_grid, 'dd_grid': dd_grid,
                    'local_spaces': local_spaces}
 
     return ipl_model, return_data
+
+
+def construct_patch_model(neighborhood, block_op, block_rhs, ops_dirichlet, neighbors):
+    def local_to_global_mapping(i):
+        return neighborhood[i]
+    def global_to_local_mapping(i):
+        for i_, j in enumerate(neighborhood):
+            if j == i:
+                return i_
+        return False
+
+    S_patch = len(neighborhood)
+    patch_op = np.empty((S_patch, S_patch), dtype=object)
+    patch_rhs = np.empty(S_patch, dtype=object)
+    blocks_op = block_op.blocks
+    blocks_rhs = block_rhs.array
+    for ii in range(S_patch):
+        ss = local_to_global_mapping(ii)
+        patch_op[ii][ii] = blocks_op[ss][ss]
+        patch_rhs[ii] = blocks_rhs.block(ss)
+        for nn in neighbors(ss):
+            jj = global_to_local_mapping(nn)
+            if jj:
+                # coupling contribution because nn is inside the patch
+                patch_op[ii][jj] = blocks_op[ss][nn]
+            else:
+                # fake dirichlet contribution because nn is outside the patch
+                patch_op[ii][ii] += ops_dirichlet[ss][nn]
+
+    patch_model = StationaryModel(patch_op, patch_rhs)
+    return patch_model
+
 
 def assemble_rhs(grid, space, d, f, rhs_range):
     source = GF(grid, f)
@@ -218,6 +276,7 @@ def assemble_rhs(grid, space, d, f, rhs_range):
 
     rhs = rhs_range.make_array([rhs.vector,])
     return rhs
+
 
 def assemble_subdomain_contribution(grid, space, d, kappa):
     a_h = MatrixOperator(grid, source_space=space, range_space=space,
@@ -241,6 +300,7 @@ def assemble_subdomain_contribution(grid, space, d, kappa):
 
     op = DuneXTMatrixOperator(a_h.matrix)
     return op
+
 
 def assemble_coupling_contribution(coupling_grid, grid, ss, nn, ss_space, nn_space, d, kappa,
                                    coupling_intersection_type):
@@ -290,6 +350,7 @@ def assemble_coupling_contribution(coupling_grid, grid, ss, nn, ss_space, nn_spa
 
     return coupling_op_ss_ss, coupling_op_ss_nn, coupling_op_nn_ss, coupling_op_nn_nn
 
+
 def assemble_boundary_contributions(grid, space, d, boundary_info, kappa):
     # TODO: FIND THE CORRECT NUMBERS HERE ! 
     symmetry_factor = 1.
@@ -313,3 +374,51 @@ def assemble_boundary_contributions(grid, space, d, boundary_info, kappa):
 
     boundaryOp = DuneXTMatrixOperator(a_h.matrix)
     return boundaryOp
+
+
+def assemble_fake_dirichlet_coupling_for_patches(local_grid, coupling_grid,
+                                                 ss, nn, ss_space, nn_space, d, kappa,
+                                                 coupling_intersection_type):
+    coupling_sparsity_pattern = make_coupling_sparsity_pattern(ss_space, nn_space, coupling_grid)
+
+    coupling_form = BilinearForm(coupling_grid)
+
+    # TODO: FIND THE CORRECT NUMBERS HERE ! 
+    symmetry_factor = 1.
+    weight = kappa
+    penalty_parameter= 16
+
+    diffusion = GF(local_grid, kappa, dim_range=(Dim(d), Dim(d)))
+    weight = GF(local_grid, weight, dim_range=(Dim(d), Dim(d)))
+
+    dirichlet_penalty_integrand = LocalIPDGBoundaryPenaltyIntegrand(penalty_parameter, weight,
+                                                                   intersection_type=coupling_intersection_type)
+    dirichlet_coupling_integrand = LocalLaplaceIPDGDirichletCouplingIntegrand(symmetry_factor, diffusion,
+                                                                    intersection_type=coupling_intersection_type)
+
+    coupling_form += LocalIntersectionIntegralBilinearForm(dirichlet_penalty_integrand)
+    coupling_form += LocalIntersectionIntegralBilinearForm(dirichlet_coupling_integrand)
+
+    dirichlet_coupling_op = MatrixOperator(coupling_grid, source_space=ss_space, range_space=ss_space,
+                                           sparsity_pattern=make_element_and_intersection_sparsity_pattern(ss_space))
+    dirichlet_coupling_op.append(coupling_form, {} , (False, False, False, False, False, True))
+
+    walker = Walker(coupling_grid)
+    walker.append(dirichlet_coupling_op)
+    walker.walk()
+
+    return DuneXTMatrixOperator(dirichlet_coupling_op.matrix)
+
+
+def construct_neighborhoods(dd_grid):
+    # This is only working with quadrilateral meshes right now !
+    neighborhoods = []
+    for ss in range(dd_grid.num_subdomains):
+        nh = {ss}
+        nh.update(dd_grid.neighbors(ss))
+        for nn in dd_grid.neighbors(ss):
+            for nnn in dd_grid.neighbors(nn):
+                if nnn not in nh and len(set(dd_grid.neighbors(nnn)).intersection(nh)) == 2:
+                    nh.add(nnn)
+        neighborhoods.append(tuple(nh))
+    return neighborhoods
