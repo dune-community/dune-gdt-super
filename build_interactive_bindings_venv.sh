@@ -31,6 +31,18 @@ unset BASEDIR
 # load the variables of this environment, sources the virtualenv
 VENV=environments/${DXT_ENVIRONMENT}/venv/${OPTS} source environments/${DXT_ENVIRONMENT}/PATH.sh
 
+# silence dune-alugrid and dune-grid-glue
+if [ -e dune-alugrid/.patched ]; then
+  echo not patching dune-alugrid again
+else
+  ./patch_dune_alugrid.bash && touch dune-alugrid/.patched
+fi
+if [ -e dune-grid-glue/.patched ]; then
+  echo not patching dune-grid-glue again
+else
+  ./patch_dune_grid_glue.bash && touch dune-grid-glue/.patched
+fi
+
 # build dune
 if [ "${OPTS: -6}" == ".ninja" ]; then
   MAKE=ninja
@@ -55,5 +67,5 @@ done
 cd "${BASEDIR}"
 echo
 echo "All done! From now on run"
-echo "  OPTS=$OPTS source envs/${DXT_ENVIRONMENT}/PATH.sh"
+echo "  OPTS=$OPTS source environments/${DXT_ENVIRONMENT}/PATH.sh"
 echo "to activate the virtualenv!"
