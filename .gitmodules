@@ -54,3 +54,6 @@
 [submodule "dune-xt"]
 	path = dune-xt
 	url = https://zivgitlab.uni-muenster.de/ag-ohlberger/dune-community/dune-xt.git
+[submodule "pymor"]
+	path = pymor
+	url = https://github.com/pymor/pymor
