@@ -71,7 +71,5 @@ cd build/gcc-release/dune-gdt
 ./dune/gdt/examples/examples__cellmodel
 ```
 
-
-
-
+The result will be a collection of `*.vtu` files which can be visualized using, e.g., Paraview.
 
