@@ -279,7 +279,7 @@ II = 5
 ```
 
 ```python
-phi_patch = localized_reductor.enrich_locally(II, mu)
+phi_patch = localized_reductor.enrich_locally(II, mu, use_global_matrix=True)
 phi_patch_on_global = localized_reductor.from_patch_to_global(II, phi_patch)
 ```
 
@@ -293,7 +293,7 @@ localized_rom = localized_reductor.reduce()
 ```
 
 ```python
-phi_patch = localized_reductor.enrich_locally(II, mu)
+phi_patch = localized_reductor.enrich_locally(II, mu, use_global_matrix=True)
 phi_patch_on_global = localized_reductor.from_patch_to_global(II, phi_patch)
 ```
 
@@ -301,7 +301,7 @@ phi_patch_on_global = localized_reductor.from_patch_to_global(II, phi_patch)
 visualize_dd_functions(dd_grid, local_spaces, phi_patch_on_global) #, subdomains=neighborhood)
 ```
 
-### Reset reductor
+### Reset reductor and try efficient version
 
 ```python
 localized_reductor = CoerciveIPLD3GRBReductor(pymor_ipl_model, dd_grid)
@@ -317,6 +317,37 @@ phi_patch_on_global = localized_reductor.from_patch_to_global(II, phi_patch)
 
 ```python
 visualize_dd_functions(dd_grid, local_spaces, phi_patch_on_global) #, subdomains=neighborhood)
+```
+
+### first testing of the local enrichment
+
+```python
+localized_reductor = CoerciveIPLD3GRBReductor(pymor_ipl_model, dd_grid)
+localized_reductor.add_global_solutions(us[:2])
+
+localized_rom = localized_reductor.reduce()
+print(localized_reductor.basis_length())
+```
+
+```python
+u_rom_loc = localized_rom.solve(mu)
+u_rom_loc_reconstructed = localized_reductor.reconstruct(u_rom_loc)
+visualize_dd_functions(dd_grid, local_spaces, u_rom_loc_reconstructed)
+```
+
+```python
+localized_reductor.enrich_all_locally(mu, use_global_matrix=False)
+```
+
+```python
+localized_rom = localized_reductor.reduce()
+print(localized_reductor.basis_length())
+```
+
+```python
+u_rom_loc = localized_rom.solve(mu)
+u_rom_loc_reconstructed = localized_reductor.reconstruct(u_rom_loc)
+visualize_dd_functions(dd_grid, local_spaces, u_rom_loc_reconstructed)
 ```
 
 ## testing different options of local enrichment
