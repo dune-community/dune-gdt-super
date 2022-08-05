@@ -49,6 +49,19 @@ problem = thermal_block_problem(blocks)
 ```
 
 ```python
+# add parametric rhs
+
+from pymor.analyticalproblems.functions import LincombFunction, ConstantFunction
+from pymor.parameters.functionals import ProjectionParameterFunctional
+
+param_rhs = LincombFunction([ConstantFunction(0.5, 2), ConstantFunction(0.5, 2)],
+                            [ProjectionParameterFunctional('rhs', 2, 0),
+                             ProjectionParameterFunctional('rhs', 2, 1)])
+
+problem = problem.with_(rhs = param_rhs)
+```
+
+```python
 # the standard pymor way
 from pymor.discretizers.builtin.grids.rect import RectGrid
 from pymor.discretizers.builtin.cg import discretize_stationary_cg
@@ -60,7 +73,7 @@ pymor_fv, data_ = discretize_stationary_fv(problem, diameter=h, grid_type=RectGr
 ```
 
 ```python
-mu = [1., 0.1, 1., 0.1]
+mu = [1., 0.1, 1., 0.1, 1., 1.]
 # mu = [1.]
 ```
 
@@ -186,23 +199,12 @@ for mu_ in problem.parameter_space.sample_randomly(10):
 ```
 
 ```python
-# For making the rhs usable in estimate_image, we need to transform it from
-# a BlockOperator into a VectorOperator.
-# Not working if rhs is parametric
-
-from pymor.operators.constructions import VectorOperator
-
-pymor_ipl_model_globally_reducable = pymor_ipl_model.with_(
-    rhs = VectorOperator(pymor_ipl_model.rhs.as_vector()))
-```
-
-```python
 from pymor.algorithms.gram_schmidt import gram_schmidt
 
 us_orth = gram_schmidt(us)
 print('length of the basis', len(us_orth))
 
-reductor = CoerciveRBReductor(pymor_ipl_model_globally_reducable, us_orth)
+reductor = CoerciveRBReductor(pymor_ipl_model, us_orth)
 
 rom = reductor.reduce()
 ```
@@ -388,10 +390,6 @@ patch_model_ = patch_model.with_(rhs = patch_model.rhs - a_u_v_as_operator)
 ```
 
 ```python
-patch_model_.rhs.assemble(mu_parsed).array.block(2).to_numpy()
-```
-
-```python
 u_patch_ = patch_model_.solve(mu)
 u_patch_global_ = localized_reductor.from_patch_to_global(II, u_patch_)
 ```
@@ -423,10 +421,6 @@ patch_model_ = patch_model.with_(rhs = patch_model.rhs - a_u_v_as_operator)
 u_patch_ = patch_model_.solve(mu)
 u_patch_global_ = localized_reductor.from_patch_to_global(II, u_patch_)
 u_patch_.sup_norm()
-```
-
-```python
-# patch_model_.rhs.assemble(mu_parsed).array.block(7).to_numpy()
 ```
 
 ```python
@@ -486,10 +480,6 @@ a_u_v = operator_without_outside_couplings.apply(u_restricted_to_patch, mu_parse
 
 a_u_v_as_operator = VectorOperator(a_u_v)
 patch_model_ = patch_model.with_(rhs = patch_model.rhs - a_u_v_as_operator)
-```
-
-```python
-# patch_model_.rhs.assemble(mu_parsed).array.block(2).to_numpy()
 ```
 
 ```python
