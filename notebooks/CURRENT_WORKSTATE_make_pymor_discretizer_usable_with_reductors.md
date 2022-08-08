@@ -67,7 +67,7 @@ from pymor.discretizers.builtin.grids.rect import RectGrid
 from pymor.discretizers.builtin.cg import discretize_stationary_cg
 from pymor.discretizers.builtin.fv import discretize_stationary_fv
 
-h = 0.1
+h = 0.01
 pymor_cg, data = discretize_stationary_cg(problem, diameter=h, grid_type=RectGrid)
 pymor_fv, data_ = discretize_stationary_fv(problem, diameter=h, grid_type=RectGrid)
 ```
