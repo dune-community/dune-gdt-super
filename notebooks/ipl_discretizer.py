@@ -150,7 +150,10 @@ def discretize_ipl(problem,
         block_rhs.append(rhs)
 
     #### there are two ways how to proceed:
-    if 0:
+    # lincomb_of_block = True
+    lincomb_of_block = False
+
+    if lincomb_of_block:
         ## FIRST LincombOperator(BlockOperators)
         diffusion_coefs = problem['diffusion_coefs']
         if diffusion_coefs:
@@ -240,12 +243,13 @@ def discretize_ipl(problem,
     patch_models = []
     patch_mappings_to_global = []
     patch_mappings_to_local = []
-    for neighborhood in neighborhoods:
-        patch_model, local_to_global_mapping, global_to_local_mapping = construct_patch_model(
-            neighborhood, final_op, final_rhs, final_dirichlet_ops, dd_grid.neighbors)
-        patch_models.append(patch_model)
-        patch_mappings_to_global.append(local_to_global_mapping)
-        patch_mappings_to_local.append(global_to_local_mapping)
+    if not lincomb_of_block:
+        for neighborhood in neighborhoods:
+            patch_model, local_to_global_mapping, global_to_local_mapping = construct_patch_model(
+                neighborhood, final_op, final_rhs, final_dirichlet_ops, dd_grid.neighbors)
+            patch_models.append(patch_model)
+            patch_mappings_to_global.append(local_to_global_mapping)
+            patch_mappings_to_local.append(global_to_local_mapping)
 
     return_data = {'macro_grid': macro_grid, 'dd_grid': dd_grid,
                    'local_spaces': local_spaces, 'patch_models': patch_models,
@@ -343,9 +347,10 @@ def assemble_coupling_contribution(coupling_grid, grid, ss, nn, ss_space, nn_spa
     weight = GF(grid, weight, dim_range=(Dim(d), Dim(d)))
 
     coupling_integrand = LocalLaplaceIPDGInnerCouplingIntegrand(
-        symmetry_factor, diffusion, weight, intersection_type=coupling_intersection_type)
+        symmetry_factor, diffusion, diffusion, weight, weight,
+        intersection_type=coupling_intersection_type)
     penalty_integrand = LocalIPDGInnerPenaltyIntegrand(
-        penalty_parameter, weight, intersection_type=coupling_intersection_type)
+        penalty_parameter, weight, weight, intersection_type=coupling_intersection_type)
 
     coupling_form += LocalCouplingIntersectionIntegralBilinearForm(coupling_integrand)
     coupling_form += LocalCouplingIntersectionIntegralBilinearForm(penalty_integrand)

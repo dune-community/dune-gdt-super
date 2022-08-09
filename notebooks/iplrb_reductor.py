@@ -7,7 +7,7 @@ from pymor.operators.block import BlockOperator
 from pymor.reductors.coercive import CoerciveRBReductor
 from pymor.algorithms.gram_schmidt import gram_schmidt
 
-class EllipticIPDGReductor(CoerciveRBReductor):
+class CoerciveIPLD3GRBReductor(CoerciveRBReductor):
     def __init__(self, fom):
         self.S = fom.solution_space.empty().num_blocks
         self.fom = fom
@@ -37,6 +37,9 @@ class EllipticIPDGReductor(CoerciveRBReductor):
     def project_operators(self):
         projected_ops_blocks = []
         # this is for BlockOperator(LincombOperators)
+        assert isinstance(self.fom.operator, BlockOperator)
+        assert not self.fom.rhs.parametric
+
         projected_ops = np.empty((self.S, self.S), dtype=object)
         for ss in range(self.S):
             for nn in range(self.S):
