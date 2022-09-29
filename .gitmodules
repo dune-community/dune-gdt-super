@@ -57,3 +57,6 @@
 [submodule "pymor"]
 	path = pymor
 	url = https://github.com/pymor/pymor
+[submodule "Trust-region-TSRBLOD-code"]
+	path = Trust-region-TSRBLOD-code
+	url = https://github.com/TiKeil/Trust-region-TSRBLOD-code.git
