@@ -466,10 +466,6 @@ counter.reset_counters()
 ```
 
 ```python
-%pdb
-```
-
-```python
 from pdeopt_reductor import QuadraticPdeoptStationaryCoerciveLRBMSReductor
 
 if ('Method_R_TR' in optimization_methods and 'Method_LRBMS' in optimization_methods) \
@@ -519,4 +515,13 @@ if ('Method_R_TR' in optimization_methods and 'Method_LRBMS' in optimization_met
     times_full_rlrb_actual, J_error_rlrb_actual, mu_error_rlrb_actual, FOC_rlrb_actual = compute_errors(
         opt_fom, parameter_space, J_start, J_opt, mu, mu_opt_as_array, mus_rlrb, Js_rlrb, times_rlrb, tictoc, FOC_rlrb,
         pool=pool)
+```
+
+# TESTS FOR THE LRBMS CASE 
+
+
+BEFORE CONTINUING: CHECK THE OPT_ROM of pdeopt_reductor !!!!!
+
+```python
+assert 0
 ```
