@@ -21,12 +21,28 @@ from pdeopt.discretizer import _construct_mu_bar
 
 from pymor.discretizers.dunegdt.ipld3g import discretize_stationary_ipld3g
 
-def discretize_quadratic_pdeopt_with_iplrb(
-    problem, macro_diameter=np.sqrt(2)/4., refinements=4, weights=None,
-    domain_of_interest=None, desired_temperature=None, mu_for_u_d=None,
-    mu_for_tikhonov=None, pool=None, counter=None,
-    store_in_tmp=False, coarse_J=False, use_fine_mesh=True,
-    aFine_constructor=None, u_d=None, print_on_ranks=False):
+def discretize_quadratic_pdeopt_with_iplrb(problem,
+                                           # parameters for the ipl discretization
+                                           macro_diameter=np.sqrt(2)/4.,
+                                           refinements=4,
+                                           symmetry_factor=1,
+                                           weight_parameter=None,
+                                           penalty_parameter=16.,
+                                           # opt parameters
+                                           weights=None,
+                                           domain_of_interest=None,
+                                           desired_temperature=None,
+                                           mu_for_u_d=None,
+                                           mu_for_tikhonov=None,
+                                           # technical parameters
+                                           pool=None,
+                                           counter=None,
+                                           store_in_tmp=False,
+                                           coarse_J=False,
+                                           use_fine_mesh=True,
+                                           aFine_constructor=None,
+                                           u_d=None,
+                                           print_on_ranks=False):
 
     mu_bar = _construct_mu_bar(problem)
     # if use_fine_mesh:V
@@ -38,9 +54,12 @@ def discretize_quadratic_pdeopt_with_iplrb(
     print('Discretizing ipld3g model ...', end='', flush=True)
     ipl_fom, data = discretize_stationary_ipld3g(problem, macro_diameter=macro_diameter,
                                                  num_local_refinements=refinements,
-                                                 penalty_parameter=16.)
+                                                 symmetry_factor=symmetry_factor,
+                                                 weight_parameter=weight_parameter,
+                                                 penalty_parameter=penalty_parameter,
+                                                 )
     num_subdomains = data['dd_grid'].num_subdomains
-    print(f'done with {num_subdomains} subdomains')
+    print(f'done with {num_subdomains} subdomains and {refinements} refinements')
 
     # coarse_space = coarse_model.solution_space
 
@@ -59,6 +78,8 @@ def discretize_quadratic_pdeopt_with_iplrb(
     if u_d is None:
         u_desired = ConstantFunction(desired_temperature, d) if desired_temperature is not None else None
         if mu_for_u_d is not None:
+            # TODO: should use FEM here
+            print("WARNING: using ipl for u_d")
             modifified_mu = mu_for_u_d.copy()
             for key in mu_for_u_d.keys():
                 if len(mu_for_u_d[key]) == 0:
@@ -67,20 +88,14 @@ def discretize_quadratic_pdeopt_with_iplrb(
                 u_d = ipl_fom.solve(modifified_mu)
         else:
             assert desired_temperature is not None
-            u_d = InterpolationOperator(grid, u_desired).as_vector()
+            # u_d = InterpolationOperator(grid, u_desired).as_vector()
+            u_d = ipl_fom.solution_space.ones() * desired_temperature
 
-    # TODO: FIND THE CORRECT OPERATOR HERE !
-    # TrivialOperator = IdentityOperator(ipl_fom.solution_space)
-    # build a block identity operator
-    local_identity_ops = np.empty((num_subdomains, num_subdomains), dtype=object)
-    for I in range(num_subdomains):
-        local_identity_ops[I][I] = IdentityOperator(ipl_fom.solution_space.subspaces[I])
-    TrivialOperator = BlockOperator(local_identity_ops)
+    L2Operator = ipl_fom.products['l2']
 
-    # l2_u_d_squared = L2_OP.apply2(u_d, u_d)[0][0]
-    l2_u_d_squared = TrivialOperator.apply2(u_d, u_d)[0][0]
+    l2_u_d_squared = L2Operator.apply2(u_d, u_d)[0][0]
     constant_part = 0.5 * l2_u_d_squared
-
+    print('constant ', constant_part)
     # assemble output functional
     from pdeopt.theta import build_output_coefficient
     if weights is not None:
@@ -104,7 +119,7 @@ def discretize_quadratic_pdeopt_with_iplrb(
 
     blocks_for_linear_part = np.empty(num_subdomains, dtype=object)
     for I in range(num_subdomains):
-        local_linear_part = VectorArrayOperator(TrivialOperator.apply(u_d).block(I))
+        local_linear_part = VectorArrayOperator(L2Operator.apply(u_d).block(I))
         blocks_for_linear_part[I] = LincombOperator([local_linear_part], [-state_functional])
     block_linear_part = BlockColumnOperator(blocks_for_linear_part)
 
@@ -112,26 +127,26 @@ def discretize_quadratic_pdeopt_with_iplrb(
     output_functional['d_u_linear_part'] = block_linear_part
 
     # output_functional['linear_part'] = LincombOperator([VectorOperator(Restricted_L2_OP.apply(u_d))],[-state_functional])      # j(.)
-    # output_functional['linear_part'] = LincombOperator([VectorOperator(TrivialOperator.apply(u_d))],[-state_functional])      # j(.)
+    # output_functional['linear_part'] = LincombOperator([VectorOperator(L2Operator.apply(u_d))],[-state_functional])      # j(.)
 
 
     blocks_for_bilinear_part = np.empty((num_subdomains, num_subdomains), dtype=object)
     blocks_for_d_u_bilinear_part = np.empty((num_subdomains, num_subdomains), dtype=object)
     for I in range(num_subdomains):
         blocks_for_bilinear_part[I][I] = LincombOperator(
-            [TrivialOperator.blocks[I][I]], [0.5*state_functional])
+            [L2Operator.blocks[I][I]], [0.5*state_functional])
         blocks_for_d_u_bilinear_part[I][I] = LincombOperator(
-            [TrivialOperator.blocks[I][I]], [state_functional])
+            [L2Operator.blocks[I][I]], [state_functional])
     block_bilinear_part = BlockOperator(blocks_for_bilinear_part)
-    block_d_u_bilinear_part = BlockOperator(blocks_for_bilinear_part)
+    block_d_u_bilinear_part = BlockOperator(blocks_for_d_u_bilinear_part)
 
     output_functional['bilinear_part'] = block_bilinear_part
     output_functional['d_u_bilinear_part'] = block_d_u_bilinear_part
 
     # output_functional['bilinear_part'] = LincombOperator([Restricted_L2_OP],[0.5*state_functional])                              # k(.,.)
-    # output_functional['bilinear_part'] = LincombOperator([TrivialOperator],[0.5*state_functional])                              # k(.,.)
+    # output_functional['bilinear_part'] = LincombOperator([L2Operator],[0.5*state_functional])                              # k(.,.)
     # output_functional['d_u_bilinear_part'] = LincombOperator(
-        # [TrivialOperator], [state_functional])                                 # 2k(.,.)
+        # [L2Operator], [state_functional])                                 # 2k(.,.)
     # output_functional['d_u_bilinear_part'] = LincombOperator(
     #     [Restricted_L2_OP], [state_functional])                                 # 2k(.,.)
 
@@ -152,7 +167,7 @@ def discretize_quadratic_pdeopt_with_iplrb(
 
     # fom = primal_fom or coarse_model
 
-    opt_product = IdentityOperator(ipl_fom.solution_space)
+    opt_product = ipl_fom.products['weighted_h1_semi_penalty']
 
     pde_opt_fom = QuadraticPdeoptStationaryModel(ipl_fom, output_functional, opt_product=opt_product,
                                                  use_corrected_functional=False, adjoint_approach=False,
