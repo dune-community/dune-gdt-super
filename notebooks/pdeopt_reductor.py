@@ -58,7 +58,8 @@ class QuadraticPdeoptStationaryCoerciveLRBMSReductor(CoerciveRBReductor):
         # min_alpha = self.min_alpha
         # coercivity_estimator = lambda mu: min_alpha
         self.primal_reductor = CoerciveIPLD3GRBReductor(self.fom, self.dd_grid)
-        self.dual_reductor = CoerciveIPLD3GRBReductor(self.fom, self.dd_grid)
+        # self.dual_reductor = CoerciveIPLD3GRBReductor(self.fom, self.dd_grid)
+        self.dual_reductor = self.primal_reductor
         print('') if self.print_on_ranks else 0
 
     def reduce(self):
@@ -86,25 +87,30 @@ class QuadraticPdeoptStationaryCoerciveLRBMSReductor(CoerciveRBReductor):
 
         # reduce primal
         self.primal_model = self.primal_reductor.reduce()
-        # build dual reductor
-        self.dual_model = self.construct_dual_model()
+
+        # # build dual reductor
+        # self.dual_model = self.construct_dual_model()
+        self.dual_model = None
 
         projected_output = self.project_output()
         projected_product = self.project_product()
 
         primal_bases_size = self.primal_reductor.basis_length()
-        dual_bases_size = self.dual_reductor.basis_length()
-        print(f' ... Models have been constructed ... length of bases are '
-              f'{primal_bases_size, dual_bases_size}')
+        print(f' ... Model has been constructed ... length of bases are '
+              f'{primal_bases_size}')
+        # dual_bases_size = self.dual_reductor.basis_length()
+        # print(f' ... Models have been constructed ... length of bases are '
+        #       f'{primal_bases_size, dual_bases_size}')
 
         return self.fom.with_(primal_model=self.primal_model, estimators=None,
                               dual_model=self.dual_model, fom=self.fom,
                               evaluation_counter=evaluation_counter,
                               opt_product=projected_product,
-                              coarse_projection=projected_product,
-                              output_functional_dict=projected_output)
+                              output_functional_dict=projected_output,
+                              is_rom=True, coarse_projection=None)
 
     def construct_dual_model(self):
+        assert 0
         # TODO: assertions
         suffix = ''
         bilinear_part = self.fom.output_functional_dict[f'd_u_bilinear_part{suffix}']
@@ -119,7 +125,8 @@ class QuadraticPdeoptStationaryCoerciveLRBMSReductor(CoerciveRBReductor):
                 u = local_basis[i]
                 if isinstance(bilinear_part_block, LincombOperator):
                     for j, op in enumerate(bilinear_part_block.operators):
-                        # TODO: THIS IS PROBABLY WRONG AND HAS TO BE APPLIED GLOBALLY
+                        # TODO: THIS IS WRONG AND HAS TO BE APPLIED GLOBALLY
+                        assert 0
                         rhs_operators.append(VectorOperator(op.apply(u)))
                         rhs_coefficients.append(
                             ProjectionParameterFunctional(f'basis_coefficients_{I}',
@@ -154,13 +161,13 @@ class QuadraticPdeoptStationaryCoerciveLRBMSReductor(CoerciveRBReductor):
         # enrich primal
         self.primal_reductor.enrich_all_locally(mu, use_global_matrix=False)
         # enrich dual
-        self.dual_reductor.add_global_solutions(self.fom.solve_dual(mu))
+        # self.dual_reductor.add_global_solutions(self.fom.solve_dual(mu))
         return U, P
 
     def add_global_solutions(self, mu):
         U = self.fom.solve(mu)
         self.primal_reductor.add_global_solutions(U)
-        self.dual_reductor.add_global_solutions(self.fom.solve_dual(mu, U))
+        # self.dual_reductor.add_global_solutions(self.fom.solve_dual(mu, U))
 
     def assemble_error_estimator(self, RB_primal=None, RB_dual=None):
         estimators = {}
