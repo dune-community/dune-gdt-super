@@ -513,6 +513,7 @@ counter.reset_counters()
 
 ```python
 from pdeopt_reductor import QuadraticPdeoptStationaryCoerciveLRBMSReductor
+tic = time.time()
 
 if ('Method_R_TR' in optimization_methods and 'Method_LRBMS' in optimization_methods) \
         or 'All' in optimization_methods:
